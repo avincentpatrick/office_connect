@@ -42,16 +42,25 @@ _UNAUDITED = (AuditLog, QueryLog)
 
 
 def serialize_value(value: Any) -> Any:
-    """Canonical JSON-native form of a column value (deterministic)."""
+    """Canonical JSON-native form of a column value (deterministic).
+
+    Numbers that are not ints are stringified: Postgres jsonb normalizes
+    numeric literals (1.2e16 -> 12000000000000000), so a raw float would hash
+    one way at write time and re-serialize differently after the JSONB
+    round-trip — permanently breaking verify_chain. Strings round-trip
+    verbatim.
+    """
     if isinstance(value, Decimal):
         return str(value)
+    if isinstance(value, float):
+        return repr(value)
     if isinstance(value, datetime):
         return value.isoformat()  # aware-only by platform convention
     if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, bytes):
         return base64.b64encode(value).decode("ascii")
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, (str, int, bool)):
         return value
     if isinstance(value, dict):
         return {k: serialize_value(v) for k, v in value.items()}
@@ -121,6 +130,36 @@ def verify_chain(rows: list[AuditLog]) -> int | None:
 # --- session listeners ----------------------------------------------------
 
 
+@event.listens_for(OCSession, "persistent_to_deleted")
+def _block_cascade_deletes(session, obj) -> None:
+    """Catch deletions the before_flush guard cannot see (delete-orphan
+    cascade victims are discovered by the unit-of-work AFTER before_flush).
+    Convention (database-standards.md §8): relationships never use
+    delete-orphan — this guard makes a violation fail loudly."""
+    raise RuntimeError(
+        "Hard deletes are forbidden (standing rule 6) - a relationship cascade "
+        "attempted to delete a row. Do not configure delete-orphan cascades; "
+        "use soft_delete() on the child instead."
+    )
+
+
+@event.listens_for(OCSession, "do_orm_execute")
+def _block_unaudited_bulk_dml(state) -> None:
+    """ORM-enabled bulk UPDATE/DELETE bypasses the unit of work, so no audit
+    rows would be written. Forbid it; mutate loaded instances instead.
+    ``execution_options(allow_unaudited=True)`` is the sanctioned escape hatch
+    for maintenance scripts that log their own audit rows."""
+    if (state.is_update or state.is_delete) and not state.execution_options.get(
+        "allow_unaudited", False
+    ):
+        raise RuntimeError(
+            "Bulk ORM UPDATE/DELETE bypasses the audit chain (standing rule 5) "
+            "- load and mutate instances, or pass "
+            "execution_options(allow_unaudited=True) and write audit rows "
+            "yourself."
+        )
+
+
 @event.listens_for(OCSession, "before_flush")
 def _capture_changes(session, flush_context, instances) -> None:
     """Capture change history before flush (values still loaded; no IO here)."""
@@ -146,7 +185,9 @@ def _capture_changes(session, flush_context, instances) -> None:
         old_diff: dict[str, Any] = {}
         new_diff: dict[str, Any] = {}
         for attr in state.mapper.column_attrs:
-            history = state.attrs[attr.key].history  # no loader callables emitted
+            # No loader callables emitted (async-safe). Known limit: a column
+            # assigned without ever being loaded records old=None.
+            history = state.attrs[attr.key].history
             if not history.has_changes():
                 continue
             old_diff[attr.key] = serialize_value(
@@ -177,7 +218,9 @@ def _write_audit_rows(session, flush_context) -> None:
         return
 
     conn = session.connection()
-    # Serialize chain writers for the transaction's duration.
+    # Serialize chain writers for the transaction's duration. The lock is held
+    # from the transaction's FIRST flush until COMMIT/ROLLBACK — keep audited
+    # write transactions short (documented trade-off, foundation.md §7).
     conn.execute(text("SELECT pg_advisory_xact_lock(hashtext('core_audit_logs'))"))
     prev = (
         conn.execute(

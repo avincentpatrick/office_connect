@@ -32,9 +32,10 @@ out-of-repo plan file is superseded by this section.)*
   skeleton); `APP_VERSION` in `office_connect/__init__.py`; import-linter
   contracts in `pyproject.toml` ("core never imports modules; modules never
   import each other").
-- **Conventions layer** — `core/base.py`: shared `Base` with the §4 naming
-  convention, `PKMixin` (BIGINT identity), `AuditColsMixin`, `SoftDeleteMixin`,
-  `LookupMixin`; `core/time.py` (UTC store / Manila display, naive rejected).
+- **Conventions layer** — `core/base.py`: shared `Base` with the DB standards
+  §4 naming convention, `PKMixin` (BIGINT identity), `AuditColsMixin`,
+  `SoftDeleteMixin`, `LookupMixin`; `core/time.py` (UTC store / Manila
+  display, naive rejected).
 - **Alembic** — async `env.py` (NullPool + `run_sync`), single chain,
   migration `0001_core_spine` (tables in §4 below + roles/grants + seeds).
 - **Audit chain** — `core/audit.py`: session listeners write hash-chained rows

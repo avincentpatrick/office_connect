@@ -177,18 +177,27 @@ def upgrade() -> None:
     # ------------------------------------------- runtime role + grants (§8)
     # oc_app: SELECT/INSERT/UPDATE on mutable tables, SELECT/INSERT only on
     # append-only tables, NO DELETE / NO TRUNCATE anywhere.
-    oc_app_password = os.environ.get("OC_APP_PASSWORD", "oc_app_pw").replace("'", "''")
+    #
+    # The password is set by a plain ALTER ROLE (single-quote escaping is
+    # complete there — inside a DO $$ body a password containing "$$" would
+    # terminate the dollar-quoting). NOTE: changing OC_APP_PASSWORD after this
+    # migration has run requires a manual ALTER ROLE (or a fresh DB) — the
+    # migration never re-executes. Offline `--sql` mode writes the password
+    # into the generated script — do not use --sql output for real
+    # environments without redacting it.
     op.execute(
-        f"""
+        """
         DO $$
         BEGIN
             IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'oc_app') THEN
-                CREATE ROLE oc_app LOGIN PASSWORD '{oc_app_password}';
+                CREATE ROLE oc_app LOGIN;
             END IF;
         END
         $$;
         """
     )
+    oc_app_password = os.environ.get("OC_APP_PASSWORD", "oc_app_pw").replace("'", "''")
+    op.execute(f"ALTER ROLE oc_app WITH LOGIN PASSWORD '{oc_app_password}'")
     op.execute("GRANT USAGE ON SCHEMA public TO oc_app")
     op.execute(
         f"GRANT SELECT, INSERT, UPDATE ON {', '.join(MUTABLE_TABLES)} TO oc_app"
@@ -234,7 +243,21 @@ def downgrade() -> None:
     op.execute("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM oc_app")
     op.execute("REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM oc_app")
     op.execute("REVOKE USAGE ON SCHEMA public FROM oc_app")
-    op.execute("DROP ROLE IF EXISTS oc_app")
+    # Roles are cluster-wide; if oc_app still holds privileges in another
+    # database of the same cluster the DROP would fail — leave it in place
+    # with a notice rather than aborting the downgrade.
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            DROP ROLE IF EXISTS oc_app;
+        EXCEPTION WHEN dependent_objects_still_exist THEN
+            RAISE NOTICE
+                'oc_app keeps privileges in another database; role not dropped';
+        END
+        $$;
+        """
+    )
 
     op.drop_table("core_activities")
     postgresql.ENUM(name="core_activity_status").drop(op.get_bind(), checkfirst=True)

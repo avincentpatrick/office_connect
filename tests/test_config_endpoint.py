@@ -8,10 +8,22 @@ import office_connect.core.api.config as config_api
 from office_connect import APP_VERSION
 from office_connect.core.config import get_settings
 
+SEED_FLAG_KEYS = ("module.reimbursement", "module.css_is", "module.dmwis")
+
 
 @pytest.fixture(autouse=True)
-async def _clear_config_cache():
-    """Config responses cache for 30s — isolate each test from the cache."""
+async def _reset_flags_and_cache(owner_session):
+    """Isolate each test from the 30s cache AND from leftover flag state —
+    a hard-killed prior run can leave a flipped flag committed (the finally
+    blocks below never ran)."""
+    await owner_session.execute(
+        text(
+            "UPDATE core_feature_flags SET enabled = false, is_active = true, "
+            "deleted_at = NULL, deleted_by = NULL WHERE key = ANY(:keys)"
+        ),
+        {"keys": list(SEED_FLAG_KEYS)},
+    )
+    await owner_session.commit()
     r = aioredis.from_url(get_settings().redis_url, decode_responses=True)
     await r.delete(config_api.CACHE_KEY)
     yield
@@ -73,6 +85,9 @@ async def test_soft_deleted_flag_disappears(client, owner_session):
         )
         await owner_session.commit()
         body = (await client.get("/api/v1/config")).json()
+        # Other flags present proves the DB path ran (not the fail-safe branch,
+        # which would also make the assertion below pass vacuously).
+        assert "module.reimbursement" in body["features"]
         assert "module.css_is" not in body["features"]
     finally:
         await owner_session.execute(

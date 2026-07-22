@@ -4,10 +4,17 @@ Every ORM select of a ``SoftDeleteMixin`` entity is filtered to
 ``deleted_at IS NULL`` by default — including relationship and aliased loads.
 Escape hatch: ``.execution_options(include_deleted=True)``.
 
-Caveat (documented in the standards): ``with_loader_criteria`` filters ORM
-entity selects only — raw ``text()`` / Core-table queries bypass it. Query via
-ORM entities. The DB-level backstop is the grants: ``oc_app`` has no DELETE
-privilege anywhere, and ``core/audit.py`` raises on ``session.delete()``.
+Caveats (documented in database-standards.md §8):
+- ``with_loader_criteria`` filters ORM entity selects only — raw ``text()`` /
+  Core-table queries bypass it. Query via ORM entities.
+- ``session.get()`` served from the identity map emits no SELECT, so an
+  already-loaded soft-deleted object is still returned. Treat ``get()`` on
+  possibly-deleted rows accordingly (check ``deleted_at``) or query via
+  ``select()``.
+
+The DB-level backstop is the grants: ``oc_app`` has no DELETE privilege
+anywhere, and ``core/audit.py`` raises on ``session.delete()`` and on
+cascade deletions.
 """
 
 from sqlalchemy import event

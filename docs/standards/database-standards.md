@@ -138,8 +138,17 @@ override, every config or flag change, every soft delete. The app DB role has
   `deleted_at IS NULL` to every select of a soft-deletable entity
   ([`office_connect/core/soft_delete.py`](../../office_connect/core/soft_delete.py)).
   Escape hatch: `.execution_options(include_deleted=True)`.
-  *Caveat:* raw `text()` / Core-table queries bypass the filter — query via
-  ORM entities, or filter manually and say so in a comment.
+  *Caveats:* raw `text()` / Core-table queries bypass the filter — query via
+  ORM entities, or filter manually and say so in a comment; `session.get()`
+  served from the identity map emits no SELECT and can return an
+  already-loaded soft-deleted object — check `deleted_at` or use `select()`.
+- **No delete-orphan cascades, no ORM bulk DML:** relationships never
+  configure `delete-orphan` (a cascade delete would bypass audit — the
+  listeners raise if one fires), and ORM-enabled bulk
+  `session.execute(update()/delete())` is blocked because it bypasses the
+  audit chain — load and mutate instances; maintenance scripts may pass
+  `execution_options(allow_unaudited=True)` and must write audit rows
+  themselves.
 - **Uniqueness:** natural keys use **partial unique indexes** —
   `UNIQUE (...) WHERE deleted_at IS NULL` — so a soft-deleted row never
   blocks reuse of a name/key, **except** reference numbers (§12), which are

@@ -7,6 +7,8 @@ import subprocess
 
 import sqlalchemy as sa
 
+from tests.conftest import REPO_ROOT
+
 BUSINESS_TABLES = {"core_tenant_configs", "core_activities"}
 LOOKUP_TABLES = {"core_feature_flags"}
 APPEND_ONLY_TABLES = {"core_audit_logs", "core_query_logs"}
@@ -18,7 +20,10 @@ def test_upgrade_head_idempotent():
     """Running `alembic upgrade head` twice must both succeed (QA gate)."""
     for attempt in (1, 2):
         result = subprocess.run(
-            ["alembic", "upgrade", "head"], capture_output=True, text=True
+            ["alembic", "upgrade", "head"],
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
         )
         assert result.returncode == 0, f"attempt {attempt}: {result.stderr}"
 

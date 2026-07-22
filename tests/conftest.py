@@ -10,6 +10,7 @@ rows behind in the dev DB (never tampered data — tamper tests roll back);
 """
 
 import subprocess
+from pathlib import Path
 
 import pytest
 from asgi_lifespan import LifespanManager
@@ -25,11 +26,15 @@ from office_connect.core.config import get_settings
 from office_connect.core.db import SessionLocal
 
 
+# Repo root (holds alembic.ini) — makes the alembic CLI calls cwd-independent.
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 @pytest.fixture(scope="session", autouse=True)
 def migrated_db():
     """Upgrade to head once before the suite (idempotency is itself a test)."""
     result = subprocess.run(
-        ["alembic", "upgrade", "head"], capture_output=True, text=True
+        ["alembic", "upgrade", "head"], capture_output=True, text=True, cwd=REPO_ROOT
     )
     assert result.returncode == 0, result.stderr
 

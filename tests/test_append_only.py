@@ -4,7 +4,7 @@ it must not — grants enforced in migration 0001, probed here as oc_app."""
 from datetime import date
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import text, update
 from sqlalchemy.exc import DBAPIError
 
 from office_connect.core.models import Activity
@@ -51,4 +51,14 @@ async def test_orm_hard_delete_blocked_before_reaching_db(app_session):
     await app_session.delete(activity)
     with pytest.raises(RuntimeError, match="Hard deletes are forbidden"):
         await app_session.flush()
+    await app_session.rollback()
+
+
+async def test_orm_bulk_update_blocked(app_session):
+    """Bulk ORM UPDATE bypasses the unit of work (no audit rows) — forbidden
+    (rule 5); the sanctioned escape hatch is allow_unaudited=True."""
+    with pytest.raises(RuntimeError, match="Bulk ORM UPDATE/DELETE"):
+        await app_session.execute(
+            update(Activity).where(Activity.id == -1).values(venue="bulk")
+        )
     await app_session.rollback()

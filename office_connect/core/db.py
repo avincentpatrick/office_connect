@@ -10,6 +10,7 @@ Connects as the runtime role ``oc_app`` (no DELETE anywhere). Alembic uses
 
 from collections.abc import AsyncIterator
 
+from fastapi import Request
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -17,7 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from office_connect.core.config import get_settings
-from office_connect.core.session import OCSession
+from office_connect.core.session import OCSession, set_audit_context
 
 settings = get_settings()
 
@@ -39,7 +40,11 @@ from office_connect.core import audit as _audit  # noqa: E402,F401
 from office_connect.core import soft_delete as _soft_delete  # noqa: E402,F401
 
 
-async def get_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency: one session per request."""
+async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
+    """FastAPI dependency: one session per request, audit context pre-seeded
+    with the request id (the actor is added by auth in Phase 2)."""
     async with SessionLocal() as session:
+        set_audit_context(
+            session, request_id=getattr(request.state, "request_id", None)
+        )
         yield session

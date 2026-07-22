@@ -35,9 +35,11 @@ app.include_router(api_router)
 
 @app.middleware("http")
 async def request_id_middleware(request: Request, call_next):
-    """Tag every request; audit rows carry it via set_audit_context (Phase 2
-    adds the actor once auth exists)."""
-    request.state.request_id = uuid.uuid4().hex
+    """Tag every request; audit rows carry it via get_session/set_audit_context
+    (Phase 2 adds the actor once auth exists). An inbound X-Request-ID (e.g.
+    from a reverse proxy) is honored; unhandled-500 responses lose the header —
+    known BaseHTTPMiddleware limit, revisit with auth middleware in Phase 2."""
+    request.state.request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
     return response
@@ -61,13 +63,15 @@ async def health():
     checks: dict[str, str] = {}
     ok = True
 
+    # Only the exception TYPE is exposed — this endpoint is unauthenticated,
+    # and raw messages can leak DSNs/hosts. Details go to the server log.
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         checks["postgres"] = "ok"
     except Exception as exc:  # noqa: BLE001 - surface any connection failure
         ok = False
-        checks["postgres"] = f"error: {type(exc).__name__}: {exc}"
+        checks["postgres"] = f"error: {type(exc).__name__}"
 
     try:
         pong = await app.state.redis.ping()
@@ -75,7 +79,7 @@ async def health():
         ok = ok and bool(pong)
     except Exception as exc:  # noqa: BLE001
         ok = False
-        checks["redis"] = f"error: {type(exc).__name__}: {exc}"
+        checks["redis"] = f"error: {type(exc).__name__}"
 
     return JSONResponse(
         status_code=200 if ok else 503,

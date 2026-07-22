@@ -28,20 +28,26 @@ _NEUTRAL_TENANT = {
 
 
 @router.get("/config")
-async def get_config(request: Request) -> dict:
+async def get_config(request: Request):
+    # NOTE: no response-model annotation — a poisoned/nonconforming cache
+    # value must degrade, never raise a ResponseValidationError 500.
     redis = getattr(request.app.state, "redis", None)
 
     if redis is not None:
         try:
             cached = await redis.get(CACHE_KEY)
             if cached:
-                return json.loads(cached)
+                parsed = json.loads(cached)
+                if isinstance(parsed, dict) and "features" in parsed:
+                    return parsed
+                # Poisoned cache: ignore and rebuild from the DB.
         except Exception:  # noqa: BLE001 — cache failure must not break config
             pass
 
     tenant = dict(_NEUTRAL_TENANT)
     branding: dict = {}
     features: dict[str, bool] = {}
+    db_ok = True
     try:
         async with SessionLocal() as session:
             row = (
@@ -63,6 +69,7 @@ async def get_config(request: Request) -> dict:
                     features[flag.key] = False
     except Exception:  # noqa: BLE001 — whole-DB fail-safe: all OFF, still 200
         tenant, branding, features = dict(_NEUTRAL_TENANT), {}, {}
+        db_ok = False
 
     payload = {
         "tenant": tenant,
@@ -71,7 +78,9 @@ async def get_config(request: Request) -> dict:
         "version": APP_VERSION,
     }
 
-    if redis is not None:
+    # Never cache a degraded (fail-safe) payload — a transient DB blip must
+    # not pin every client to all-OFF for a full TTL.
+    if redis is not None and db_ok:
         try:
             await redis.set(CACHE_KEY, json.dumps(payload), ex=CACHE_TTL_SECONDS)
         except Exception:  # noqa: BLE001
