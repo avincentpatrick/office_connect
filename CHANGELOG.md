@@ -16,5 +16,13 @@ makes the push-per-phase rule auditable.
   soft-delete standards, UI token & component standards, tech-stack register,
   session workflow with next-session prompts, per-module documentation set,
   `CLAUDE.md` session contract.
+- Phase 0 Increment 1 (2026-07-22): core schema spine (`core_tenant_configs`,
+  `core_feature_flags`, `core_audit_logs`, `core_query_logs`,
+  `core_activities`) via a single Alembic chain; automatic hash-chained audit
+  trail on every data change; soft deletes with a global filter; least-
+  privilege runtime DB role (`oc_app`, no DELETE anywhere);
+  `GET /api/v1/config` (tenant + branding + feature flags, Redis-cached,
+  fail-safe OFF, never 500); 31 QA-gate tests + import-linter contracts.
+  Hardened by a 34-agent adversarial review (23 confirmed findings fixed).
 - Feature-flag rollout note: flags default **OFF**; cohort widenings will be
   recorded here per release.

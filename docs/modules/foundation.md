@@ -8,7 +8,7 @@ Nothing user-facing precedes it (`references/Phased_Rollout_Assessment.md` §3).
 | Piece | Phase | Status |
 |---|---|---|
 | Dev environment (Docker, ports, health) | 0 (pre-work) | ✅ done (session 1) |
-| Increment 1 — schema spine + conventions + tests | 0 | 🔨 in progress (session 2) |
+| Increment 1 — schema spine + conventions + tests | 0 | ✅ done (session 2) — 31 QA-gate tests green, adversarially reviewed |
 | Increment 2 — ops: deploy, backup/restore, Celery, migration-on-boot | 0 | not started |
 | Increment 3 — integrations: Drive/email drivers, bootstrap CLI, token contract | 0 | not started |
 | Auth / RBAC / staff directory ("one login") | 2 | not started |
@@ -105,3 +105,12 @@ migration; query-log middleware.
   session / push per phase; PK = BIGINT identity (no UUIDs); `*_by` columns
   plain BIGINT until Phase 2 FKs; audit = app-level session listeners
   (not triggers), hash payload includes app-set `created_at`.
+- **2026-07-22 (post-review)** — floats stringified in audit payloads (jsonb
+  numeric normalization would break the chain); relationships never use
+  `delete-orphan`; ORM bulk UPDATE/DELETE blocked (`allow_unaudited` escape
+  hatch for maintenance); degraded config payloads never cached;
+  `APP_VERSION` carries a `.devN` suffix until the phase gate promotes it;
+  known accepted limits: advisory lock held first-flush→commit (keep audited
+  transactions short), `session.get()` identity-map hits can return
+  soft-deleted objects, changing `OC_APP_PASSWORD` post-migration needs a
+  manual `ALTER ROLE`.

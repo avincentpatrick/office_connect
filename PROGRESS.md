@@ -2,14 +2,30 @@
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** 0 (Foundation floor) — Increment 1 in progress (session 2 underway)
-- **Last session:** #2 — 2026-07-22 — standards codified + Phase 0 Increment 1
-- **Blockers / waiting on user:** none
+- **Phase:** 0 (Foundation floor) — **Increment 1 ✅ complete**; Increments 2–3 remain
+- **Last session:** #2 — 2026-07-22 — 9 dev rules codified into standards docs + Increment 1 built, adversarially reviewed, all QA gates green
+- **Blockers / waiting on user:** none (R-0 author decisions can be prepared in parallel — see `docs/modules/reimbursement.md` §3)
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — paste this to resume)*
 
 ```text
-(Being written at the end of session 2 — see development-workflow.md §3.)
+Context: Office-Connect Phase 0 Increment 1 is complete (schema spine, audit
+chain, soft deletes, /api/v1/config — 31 QA-gate tests green, commit f76dd9b).
+Standards live in docs/standards/; read CLAUDE.md first.
+Task: Build Phase 0 Increment 2 (ops) per docs/modules/foundation.md §3:
+(1) deploy script with live-DB/version-bump/CHANGELOG guards, (2) scheduled
+pg_dump backup + ONE PROVEN RESTORE, (3) enable the Celery worker service +
+first beat backup task, (4) migration-on-boot in the app lifespan,
+(5) provision the private git remote (required before the Phase 0 push).
+Files: scripts/, docker-compose.yml (worker), office_connect/main.py
+(lifespan), office_connect/worker.py (new), docs/modules/foundation.md.
+Acceptance: docker compose up -d --build from a wiped volume comes up
+read-write with no manual migration step; a backup file is produced and
+restored successfully into a scratch DB; pytest still 31/31 green;
+lint-imports green.
+Open questions for the user: where should off-box backup copies go
+(second disk / network share / Drive)? Create the private git remote on
+which host (GitHub private / Gitea / other)?
 ```
 
 ---
@@ -36,9 +52,36 @@ Governance gate (DOH / Data Privacy Act) blocks loading **real** data, not the b
 
 ## Session log *(newest first)*
 
-### Session 2 — 2026-07-22 — Standards codified + Phase 0 Increment 1
+### Session 2 — 2026-07-22 — Standards codified + Phase 0 Increment 1 ✅
 
-*(entry completed at session end)*
+- **Phase(s):** 0 · **Commits:** `0d5a18c` (baseline) → `f0b39ac` (docs) →
+  `b6e689b` (Increment 1) → `f76dd9b` (review hardening) — all **local**
+  (push waits for the Phase 0 gate; no remote yet)
+- **Done:**
+  - 9 standing dev rules codified: `CLAUDE.md` session contract,
+    `docs/standards/` (development-workflow, database-standards, ui-standards,
+    tech-stack), `docs/modules/` (foundation + reimbursement real content,
+    5 scaffolds), PROGRESS restructure, CHANGELOG, docs index.
+  - Phase 0 Increment 1: `app/` → `office_connect/` restructure;
+    Base + naming convention + Audit/SoftDelete/Lookup mixins; `core/time.py`;
+    Alembic async chain + migration 0001 (5 spine tables, `oc_app`
+    least-privilege role, seeds); automatic hash-chained audit trail;
+    global soft-delete filter; `GET /api/v1/config` fail-safe OFF;
+    31 QA-gate tests; import-linter contracts.
+  - 34-agent adversarial review → 23 confirmed findings fixed (float/jsonb
+    hash asymmetry, cascade/bulk-DML audit bypasses, cache poisoning,
+    password dollar-quoting, test isolation, and more).
+- **Verified:** from a **wiped volume**: `alembic upgrade head` ×2 idempotent,
+  downgrade→re-upgrade clean, **pytest 31/31**, `lint-imports` 2/2 kept,
+  `/health` healthy, `/api/v1/config` all flags OFF, Laragon untouched.
+- **Decisions:** see `docs/modules/foundation.md` §7 (naming plural, BIGINT
+  PKs, app-level audit listeners, no delete-orphan/bulk DML, `.devN`
+  versioning, accepted limits).
+- **Docs updated:** CLAUDE.md, all 4 standards docs, all 7 module docs,
+  docs/README.md, README.md, CHANGELOG.md, this file.
+- **Next Session Prompt (archived):** Phase 0 Increment 2 (ops: deploy guard
+  script, backup + proven restore, Celery worker, migration-on-boot, git
+  remote provisioning) — full text in the top block as of this session.
 
 ### Session 1 — 2026-07-22 — Dev environment set up & verified ✅
 
