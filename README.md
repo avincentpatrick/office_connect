@@ -2,8 +2,12 @@
 
 Configurable multi-tenant government workplace platform (BLHSD/DOH reference tenant).
 See [`references/`](references/) for the execution plan and companion specs — the
-`.docx` is the single source of truth. Our own documentation, plans, and notes
-live in [`docs/`](docs/).
+`.docx` is the single source of truth for scope/sequence. Our own documentation,
+plans, and notes live in [`docs/`](docs/) (index: [`docs/README.md`](docs/README.md)).
+
+**Start here each session:** [`CLAUDE.md`](CLAUDE.md) (standing rules) and the
+top of [`PROGRESS.md`](PROGRESS.md) (current status + next-session prompt).
+Binding conventions live in [`docs/standards/`](docs/standards/).
 
 - **Stack:** FastAPI · PostgreSQL · Redis · Celery · React/Vite (later phases)
 - **Dev host:** Docker Desktop on Windows
