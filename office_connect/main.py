@@ -1,19 +1,22 @@
 """Office-Connect API entrypoint.
 
-Phase-0 skeleton: proves the FastAPI + PostgreSQL + Redis stack boots and is
-wired correctly. Real modules (core auth/directory, CSS-IS, DMWIS, ...) are
+Phase-0: FastAPI + PostgreSQL + Redis wiring, health, and the /api/v1 spine
+(config endpoint). Real modules (core auth/directory, CSS-IS, DMWIS, ...) are
 built on top per the execution plan.
 """
 
+import uuid
 from contextlib import asynccontextmanager
 
 import redis.asyncio as aioredis
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from app.core.config import get_settings
-from app.core.db import engine
+from office_connect import APP_VERSION
+from office_connect.core.api.router import api_router
+from office_connect.core.config import get_settings
+from office_connect.core.db import engine
 
 settings = get_settings()
 
@@ -26,16 +29,29 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app = FastAPI(title=settings.app_name, version=APP_VERSION, lifespan=lifespan)
+app.include_router(api_router)
+
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    """Tag every request; audit rows carry it via set_audit_context (Phase 2
+    adds the actor once auth exists)."""
+    request.state.request_id = uuid.uuid4().hex
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request.state.request_id
+    return response
 
 
 @app.get("/")
 async def root():
     return {
         "service": settings.app_name,
+        "version": APP_VERSION,
         "env": settings.app_env,
         "docs": "/docs",
         "health": "/health",
+        "config": "/api/v1/config",
     }
 
 

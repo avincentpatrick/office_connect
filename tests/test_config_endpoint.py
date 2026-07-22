@@ -1,0 +1,98 @@
+"""QA gate: /api/v1/config — shape, flag flips, and fail-safe OFF (Day-1 #9)."""
+
+import pytest
+import redis.asyncio as aioredis
+from sqlalchemy import text
+
+import office_connect.core.api.config as config_api
+from office_connect import APP_VERSION
+from office_connect.core.config import get_settings
+
+
+@pytest.fixture(autouse=True)
+async def _clear_config_cache():
+    """Config responses cache for 30s — isolate each test from the cache."""
+    r = aioredis.from_url(get_settings().redis_url, decode_responses=True)
+    await r.delete(config_api.CACHE_KEY)
+    yield
+    await r.delete(config_api.CACHE_KEY)
+    await r.aclose()
+
+
+async def _set_flag(owner_session, key: str, *, enabled: bool, is_active: bool = True):
+    await owner_session.execute(
+        text(
+            "UPDATE core_feature_flags SET enabled = :enabled, is_active = :active "
+            "WHERE key = :key"
+        ),
+        {"enabled": enabled, "active": is_active, "key": key},
+    )
+    await owner_session.commit()
+
+
+async def test_shape_and_defaults(client):
+    body = (await client.get("/api/v1/config")).json()
+    assert body["tenant"]["name"] == "Office-Connect"
+    assert body["tenant"]["timezone"] == "Asia/Manila"
+    assert body["version"] == APP_VERSION
+    assert set(body["features"]) == {
+        "module.reimbursement",
+        "module.css_is",
+        "module.dmwis",
+    }
+    assert all(v is False for v in body["features"].values())  # seeded OFF
+
+
+async def test_flag_flip_reflected(client, owner_session):
+    try:
+        await _set_flag(owner_session, "module.reimbursement", enabled=True)
+        body = (await client.get("/api/v1/config")).json()
+        assert body["features"]["module.reimbursement"] is True
+    finally:
+        await _set_flag(owner_session, "module.reimbursement", enabled=False)
+
+
+async def test_retired_flag_reports_off(client, owner_session):
+    """enabled=true but is_active=false → OFF (both must hold)."""
+    try:
+        await _set_flag(owner_session, "module.dmwis", enabled=True, is_active=False)
+        body = (await client.get("/api/v1/config")).json()
+        assert body["features"]["module.dmwis"] is False
+    finally:
+        await _set_flag(owner_session, "module.dmwis", enabled=False, is_active=True)
+
+
+async def test_soft_deleted_flag_disappears(client, owner_session):
+    """Soft-deleted rows are invisible to the endpoint (global filter)."""
+    try:
+        await owner_session.execute(
+            text(
+                "UPDATE core_feature_flags SET deleted_at = now() "
+                "WHERE key = 'module.css_is'"
+            )
+        )
+        await owner_session.commit()
+        body = (await client.get("/api/v1/config")).json()
+        assert "module.css_is" not in body["features"]
+    finally:
+        await owner_session.execute(
+            text(
+                "UPDATE core_feature_flags SET deleted_at = NULL "
+                "WHERE key = 'module.css_is'"
+            )
+        )
+        await owner_session.commit()
+
+
+async def test_db_failure_fail_safe_off(client, monkeypatch):
+    """Whole-DB failure → all flags OFF, neutral tenant, HTTP 200 — never 500."""
+
+    def _boom():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(config_api, "SessionLocal", _boom)
+    response = await client.get("/api/v1/config")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["features"] == {}
+    assert body["tenant"] == config_api._NEUTRAL_TENANT

@@ -17,7 +17,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY app ./app
+COPY pyproject.toml alembic.ini ./
+COPY alembic ./alembic
+COPY office_connect ./office_connect
 
 EXPOSE 8001
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
+# --proxy-headers: correct scheme/host behind a reverse proxy (Day-1 #10).
+CMD ["uvicorn", "office_connect.main:app", "--host", "0.0.0.0", "--port", "8001", "--proxy-headers", "--reload"]

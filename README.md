@@ -73,21 +73,27 @@ it if you do.
 ## Layout
 
 ```
-app/
-  main.py            FastAPI app + /health (checks Postgres & Redis)
-  core/
-    config.py        settings from .env (pydantic-settings)
-    db.py            async SQLAlchemy engine + session (pool 10/20)
+office_connect/
+  main.py            FastAPI app + /health + /api/v1 (config endpoint)
+  core/              platform spine — config, db (oc_app role), base
+                     (naming convention + audit/soft-delete mixins), time
+                     (UTC/Manila), audit (hash chain), soft_delete (global
+                     filter), models/ (core_* tables), api/
+  modules/           feature modules (reimbursement, ...) — import core only
+alembic/             single migration chain (0001 = core spine + roles/grants)
+tests/               Phase-0 QA gates (run: docker compose exec app pytest -q)
 docker-compose.yml   db (postgres:16) + redis + app
 Dockerfile           python:3.12 API image
-requirements.txt     core runtime deps
+pyproject.toml       import-linter contracts + pytest config
+requirements.txt     runtime + QA deps
 scripts/
   setup-windows.ps1  one-time elevated prerequisites installer
   smoke-test.ps1     build, start, and health-check the stack
 .env / .env.example  local config (real .env is git-ignored)
-references/          execution plan + companion specs (source of truth)
-docs/                our project documentation, plans, and notes
+references/          execution plan + companion specs (read-only source)
+docs/                standards + module docs (see docs/README.md)
 ```
 
-This is the Phase-0 skeleton: it proves the stack boots. Real modules
-(core auth/directory, CSS-IS migration, DMWIS, ...) build on top per the plan.
+Phase 0 Increment 1: the schema spine (audit chain, feature flags, soft
+deletes, activities registry) with its QA gates. Modules build on top per
+[`docs/modules/`](docs/modules/).

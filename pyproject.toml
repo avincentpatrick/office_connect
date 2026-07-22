@@ -1,0 +1,24 @@
+[tool.importlinter]
+root_package = "office_connect"
+
+# Architecture invariant (Day-1 #7): modules import core, never each other,
+# and core never imports modules. `lint-imports` is part of every QA gate.
+
+[[tool.importlinter.contracts]]
+name = "core never imports modules"
+type = "forbidden"
+source_modules = ["office_connect.core"]
+forbidden_modules = ["office_connect.modules"]
+
+[[tool.importlinter.contracts]]
+name = "modules are independent of each other"
+type = "independence"
+modules = [
+    "office_connect.modules.reimbursement",
+    # append each new module here when it lands
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"

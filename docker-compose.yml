@@ -2,6 +2,10 @@ name: office-connect
 
 # Local dev stack. Host-published ports are chosen to coexist with Laragon
 # dev_pims (MySQL 3306, php artisan serve 8000, Vite 5173, Redis 6379).
+#
+# DB roles: oc_dev = owner/migrations (Alembic); oc_app = runtime (no DELETE
+# anywhere, no UPDATE on append-only tables) — database-standards.md §8.
+# oc_app is created by migration 0001.
 
 services:
   db:
@@ -39,24 +43,34 @@ services:
         condition: service_healthy
     environment:
       APP_ENV: ${APP_ENV:-local}
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-oc_dev}:${POSTGRES_PASSWORD:-oc_dev_pw}@db:5432/${POSTGRES_DB:-office_connect}
+      # Runtime role (created by migration 0001) — least privilege.
+      DATABASE_URL: postgresql+asyncpg://oc_app:${OC_APP_PASSWORD:-oc_app_pw}@db:5432/${POSTGRES_DB:-office_connect}
+      # Owner role — Alembic + privileged test fixtures only.
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-oc_dev}:${POSTGRES_PASSWORD:-oc_dev_pw}@db:5432/${POSTGRES_DB:-office_connect}
+      OC_APP_PASSWORD: ${OC_APP_PASSWORD:-oc_app_pw}
       REDIS_URL: redis://redis:6379/0
+      BASE_URL: ${BASE_URL:-http://localhost:8001}
       SESSION_SECRET: ${SESSION_SECRET:-dev-only-change-me}
     ports:
       - "8001:8001"          # host 8001 -> avoids Laravel `php artisan serve` (8000)
     volumes:
-      - ./app:/app/app       # live reload of source during dev
+      - ./office_connect:/app/office_connect   # live reload during dev
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./pyproject.toml:/app/pyproject.toml
+      - ./tests:/app/tests
 
-  # Celery worker — enabled once background tasks (OCR, exports, backups) exist.
+  # Celery worker — enabled once background tasks (OCR, exports, backups) exist
+  # (Phase 0 Increment 2).
   # worker:
   #   build: .
   #   depends_on:
   #     redis:
   #       condition: service_healthy
   #   environment:
-  #     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-oc_dev}:${POSTGRES_PASSWORD:-oc_dev_pw}@db:5432/${POSTGRES_DB:-office_connect}
+  #     DATABASE_URL: postgresql+asyncpg://oc_app:${OC_APP_PASSWORD:-oc_app_pw}@db:5432/${POSTGRES_DB:-office_connect}
   #     REDIS_URL: redis://redis:6379/0
-  #   command: celery -A app.worker.celery_app worker --loglevel=info
+  #   command: celery -A office_connect.worker.celery_app worker --loglevel=info
 
 volumes:
   pgdata:
