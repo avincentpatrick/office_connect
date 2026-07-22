@@ -1,0 +1,14 @@
+# Office-Connect API — core runtime deps (aligned with the execution plan stack).
+# Pins are known-good as of setup; bump deliberately. React/Vite frontend is a
+# later phase and lives outside this file.
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
+redis==5.2.1
+celery==5.4.0
+pydantic-settings==2.7.1
+python-dotenv==1.0.1
+httpx==0.28.1

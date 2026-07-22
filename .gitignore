@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# Env / secrets
+.env
+.session_secret
+
+# Node / frontend (added later)
+node_modules/
+dist/
+
+# Local Docker data volume (if bind-mounted)
+pgdata/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/

@@ -1,0 +1,62 @@
+name: office-connect
+
+# Local dev stack. Host-published ports are chosen to coexist with Laragon
+# dev_pims (MySQL 3306, php artisan serve 8000, Vite 5173, Redis 6379).
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-oc_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-oc_dev_pw}
+      POSTGRES_DB: ${POSTGRES_DB:-office_connect}
+    ports:
+      - "5432:5432"          # 5432 is free on this machine (no other Postgres)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-oc_dev} -d ${POSTGRES_DB:-office_connect}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"          # host 6380 -> avoids Laragon's configured Redis (6379)
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-oc_dev}:${POSTGRES_PASSWORD:-oc_dev_pw}@db:5432/${POSTGRES_DB:-office_connect}
+      REDIS_URL: redis://redis:6379/0
+      SESSION_SECRET: ${SESSION_SECRET:-dev-only-change-me}
+    ports:
+      - "8001:8001"          # host 8001 -> avoids Laravel `php artisan serve` (8000)
+    volumes:
+      - ./app:/app/app       # live reload of source during dev
+
+  # Celery worker — enabled once background tasks (OCR, exports, backups) exist.
+  # worker:
+  #   build: .
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   environment:
+  #     DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-oc_dev}:${POSTGRES_PASSWORD:-oc_dev_pw}@db:5432/${POSTGRES_DB:-office_connect}
+  #     REDIS_URL: redis://redis:6379/0
+  #   command: celery -A app.worker.celery_app worker --loglevel=info
+
+volumes:
+  pgdata:
