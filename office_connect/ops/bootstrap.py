@@ -46,6 +46,7 @@ import office_connect.core.soft_delete  # noqa: F401
 from office_connect.core.config import Settings, get_settings
 from office_connect.core.models import Activity, FeatureFlag, TenantConfig
 from office_connect.core.notifications import send_test_email
+from office_connect.core.seeds import apply_all
 from office_connect.core.session import OCSession, set_audit_context
 from office_connect.core.time import utc_now
 
@@ -151,6 +152,16 @@ async def _load_fixtures(session: AsyncSession) -> dict[str, Any]:
     return {"activities_created": created, "activities_total": total}
 
 
+# ------------------------------------------------------------ load-reference
+async def _load_reference(
+    session: AsyncSession, app_env: str, only: set[str] | None
+) -> dict[str, Any]:
+    """Idempotent, environment-aware upsert of the reference datasets."""
+    results = await apply_all(session, app_env=app_env, only=only)
+    await session.commit()
+    return {"app_env": app_env, "datasets": results}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="office_connect.ops.bootstrap",
@@ -165,6 +176,13 @@ def main(argv: list[str] | None = None) -> int:
     admin.add_argument("--name", required=True)
     sub.add_parser(
         "load-fixtures", help="load synthetic dev fixtures (refused in production)"
+    )
+    ref = sub.add_parser(
+        "load-reference",
+        help="upsert reference data (idempotent, environment-aware; all envs)",
+    )
+    ref.add_argument(
+        "--dataset", action="append", help="limit to dataset name(s); repeatable"
     )
     mail = sub.add_parser(
         "send-test-email", help="send a test email via the selected driver"
@@ -190,6 +208,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         result = asyncio.run(_with_app_session(settings, _load_fixtures))
+    elif args.command == "load-reference":
+        only = set(args.dataset) if args.dataset else None
+        result = asyncio.run(
+            _with_app_session(
+                settings, lambda s: _load_reference(s, settings.app_env, only)
+            )
+        )
     else:  # send-test-email
         result = send_test_email(args.to, settings=settings)
 

@@ -58,6 +58,18 @@ services:
       # Storage driver (Increment 3): local content-addressed volume store.
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       STORAGE_DIR: /app/storage
+      # Attachments scan (Increment 4): empty CLAMAV_HOST -> NullScanner (dev
+      # fail-safe = clean; prod = error/deny). Set CLAMAV_HOST=clamav and run the
+      # `clamav` compose profile to scan for real.
+      ATTACHMENT_SCANNER: ${ATTACHMENT_SCANNER:-}
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      # The running app enqueues notification dispatch to the worker (after
+      # commit). CLI/tests keep the 'inline' default (no worker needed).
+      NOTIFICATIONS_DISPATCH: ${NOTIFICATIONS_DISPATCH:-celery}
+      # Observability (Increment 4): JSON logs + fail-safe optional error tracker.
+      LOG_JSON: ${LOG_JSON:-true}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     ports:
       - "8001:8001"          # host 8001 -> avoids Laravel `php artisan serve` (8000)
     volumes:
@@ -88,6 +100,11 @@ services:
       REDIS_URL: redis://redis:6379/0
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
       STORAGE_DIR: /app/storage
+      ATTACHMENT_SCANNER: ${ATTACHMENT_SCANNER:-}
+      CLAMAV_HOST: ${CLAMAV_HOST:-}
+      CLAMAV_PORT: ${CLAMAV_PORT:-3310}
+      LOG_JSON: ${LOG_JSON:-true}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     command: celery -A office_connect.worker.celery_app worker --loglevel=info --concurrency=2
     volumes:
       - ./office_connect:/app/office_connect
@@ -111,6 +128,76 @@ services:
       - ./office_connect:/app/office_connect
       - beatdata:/var/run/celery
 
+  # ClamAV daemon for the attachments scan pipeline (Increment 4). Opt-in via the
+  # `clamav` profile — the default stack + CI use the fail-closed NullScanner, so
+  # they skip ClamAV's ~1 GB signature DB + warm-up. Internal network only (no
+  # published port); prod publishes only 443. Enable with:
+  #   CLAMAV_HOST=clamav docker compose --profile clamav up -d
+  clamav:
+    image: clamav/clamav:1.4
+    profiles: ["clamav"]
+    restart: unless-stopped
+    mem_limit: 3g
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s      # first boot downloads/loads the signature DB
+    volumes:
+      - clamdb:/var/lib/clamav
+
+  # Self-hosted error tracker (GlitchTip, Sentry-SDK compatible) — opt-in via the
+  # `observability` profile; NOT in the default stack. Fail-safe: the app/worker
+  # only emit events when SENTRY_DSN is set (to a project DSN created in the
+  # GlitchTip UI). Full production hardening (managed PG/Redis, mail, retention,
+  # TLS) is a Stage-C/deploy task; this is the dev-wiring skeleton. Enable with:
+  #   docker compose --profile observability up -d
+  glitchtip-db:
+    image: postgres:16-alpine
+    profiles: ["observability"]
+    environment:
+      POSTGRES_DB: glitchtip
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:-glitchtip}
+    volumes:
+      - glitchtip_pg:/var/lib/postgresql/data
+
+  glitchtip:
+    image: glitchtip/glitchtip:v4.0
+    profiles: ["observability"]
+    depends_on:
+      glitchtip-db:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://glitchtip:${GLITCHTIP_DB_PASSWORD:-glitchtip}@glitchtip-db:5432/glitchtip
+      REDIS_URL: redis://redis:6379/3       # separate Redis DB from app/broker/results
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-dev-only-change-me-min-32-bytes-secret}
+      PORT: "8080"
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://localhost:8080}
+      EMAIL_URL: consolemail://
+      DEFAULT_FROM_EMAIL: glitchtip@localhost
+    ports:
+      - "8080:8080"          # dev only; prod fronts it behind the reverse proxy
+
+  glitchtip-worker:
+    image: glitchtip/glitchtip:v4.0
+    profiles: ["observability"]
+    command: ./bin/run-celery-with-beat.sh
+    depends_on:
+      glitchtip-db:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://glitchtip:${GLITCHTIP_DB_PASSWORD:-glitchtip}@glitchtip-db:5432/glitchtip
+      REDIS_URL: redis://redis:6379/3
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:-dev-only-change-me-min-32-bytes-secret}
+
 volumes:
   pgdata:
   beatdata:
+  clamdb:
+  glitchtip_pg:

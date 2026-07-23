@@ -11,7 +11,37 @@ makes the push-per-phase rule auditable.
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-07-23 — Phase 0 (Stage A) complete
+
 ### Added
+- **Phase 0 Increment 4 — spine amendments** (2026-07-23): the shared "day-1"
+  tables and services every later module builds on (Rule 10). **Activity
+  taxonomies** — configurable GAD/CCET/DRR/UHC tags as rows (`core_activity_tags`
+  + assignments), never boolean columns. **UACS/PREXC codes** — per-FY PAP tree
+  (`core_pap_codes`) + 10-digit object codes (`core_object_codes`, travel =
+  5-02-01-010-00), effective-dated with UACS never-reuse. **Holiday &
+  working-day engine** — `core_holidays` + `core/workdays.py`, the single
+  deadline-math engine (weekends + PH holidays/suspensions). **Statutory
+  compliance calendar** — the 22 §3.4 deadlines as effective-dated,
+  tenant-overridable data (`core_compliance_deadlines`). **Attachments service**
+  (`core_attachments`) — magic-byte allowlist → SHA-256 content-addressed store →
+  fail-closed malware scan (injectable; ClamAV opt-in via a compose profile) →
+  Pillow re-encode/EXIF-strip (HEIC→JPEG); auth-checked streaming downloads
+  (service method with an authorization hook; the HTTP router lands with auth in
+  Stage B); retention (`retention_class`/`legal_hold`, no auto-purge, disposal
+  report). **Notification outbox** — the Increment-3 stub becomes a durable
+  outbox + in-app notification-center schema (`core_notifications`) with Celery
+  retry + dead-letter (`core_notification_deliveries`); `send_notification`
+  signature unchanged. **Report lineage** (`core_report_lineages`) — provenance
+  of every generated output. **Seed framework** — idempotent, environment-aware
+  reference-data loader (`load-reference`) with named owners + cadences.
+  **Observability** — structured JSON logs with request IDs and a fail-safe
+  optional self-hosted error tracker (GlitchTip, compose profile); new
+  `docs/standards/api-standards.md`. `docs/compliance/` (PIA template, processing
+  register, breach runbook, retention schedule) + expanded `docs/operations/`
+  runbooks. Migrations `0003`–`0008`. Verified: **pytest 132/132, lint-imports
+  3/3**, full chain idempotent + reversible, attachment round-trip incl. EXIF
+  strip + fail-closed download, notification dispatch (inline + celery→worker).
 - **Phase 0 Increment 3 — integrations + bootstrap** (2026-07-23): the outward-
   facing seams the later modules consume. **Storage driver abstraction**
   (`core/storage/`): a content-addressed interface with a **local-volume driver**

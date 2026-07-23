@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     app_env: str = "local"
     app_port: int = 8001
 
+    # --- Observability (Increment 4) ---
+    # Structured JSON logs with request IDs (core/logging.py). Set LOG_JSON=false
+    # for human-readable dev logs. Self-hosted error tracker (GlitchTip) is
+    # fail-safe optional: no SENTRY_DSN = no tracking, never a startup failure.
+    log_level: str = "INFO"
+    log_json: bool = True
+    sentry_dsn: str | None = None
+
     # Public origin the app is served from (Day-1 #10 — uvicorn runs with
     # --proxy-headers so links/redirects are correct behind a reverse proxy).
     base_url: str = "http://localhost:8001"
@@ -72,6 +80,27 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_password: str | None = None
     smtp_from: str | None = None
+
+    # --- Notifications outbox (Increment 4) ---
+    # 'inline' = persist + dispatch synchronously in-process (CLI/tests/scripts,
+    # no worker needed — the default). 'celery' = the running app enqueues the
+    # dispatch to the worker after the outbox row commits.
+    notifications_dispatch: str = "inline"
+    notifications_max_attempts: int = 5
+    notifications_retry_base_seconds: int = 60
+    notifications_retry_max_seconds: int = 3600
+
+    # --- Attachments + malware scan (Increment 4) ---
+    # Upper bound on a single upload's byte size (default 20 MiB). The service
+    # rejects anything larger before it touches storage.
+    attachment_max_bytes: int = 20 * 1024 * 1024
+    # Scanner selection: None = auto ('clamav' when clamav_host is set, else
+    # 'null'). The NullScanner is fail-closed — it denies in production (no
+    # verdict = untrusted) and passes in dev/test so the pipeline round-trips
+    # without a 3 GB ClamAV daemon. ClamAV is opt-in via the compose profile.
+    attachment_scanner: str | None = None
+    clamav_host: str | None = None
+    clamav_port: int = 3310
 
 
 @lru_cache

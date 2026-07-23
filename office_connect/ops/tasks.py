@@ -26,3 +26,9 @@ def backup_database(self) -> dict:
     dump = create_backup(settings)
     pruned = prune_old_backups(settings.backup_retention, settings)
     return {"dump": str(dump), "pruned": [str(p) for p in pruned]}
+
+
+# Aggregate the other ops task modules here so the worker's autodiscover of
+# ``office_connect.ops.tasks`` registers every task (Increment 4).
+from office_connect.ops import attachments_tasks  # noqa: E402,F401
+from office_connect.ops import notification_tasks  # noqa: E402,F401

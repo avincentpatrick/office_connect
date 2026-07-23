@@ -33,6 +33,10 @@ the same session** (session-end checklist step 3).
 | google-api-python-client | 2.156.0 | Google Drive storage driver + Gmail email driver (Increment 3); pure-Python |
 | google-auth | 2.37.0 | Service-account credentials for the Google drivers |
 | google-auth-httplib2 | 0.2.0 | httplib2 transport the Google API client uses |
+| Pillow | 11.1.0 | Attachments (Increment 4): image re-encode + EXIF/XMP strip; self-contained wheels (no apt) |
+| pillow-heif | 0.21.0 | Attachments: HEIC/HEIF decode → JPEG normalization; bundles libheif |
+| clamd | 1.0.2 | Attachments: pure-Python ClamAV TCP client (lazy-imported; scanner is injectable + fail-closed) |
+| sentry-sdk | 2.20.0 | Observability (Increment 4): error tracking (GlitchTip-compatible); lazy-imported, active only with `SENTRY_DSN` |
 | pytest | 8.3.4 | Test runner (QA gates) |
 | pytest-asyncio | 0.24.0 | Async test support |
 | asgi-lifespan | 2.1.0 | Runs FastAPI lifespan under httpx `ASGITransport` in tests |
@@ -47,7 +51,14 @@ the same session** (session-end checklist step 3).
 | `redis` | redis:7-alpine | **6380** → 6379 | 6380 avoids Laragon's 6379 |
 | `app` | built from `Dockerfile` | 8001 | uvicorn `office_connect.main:app`; 8000 is Laragon's; entrypoint runs the dev-only env-gated boot migration |
 | `worker` | same image | — | Celery worker (`office_connect.worker.celery_app`); runs the nightly `pg_dump` backup task; carries the owner DSN; `restart: unless-stopped` |
-| `beat` | same image | — | Celery beat scheduler — **single instance only** (never scale; duplicate schedulers = duplicate backups); schedule state on volume `beatdata` |
+| `beat` | same image | — | Celery beat scheduler — **single instance only** (never scale; duplicate schedulers = duplicate backups); schedule state on volume `beatdata`. Inc-4 adds the `scan-pending-attachments` beat task |
+| `clamav` | clamav/clamav:1.4 | — (internal) | **Profile `clamav`** (not in default `up`/CI). Attachments malware scan; `mem_limit ~3g`; signature DB on volume `clamdb`; no host port (prod publishes only 443). Enable: `CLAMAV_HOST=clamav docker compose --profile clamav up -d` |
+| `glitchtip` (+ `glitchtip-db`, `glitchtip-worker`) | glitchtip/glitchtip:v4.0, postgres:16-alpine | 8080 (dev only) | **Profile `observability`** (not in default stack). Self-hosted error tracker (Sentry-SDK compatible); own PG volume `glitchtip_pg`, Redis db 3. App/worker emit only when `SENTRY_DSN` is set. Full hardening = Stage C |
+
+Increment-4 env (app + worker): `ATTACHMENT_SCANNER`/`CLAMAV_HOST`/`CLAMAV_PORT`
+(empty host → fail-closed `NullScanner`), `NOTIFICATIONS_DISPATCH` (`inline`|
+`celery`; app defaults `celery`, CLI/tests `inline`), `LOG_JSON`, `SENTRY_DSN`,
+`ATTACHMENT_MAX_BYTES`.
 
 Celery uses the **Redis transport** (already-pinned `redis` package — no
 `celery[redis]` extra needed): broker on Redis logical **db 1**, results on
@@ -80,7 +91,7 @@ exact versions and libraries **the session the frontend scaffold lands**.
 | `scripts/smoke-test.ps1` | Build + health-check the stack |
 | `scripts/deploy.ps1` | Dev deploy wrapper (backup → guard → migrate → up); mirrors `docs/operations/deploy.md` (authoritative POSIX-sh prod runbook) |
 | `scripts/entrypoint.sh` | Container entrypoint; dev-only env-gated advisory-locked boot migration then execs the service command |
-| `office_connect.ops` CLI | `python -m office_connect.ops {backup,restore-drill,backup-and-drill}` + `office_connect.ops.deploy_guard` + `office_connect.ops.bootstrap {init,create-admin,load-fixtures,send-test-email}` (Increment 3) |
+| `office_connect.ops` CLI | `python -m office_connect.ops {backup,restore-drill,backup-and-drill,scan-pending}` + `office_connect.ops.deploy_guard` + `office_connect.ops.bootstrap {init,create-admin,load-fixtures,load-reference,send-test-email}` (Inc 4 adds `scan-pending` + `load-reference`) |
 | Git | Local commits per session; push + tag per phase (see `development-workflow.md` §4) |
 | Claude Code (AI assistant) | Pair-builds the project; session contract in `CLAUDE.md` |
 
@@ -91,6 +102,8 @@ exact versions and libraries **the session the frontend scaffold lands**.
 | Google Drive API | Storage driver (Shared-Drive target; local volume is the prod default) | **Built** Increment 3 (`core/storage/gdrive.py`) |
 | SMTP | Email driver — the on-prem default transport (stdlib `smtplib`) | **Built** Increment 3 (`core/email/smtp.py`) |
 | Gmail API | Alternate email driver (Workspace domain-wide delegation) | **Built** Increment 3 (`core/email/gmail.py`) |
+| ClamAV | Attachments malware scan (fail-closed) | **Built** Increment 4 (`core/attachments/scanner.py`); opt-in compose profile `clamav`; offline signature mirror (`cvdupdate`) deferred to Stage C |
+| GlitchTip | Self-hosted error tracker (Sentry-SDK compatible) | **Wired** Increment 4 (compose profile `observability`, fail-safe optional `SENTRY_DSN`); full hardening Stage C |
 | Google Docs API | Template assembly (plan S-5) | Deferred to the template→PDF service |
 | Hugging Face Space | Legacy CSS-IS host until its migration (Phases 1/8) | External, unchanged |
 

@@ -164,6 +164,15 @@ override, every config or flag change, every soft delete. The app DB role has
   `UNIQUE (...) WHERE deleted_at IS NULL` — so a soft-deleted row never
   blocks reuse of a name/key, **except** reference numbers (§12), which are
   never reused even after soft delete.
+  - **Effective-dated reference data** (Increment 4 — PAP/object codes,
+    holidays, compliance deadlines) keys uniqueness on the natural key **plus**
+    `effective_from` (a revision is a new row, never an in-place edit) and
+    deactivates via `is_active`, never reuses a code (UACS semantics).
+  - **Tenant-overridable rows** (`core_compliance_deadlines`) use **two** partial
+    indexes because SQL NULLs are distinct: one enforces a single **platform
+    default** per `(code, effective_from) WHERE tenant_id IS NULL`, the other a
+    single override per `(code, tenant_id, effective_from) WHERE tenant_id IS NOT
+    NULL`.
 - **DB enforcement:** the app role (`oc_app`) has `SELECT/INSERT/UPDATE` on
   mutable tables, `SELECT/INSERT` only on append-only tables, and
   **no `DELETE`, no `TRUNCATE`, anywhere**. Migrations run as the privileged

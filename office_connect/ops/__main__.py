@@ -26,6 +26,10 @@ def main(argv: list[str] | None = None) -> int:
     drill = sub.add_parser("restore-drill", help="restore a dump into a scratch DB + verify")
     drill.add_argument("--file", default="latest", help="'latest' or a dump path")
     sub.add_parser("backup-and-drill", help="backup then restore-drill (the proof)")
+    scan = sub.add_parser(
+        "scan-pending", help="scan any pending/error attachments (Increment 4)"
+    )
+    scan.add_argument("--limit", type=int, default=100)
     args = parser.parse_args(argv)
 
     settings = get_settings()
@@ -46,6 +50,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"dump not found: {dump}", file=sys.stderr)
                 return 1
         result = run_restore_drill(dump, settings)
+    elif args.command == "scan-pending":
+        from office_connect.ops.attachments_tasks import scan_pending_attachments
+
+        result = scan_pending_attachments.run(limit=args.limit)
     else:  # backup-and-drill
         result = run_backup_and_drill(settings)
 

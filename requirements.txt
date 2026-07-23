@@ -23,6 +23,22 @@ google-api-python-client==2.156.0
 google-auth==2.37.0
 google-auth-httplib2==0.2.0
 
+# --- Attachments service (Increment 4) ---
+# Pillow re-encodes uploaded images and strips EXIF/XMP; pillow-heif decodes
+# HEIC/HEIF (iPhone photos) so they can be normalized to JPEG. Both ship
+# self-contained manylinux wheels (libjpeg/zlib/libheif bundled) — no apt libs.
+# clamd is a pure-Python TCP client for a ClamAV daemon (lazy-imported; the
+# scanner is injectable and fail-closed, so ClamAV is opt-in via a compose profile).
+Pillow==11.1.0
+pillow-heif==0.21.0
+clamd==1.0.2
+
+# --- Observability (Increment 4) ---
+# Self-hosted error tracking (GlitchTip is Sentry-SDK compatible). Lazy-imported
+# and only active when SENTRY_DSN is set — no DSN = fully no-op. Structured JSON
+# logging uses the stdlib only (core/logging.py), no extra dependency.
+sentry-sdk==2.20.0
+
 # --- QA gates (pytest + architecture contracts) ---
 pytest==8.3.4
 pytest-asyncio==0.24.0

@@ -11,7 +11,7 @@ Nothing user-facing precedes it (`references/Phased_Rollout_Assessment.md` §3).
 | Increment 1 — schema spine + conventions + tests | 0 | ✅ done (session 2) — 31 QA-gate tests green, adversarially reviewed |
 | Increment 2 — ops: deploy, backup/restore, Celery, explicit-step migrations, git remote | 0 / Stage A | ✅ done (session 4) — proven-restore drill green, worker/beat up, pytest 31/31 |
 | Increment 3 — integrations: storage/email drivers, bootstrap CLI, token contract | 0 / Stage A | ✅ done (session 5) — pytest 68/68; local storage round-trip, email drivers + outbox stub, bootstrap CLI (prod-refusing), `/api/v1/config` tokens |
-| Increment 4 — spine amendments (master plan §2 Stage A) | 0 / Stage A | not started |
+| Increment 4 — spine amendments (master plan §2 Stage A) | 0 / Stage A | ✅ done (session 6) — pytest 132; taxonomy/UACS/holiday+WD engine/compliance calendar/attachments (ClamAV-opt-in)/notification outbox/report lineage/seed framework/observability; **Phase 0 QA gate → tag `phase-0-complete`, first push** |
 | Auth / RBAC / staff directory ("one login") | 2 / Stage B | not started |
 
 > **2026-07-23:** sequencing and scope now governed by [`docs/master-plan.md`](../master-plan.md)
@@ -109,6 +109,26 @@ fixtures; design-token contract served via `/api/v1/config` (UI standards §2).
 | `core_audit_logs` | append-only | hash chain (`prev_hash`/`row_hash`), actor, request, old/new JSONB; PK `GENERATED ALWAYS` |
 | `core_query_logs` | append-only | privacy-preserving (ids/params only); populated from Phase 2 middleware |
 | `core_activities` | business | join-key registry (Blueprint §2.2): title, ppa_code, division/section (BIGINT, FKs in Phase 2), dates, venue, status enum, `custom` JSONB |
+| `core_activity_tags` | lookup | configurable GAD/CCET/DRR/UHC taxonomy vocabulary (never boolean cols) — Inc 4 |
+| `core_activity_tag_assignments` | business | activity ↔ tag link (multi-tag), FK to activities+tags — Inc 4 |
+| `core_pap_codes` | lookup | per-FY PREXC tree (self-ref parent), effective-dated, UACS never-reuse — Inc 4 |
+| `core_object_codes` | lookup | 10-digit UACS object codes (travel = 5-02-01-010-00), effective-dated — Inc 4 |
+| `core_holidays` | lookup | PH holidays + work suspensions; feeds the working-day engine (`core/workdays.py`) — Inc 4 |
+| `core_compliance_deadlines` | lookup | statutory calendar (master-plan §3.4) as effective-dated, tenant-overridable data — Inc 4 |
+| `core_attachments` | business | content-addressed files: polymorphic holder, dual SHA (original+sanitized), scan status, retention — Inc 4 |
+| `core_notifications` | business | notification outbox + in-app center (channel discriminator); status queued→sent/dead — Inc 4 |
+| `core_notification_deliveries` | append-only | per-attempt delivery log (dead-letter substrate); REVOKE UPDATE — Inc 4 |
+| `core_report_lineages` | append-only | provenance of every generated output (Blueprint #17); REVOKE UPDATE — Inc 4 |
+
+*Increment-4 core services (built on the tables above):* the working-day engine
+(`core/workdays.py`), the attachments service (`core/attachments/` — pipeline +
+injectable ClamAV scanner + retention), the notification outbox/dispatch
+(`core/notifications/` — replaces the Inc-3 stub, signature-stable), the report-
+lineage helper (`core/report_lineage.py`), the seed framework (`core/seeds/`),
+and observability (`core/logging.py` JSON logs + request IDs, `core/observability.py`
+fail-safe error tracker). `core_attachments.(holder_kind, holder_id)` is a
+**sanctioned polymorphic reference** (no FK — database-standards §3); modules
+resolve authorization through the entity named by `holder_kind`.
 
 ## 5. Phase 2 plan (outline — detailed at its build sessions)
 
@@ -162,11 +182,85 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
   contract (neutral defaults + branding merge, present even under the DB
   fail-safe); WCAG-AA contrast on the default palette; migration 0002 idempotent
   + reversible.)*
-- *(Increment 4 adds: holiday-calendar working-day math; compliance-deadline
-  seed loads; attachment pipeline round-trip incl. fail-closed download)*
+- *(Increment 4 adds — all verified session 6, **pytest 132/132, lint-imports
+  3/3**:* full chain `0001→0008` idempotent (×2) + clean downgrade-to-base →
+  re-upgrade; every new table carries its mandatory column set; the two new
+  append-only tables (`core_notification_deliveries`, `core_report_lineages`)
+  carry no `updated_*`/`deleted_*` and `oc_app` is denied UPDATE/DELETE on them;
+  holiday-calendar working-day math correct across weekend/holiday/suspension/
+  special-working; compliance-deadline seed (22 rows) + all reference datasets
+  load idempotently (re-run = 0 changes) and load under `APP_ENV=production`;
+  attachment pipeline round-trip incl. **EXIF strip + HEIC→JPEG** and fail-closed
+  download (infected/oversized/bad-type/SVG rejected; pending denies); ClamAV is
+  opt-in via a compose profile, the gate proven with an injected scanner;
+  notification outbox persists + dispatches with retry + dead-letter (inline
+  **and** celery→worker verified end-to-end); report lineage is unaudited +
+  immutable; JSON logs carry the request id.)*
 
 ## 7. Decisions log
 
+- **2026-07-23 (Increment 4 spine amendments — session 6)** — the last Phase-0
+  increment; closed at the Phase 0 QA gate (tag `phase-0-complete`, first push).
+  Built in independently-committable groups; pytest 132/132, lint 3/3. Key
+  decisions (user-confirmed at session start):
+  - **Attachments = full pipeline now, ClamAV opt-in.** The whole pipeline
+    (magic-byte allowlist JPEG/PNG/WebP/PDF, size cap, SHA-256 content-address,
+    Pillow re-encode + EXIF/XMP strip, HEIC→JPEG, decompression-bomb guard) +
+    `core_attachments` land now on the Inc-3 `StorageDriver`. Scanning is an
+    **injectable `Scanner`** with a fail-closed `NullScanner` (deny-in-prod,
+    clean-in-dev) + a real `ClamAVScanner`; ClamAV joins compose behind a
+    `profiles: [clamav]` profile, so default `up`/CI skip its ~1 GB DB and the
+    gate proves "infected rejected" via an injected scanner. **Dual SHA**:
+    `sha256` = the original received bytes (audited evidence, dedup key, scanned);
+    `sanitized_sha256` = the re-encoded derivative served for images (EXIF never
+    leaves via the app). The **authenticated HTTP download router defers to
+    Stage B** (no auth yet) — the download is a service method taking an
+    `authorize` hook; scan+re-encode run deferred in a Celery task (`ops/`), core
+    stays pure.
+  - **Retention ≠ soft delete; no auto-purge ever.** `retention_class` /
+    `retention_starts_at` / `legal_hold`; `retain_until` is derived; a
+    disposal-eligibility **report** (never a purge) lists eligible records for a
+    human NAP process (database-standards §8; `docs/compliance/retention-schedule.md`).
+  - **Notifications = durable outbox, signature-stable.** `send_notification` /
+    `send_test_email` keep their Inc-3 signatures but now **persist a
+    `core_notifications` row and dispatch** (inline by default; the running app
+    enqueues to the worker in `celery` mode after commit, via an injected
+    enqueuer — `ops`→`core`, keeping `core` free of Celery). One table serves the
+    outbox **and** the in-app center via a `channel` discriminator; the
+    append-only `core_notification_deliveries` is the dead-letter/failed-jobs
+    substrate; dedup via `meta['dedup_key']` (app check + partial-unique backstop).
+    `send_test_email` forces inline (a diagnostic must send now, not "queued").
+    Per-user prefs + the WebSocket bell defer to Stage B/D (schema already carries
+    `recipient_user_id`/`read_at`).
+  - **UACS/PREXC + taxonomies as data, effective-dated, never boolean.** Tags
+    (GAD/CCET/DRR/UHC), PAP codes (per-FY tree), and object codes are configurable
+    rows; codes are deactivated, never reused; deadlines carry two partial-unique
+    indexes (one platform default per `(code, effective_from)` where `tenant_id
+    IS NULL`, one override per tenant).
+  - **Working-day engine is pure + DB-backed.** `core/workdays.py` math takes a
+    non-working `set[date]` (unit-testable, no DB); `load_nonworking_dates` reads
+    `core_holidays`. Weekends always non-working; `special_working` days are not
+    (documented Phase-0 simplification: a special-working day on a weekend is not
+    promoted).
+  - **Report lineage folded into core, append-only + unaudited** (master-plan §4
+    #7 — no `rpt_` tables). It is itself an immutable log (REVOKE UPDATE), so it
+    is in `_UNAUDITED` like the query log.
+  - **Seed framework = idempotent + environment-aware + named owner/cadence.**
+    `core/seeds/` datasets (pure) + an `ops` runner (`load-reference`) upsert by
+    natural key (insert/update-changed/skip-unchanged). Reference data (public
+    law/config) loads in every env; synthetic fixtures stay non-prod
+    (`load-fixtures`). Named cadences: PSGC quarterly, holiday proclamations
+    annually, GRDS/threshold revisions on-revision.
+  - **Observability = JSON logs now, tracker as a profile.** Stdlib JSON logging
+    + request-id contextvar (no new dep); uvicorn loggers routed through it so
+    every line is JSON. Error tracking (`sentry-sdk`, GlitchTip-compatible) is
+    **fail-safe optional** (active only with `SENTRY_DSN`); GlitchTip runs behind
+    a compose `observability` profile, full wiring deferred to Stage C. New
+    `docs/standards/api-standards.md` documents the `/api/v1/` versioning +
+    error-envelope + observability contract.
+  - **Compose services added behind profiles** (never in default `up`/CI):
+    `clamav` (attachments scan), `glitchtip`/`glitchtip-db`/`glitchtip-worker`
+    (error tracker) — internal-network posture, matching production.
 - **2026-07-23 (Increment 3 integrations + bootstrap — session 5)** — storage/
   email drivers, notification outbox stub, bootstrap CLI, and the design-token
   contract built and verified (pytest 68/68, lint-imports 3/3). Key decisions
@@ -263,3 +357,42 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
   transactions short), `session.get()` identity-map hits can return
   soft-deleted objects, changing `OC_APP_PASSWORD` post-migration needs a
   manual `ALTER ROLE`.
+
+## 8. Manual test guide (Phase 0)
+
+Plain-language walkthrough proving the foundation floor end-to-end. Run from the
+repo root with the stack up (`docker compose up -d`; ports 8001/5432/6380).
+
+1. **Stack is healthy.** Open <http://localhost:8001/health> → `{"status":
+   "healthy", ...}`. Open <http://localhost:8001/api/v1/config> → all module
+   flags `false` (fail-safe OFF); no `bootstrap_admin`/admin email present.
+2. **Migrations are clean.** `docker compose exec app alembic upgrade head`
+   twice → the second run does nothing (idempotent). Head is `0008`.
+3. **Automated gates.** `docker compose exec app pytest -q` → all green;
+   `docker compose exec app lint-imports` → 3 contracts kept.
+4. **Seed the reference data.** `docker compose exec app python -m
+   office_connect.ops.bootstrap load-reference` → activity taxonomies, object
+   codes, PAP skeleton, PH 2026 holidays, and the 22 statutory deadlines load.
+   Re-run → every dataset shows `+0 ~0` (idempotent).
+5. **Working-day math.** (Covered by `tests/test_calendar_workdays.py`.) A
+   deadline landing on a weekend rolls to Monday; crossing a regular holiday adds
+   a day; a work-suspension mid-window is skipped; a special-working day counts.
+6. **Attachment round-trip.** Upload a JPEG-with-EXIF through the service, scan
+   it (dev NullScanner → clean), download it → the served bytes have **no EXIF**
+   (verified end-to-end; see `tests/test_attachments_service.py`). An infected/
+   oversized/SVG/unknown file is rejected; a `pending` file cannot be downloaded.
+   To scan with real ClamAV: `CLAMAV_HOST=clamav docker compose --profile clamav
+   up -d` then `docker compose exec worker python -m office_connect.ops
+   scan-pending`.
+7. **Notifications.** `docker compose exec app python -m
+   office_connect.ops.bootstrap send-test-email --to you@example.com` → prints
+   `"driver": "log"` (dev) and persists a `core_notifications` row that dispatches
+   to `sent` with a `core_notification_deliveries` row. In the running app
+   (celery mode) the worker processes the dispatch task.
+8. **Audit integrity.** The restore drill re-runs `verify_chain()` over a
+   restored dump: `docker compose exec worker python -m office_connect.ops
+   backup-and-drill` → `verify: ok`.
+9. **Structured logs.** `docker compose logs --tail=20 app` → JSON lines; a
+   request made with `-H "X-Request-ID: probe"` shows `"request_id": "probe"` on
+   its access-log line.
+10. **Coexistence.** Laragon `dev_pims` (80/3306/8000) is untouched.

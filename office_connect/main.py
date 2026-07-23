@@ -17,13 +17,22 @@ from office_connect import APP_VERSION
 from office_connect.core.api.router import api_router
 from office_connect.core.config import get_settings
 from office_connect.core.db import engine
+from office_connect.core.logging import configure_logging, request_id_ctx
+from office_connect.core.observability import init_error_tracking
 
 settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Observability (Increment 4): structured JSON logs + optional error tracker.
+    configure_logging(level=settings.log_level, json_logs=settings.log_json)
+    init_error_tracking(settings)
     app.state.redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+    # Register the notification enqueuer (ops → core injection) so celery-mode
+    # dispatch works: send_notification enqueues to the worker after commit.
+    # app → ops import is import-linter-legal (only `core` may not import ops).
+    import office_connect.ops.tasks  # noqa: F401
     yield
     await app.state.redis.aclose()
     await engine.dispose()
@@ -40,6 +49,7 @@ async def request_id_middleware(request: Request, call_next):
     from a reverse proxy) is honored; unhandled-500 responses lose the header —
     known BaseHTTPMiddleware limit, revisit with auth middleware in Phase 2."""
     request.state.request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex
+    request_id_ctx.set(request.state.request_id)  # so JSON logs carry it
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
     return response

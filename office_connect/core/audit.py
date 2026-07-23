@@ -28,14 +28,16 @@ from sqlalchemy import inspect as sa_inspect
 
 from office_connect.core.base import Base, SoftDeleteMixin
 from office_connect.core.models.audit_log import AuditLog
+from office_connect.core.models.notification import NotificationDelivery
 from office_connect.core.models.query_log import QueryLog
+from office_connect.core.models.report_lineage import ReportLineage
 from office_connect.core.session import OCSession
 from office_connect.core.time import UTC, utc_now
 
 GENESIS_HASH = "0" * 64
 _PENDING_KEY = "pending_audit"
-# The logs themselves are never audited (the audit table IS the mechanism).
-_UNAUDITED = (AuditLog, QueryLog)
+# The append-only logs are never themselves audited (they ARE log mechanisms).
+_UNAUDITED = (AuditLog, QueryLog, NotificationDelivery, ReportLineage)
 
 
 # --- pure hash core -------------------------------------------------------

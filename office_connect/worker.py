@@ -37,6 +37,13 @@ celery_app.conf.update(
             "schedule": crontab(minute=0, hour=2),  # 02:00 Asia/Manila
             "options": {"expires": 3600},  # a missed slot does not pile up
         },
+        # Drain any attachments still 'pending'/'error' (until the Stage-B upload
+        # router enqueues per-upload). Cheap no-op when there are none.
+        "scan-pending-attachments": {
+            "task": "ops.scan_pending_attachments",
+            "schedule": crontab(minute="*/5"),
+            "options": {"expires": 240},
+        },
     },
 )
 

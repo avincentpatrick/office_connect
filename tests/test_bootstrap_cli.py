@@ -68,7 +68,10 @@ async def test_load_fixtures_refused_in_production(monkeypatch, capsys):
     assert "production" in capsys.readouterr().err
 
 
-async def test_send_test_email_via_cli(capsys):
+def test_send_test_email_via_cli(capsys):
+    # Sync test: send-test-email now flows through the outbox (send_notification
+    # runs asyncio.run internally), so it must be called from a sync context —
+    # exactly as the real CLI invokes it. No running event loop here.
     rc = bootstrap.main(["send-test-email", "--to", "test@example.com"])
     assert rc == 0
     assert '"driver": "log"' in capsys.readouterr().out  # dev auto-selects log

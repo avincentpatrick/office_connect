@@ -9,9 +9,27 @@ import sqlalchemy as sa
 
 from tests.conftest import REPO_ROOT
 
-BUSINESS_TABLES = {"core_tenant_configs", "core_activities"}
-LOOKUP_TABLES = {"core_feature_flags"}
-APPEND_ONLY_TABLES = {"core_audit_logs", "core_query_logs"}
+BUSINESS_TABLES = {
+    "core_tenant_configs",
+    "core_activities",
+    "core_activity_tag_assignments",
+    "core_attachments",
+    "core_notifications",
+}
+LOOKUP_TABLES = {
+    "core_feature_flags",
+    "core_activity_tags",
+    "core_pap_codes",
+    "core_object_codes",
+    "core_holidays",
+    "core_compliance_deadlines",
+}
+APPEND_ONLY_TABLES = {
+    "core_audit_logs",
+    "core_query_logs",
+    "core_notification_deliveries",
+    "core_report_lineages",
+}
 AUDIT_COLS = {"created_at", "created_by", "updated_at", "updated_by"}
 SOFT_DELETE_COLS = {"deleted_at", "deleted_by"}
 

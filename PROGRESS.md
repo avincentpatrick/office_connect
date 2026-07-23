@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage A / Phase 0 Increment 4 (spine amendments) — the Phase 0 QA gate.**
+> **Resume Office-Connect — Stage B (Phase 2): Identity & Access — auth, RBAC, staff directory, delegation.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,86 +10,80 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** Stage A (= Phase 0) — **Increments 1 ✅, 2 ✅, 3 ✅**; **Increment 4
-  is the last one — it closes Phase 0 (QA gate → first push + tag).** **Master
-  Plan v1 adopted** (`docs/master-plan.md`).
-- **Last session:** #5 — 2026-07-23 — Increment 3 (integrations + bootstrap):
-  storage driver abstraction (local-volume prod default + Shared-Drive-verified
-  Google Drive), email drivers (SMTP/Gmail/log) behind a notification outbox
-  stub + test-email path, bootstrap CLI (`init`/`create-admin`/`load-fixtures`/
-  `send-test-email`, prod-refusing; admin recorded to a non-public tenant
-  `settings` bag for Stage B), and the design-token contract served via
-  `/api/v1/config` (`tokens` = WCAG-AA neutral defaults + branding merge).
-  Migration 0002 (non-public `settings` JSONB). Verified end-to-end
-  (**pytest 68/68, lint-imports 3/3**; migration idempotent + reversible).
-- **Decisions this session:** storage default = **local content-addressed
-  volume** (master plan §4 #3 resolved); **Google Drive + Gmail fully built now**
-  (lazy imports; mocked in tests); **create-admin deferred to Stage B** (records
-  intent in non-public `settings`, no user table yet); **tokens = concrete
-  WCAG-AA neutral defaults + `branding.tokens` merge** (fills ui-standards §9
-  values early). See `docs/modules/foundation.md` §7.
-- **Blockers / waiting on user:** none. Private git remote **provisioned**
-  (`origin` → `github.com/avincentpatrick/office_connect`, `git ls-remote`
-  verified — **still no push**; first push fires when Increment 4 passes the
-  Phase 0 QA gate).
+- **Phase:** **Stage A (= Phase 0) COMPLETE** — Increments 1 ✅, 2 ✅, 3 ✅, 4 ✅;
+  Phase 0 QA gate passed, tagged **`phase-0-complete`**, **first push to
+  GitHub done**. **Next: Stage B (Phase 2) — Identity & Access.** Master Plan v1
+  in force (`docs/master-plan.md`).
+- **Last session:** #6 — 2026-07-23 — Increment 4 (spine amendments) + Phase 0
+  gate: the shared day-1 tables + services — activity taxonomies, UACS/PREXC
+  codes, holiday + working-day engine, statutory compliance calendar (22 rows),
+  content-addressed **attachments service** (magic-byte allowlist, EXIF strip,
+  HEIC→JPEG, fail-closed ClamAV-opt-in scan, retention), **notification outbox**
+  (durable + in-app center + Celery retry/dead-letter; stub replaced,
+  signature-stable), report lineage, an idempotent **seed framework**, and
+  **observability** (JSON logs + request IDs + fail-safe GlitchTip profile).
+  Migrations `0003`–`0008`. Verified end-to-end (**pytest 132/132, lint-imports
+  3/3**; full chain idempotent ×2 + downgrade-to-base→re-upgrade clean;
+  attachment round-trip incl. EXIF strip + fail-closed download; notification
+  dispatch inline **and** celery→worker; JSON logs carry the request id).
+- **Decisions this session:** attachments = **full pipeline now, ClamAV opt-in**
+  (injectable fail-closed scanner; compose profile); observability = **JSON logs
+  now, tracker as a profile** (fail-safe `SENTRY_DSN`); auth-checked attachment
+  download router + per-user notification prefs **defer to Stage B** (no auth
+  yet — built as service seams). See `docs/modules/foundation.md` §7.
+- **Blockers / waiting on user:** none. **Phase 0 pushed** — `origin`
+  (`github.com/avincentpatrick/office_connect`) now has `master` + the
+  `phase-0-complete` tag (first push).
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Office-Connect Master Plan v1 is adopted (docs/master-plan.md); Phase 0
-/ Stage A Increments 1 (schema spine), 2 (ops), and 3 (integrations + bootstrap)
-are complete — storage/email drivers, notification outbox stub, bootstrap CLI,
-and the /api/v1/config token contract all verified (pytest 68/68, lint-imports
-3/3; migration head at 0002). Read CLAUDE.md, then master-plan.md §2 Stage A
-(Increment 4) + §1.1 core-services registry, then docs/modules/foundation.md §3
-(Increment 4) + §4. Increment 4 is the LAST Phase-0 increment — it ends at the
-Phase 0 QA gate (development-workflow.md §6): promote CHANGELOG [Unreleased] to
-0.1.0, bump APP_VERSION, tag phase-0-complete, and do the FIRST push to the
-provisioned GitHub remote.
-Task: Build Stage A Increment 4 (spine amendments) — new Alembic migration(s) in
-the single chain, each table with its full mandatory column set (database-
-standards §6) and append-only tables REVOKE UPDATE from oc_app (§13):
-  (1) core_activities hardening + core_activity_tags (GAD/CCET/DRR/UHC taxonomies
-      as configurable rows, never boolean columns).
-  (2) core_pap_codes + core_object_codes skeletons (per-FY PREXC tree, effective-
-      dated, UACS never-reuse/deactivate semantics; travel object = 5-02-01-010-00).
-  (3) core_holidays — PH holidays + work-suspension calendar; the single working-
-      day math engine for every deadline (implement + unit-test the WD math).
-  (4) core_compliance_deadlines — the statutory calendar as effective-dated,
-      tenant-overridable data (seed from master-plan §3.4).
-  (5) core_attachments service — upload pipeline (stream cap, magic-byte allowlist
-      JPEG/PNG/WebP/PDF, SHA-256, ClamAV fail-closed, Pillow re-encode/EXIF-strip),
-      auth-checked streaming downloads only; built on the Increment-3 StorageDriver
-      (local-volume). Add ClamAV to the compose stack.
-  (6) Notification outbox TABLES + in-app notification-center schema — replace the
-      Increment-3 core/notifications stub's body with persist-to-outbox + after-
-      commit dispatch + Celery retry (caller-facing signature unchanged).
-  (7) Report-lineage table (core_report_lineages; Blueprint Day-1 #17).
-  (8) Seed framework: idempotent, environment-aware; named owner + cadence for
-      external datasets (PSGC quarterly, holiday proclamations annually, GRDS/
-      threshold revisions).
-  (9) docs/compliance/ (PIA template, processing register, breach runbook,
-      retention schedule) + expand docs/operations/ scaffolds.
-  (10) API-versioning + observability standards: structured JSON logs w/ request
-       IDs; self-hosted error tracker in compose.
-Files: alembic/versions/0003_*.py (+ more as needed), office_connect/core/
-(models/, attachments service, notifications outbox, holiday/deadline services,
-report lineage), docker-compose.yml (ClamAV), docs/modules/foundation.md,
-docs/standards/*, docs/compliance/ (new), docs/operations/.
-Acceptance: alembic upgrade head idempotent (x2) + clean downgrade; every table
-carries its mandatory column set (append-only carry none of updated_*/deleted_*
-and REVOKE UPDATE holds); holiday-calendar working-day math correct across a
-holiday/weekend/suspension; compliance-deadline seed loads; attachment pipeline
-round-trip incl. fail-closed download (infected/oversized/bad-type rejected);
-notification outbox persists + dispatches with retry; pytest green; lint-imports
-3/3. THEN the Phase 0 QA gate: manual test guide exists; CHANGELOG promoted to
-0.1.0 + APP_VERSION bumped; tag phase-0-complete; push branch + tags to origin;
-fill the phase-tracker Pushed cell.
-Open questions for the user: confirm the Phase-0 gate push is authorized once QA
-is green (first push to GitHub). Scope check: is the full attachments+ClamAV
-pipeline in Increment 4, or split (schema + service now, ClamAV hardening at the
-gate)? Confirm self-hosted error tracker choice (e.g. GlitchTip) before adding to
-compose.
+Context: Phase 0 / Stage A is COMPLETE and pushed (tag phase-0-complete). The
+foundation floor is in place: schema spine + hash-chained audit + soft delete;
+ops (backup/proven-restore, Celery worker/beat, explicit-step migrations);
+integrations (storage + email drivers, bootstrap CLI, /api/v1/config tokens);
+and the Increment-4 spine amendments — activity taxonomies, UACS/PREXC codes,
+holiday + working-day engine, compliance calendar, attachments service,
+notification outbox, report lineage, seed framework, observability (pytest
+132/132, lint-imports 3/3; migration head 0008). Read CLAUDE.md, then
+master-plan.md §2 Stage B + §1.1 (staff directory #14), then
+docs/modules/foundation.md §5 (Phase 2 plan) which already scopes this stage.
+Task: Build Stage B (Phase 2) — Identity & Access ("one login"). Per
+foundation.md §5 + docs/research/round1/auth-rbac-onprem.md:
+  (1) Resolve the OPEN DECISION first: core_users vs core_staff (one identity
+      table vs auth-users + staff-directory split) — this also settles the
+      irregular plural "staff". Confirm with the user at kickoff.
+  (2) core_users/core_roles/permissions + org units; the deferred-FK migration
+      that finally constrains every *_by / actor_id / division_id / section_id /
+      recipient_user_id / holder_id across the whole spine (Inc 1–4 left these
+      nullable BIGINT).
+  (3) Auth: Redis server-side sessions, Argon2id, NIST 800-63B-4 password policy
+      (len 12+ + blocklist; no composition rules / no forced rotation — record
+      the reference's "letter+number" as a deviation), throttle-not-lockout,
+      custom-header CSRF, break-glass local admin, TOTP MFA for approver/admin
+      (NPC 2023-06).
+  (4) RBAC: permission strings + role→permission tables + org-unit-scoped grants;
+      delegation/OIC (on-behalf-of); maker-checker DB checks; read-only auditor
+      role (COA Res. 2020-034) + printable chain-verification report.
+  (5) Wire the deferred surfaces Inc 4 built as seams: the authenticated
+      attachments upload/download router (inject the real RBAC authorize closure
+      through (holder_kind, holder_id)), and notification per-user prefs +
+      recipient_user_id resolution.
+  (6) Staff directory: greenfield core tables seeded via CSV import from a CSS-IS
+      export (recommended default — confirm at kickoff); query-log middleware;
+      audit-payload SPI policy decision (master plan §4 #4) executes here.
+Files: alembic/versions/0009_*.py (+ the deferred-FK migration),
+office_connect/core/ (auth, rbac, models/users+roles+orgunits, directory),
+office_connect/core/api/ (auth + attachments routers), docs/modules/foundation.md,
+docs/standards/*, docs/compliance/ (per-module PIA before real data).
+Acceptance: migration idempotent + reversible; login/logout/session lifecycle;
+RBAC denies/permits per permission + org scope; delegation works; maker-checker
+enforced; deferred FKs added cleanly; attachments router auth-checked end-to-end;
+pytest green; lint-imports green. Phase 2 has its own QA gate (tag phase-2-complete).
+Open questions for the user: (a) core_users vs core_staff identity model; (b)
+staff-directory seed = greenfield + CSV-from-CSS-IS (default) or another source;
+(c) confirm the audit-payload SPI policy (what personal values may enter the
+immutable hash-chained log) before any real data.
 ```
 
 ---
@@ -100,7 +94,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
-| A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments | in progress | 1–5 | pending (Inc 4) | — |
+| A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | not started | — | — | — |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
@@ -123,6 +117,70 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 6 — 2026-07-23 — Stage A Increment 4 (spine amendments) + Phase 0 gate ✅
+
+- **Phase(s):** 0 / Stage A (closes Phase 0) · **Commit:** `session(2026-07-23)` —
+  **pushed** (tag `phase-0-complete`, first push to origin)
+- **Done (migrations 0003–0008, built in independently-committable groups):**
+  - **Activity taxonomies** — `core_activity_tags` (configurable GAD/CCET/DRR/UHC
+    vocabulary, never boolean cols) + `core_activity_tag_assignments` (multi-tag
+    link).
+  - **UACS/PREXC** — `core_pap_codes` (per-FY tree, self-ref parent,
+    effective-dated) + `core_object_codes` (travel = 5-02-01-010-00); UACS
+    never-reuse (deactivate, effective-date a revision).
+  - **Holiday + working-day engine** — `core_holidays` + pure `core/workdays.py`
+    (weekend/holiday/suspension math, unit-tested) + DB loader.
+  - **Compliance calendar** — `core_compliance_deadlines`, the 22 §3.4 statutory
+    deadlines as effective-dated, tenant-overridable data (two partial-unique
+    indexes: platform default vs tenant override).
+  - **Attachments service** (`core_attachments` + `core/attachments/`) — magic-byte
+    allowlist (JPEG/PNG/WebP/PDF; SVG rejected) → SHA-256 content-address →
+    **injectable fail-closed scanner** (NullScanner deny-in-prod/clean-in-dev +
+    ClamAVScanner) → Pillow re-encode + EXIF/XMP strip + HEIC→JPEG; dual SHA
+    (original evidence + sanitized derivative served for images); retention
+    (`retention_class`/`legal_hold`, no auto-purge, disposal report); deferred
+    Celery scan task (`ops/`) + beat sweeper; **auth-checked download = a service
+    method with an `authorize` hook** (HTTP router defers to Stage B).
+  - **Notification outbox** — replaced the Inc-3 stub body: `core_notifications`
+    (outbox + in-app center via a channel discriminator) + append-only
+    `core_notification_deliveries` (dead-letter/failed-jobs); `send_notification`
+    persists + dispatches (inline default; app enqueues to the worker in celery
+    mode after commit, via an injected enqueuer — core stays Celery-free); dedup;
+    Celery retry/back-off → dead. Signatures unchanged.
+  - **Report lineage** — `core_report_lineages` (append-only, unaudited) +
+    `record_lineage` helper (Blueprint #17).
+  - **Seed framework** — `core/seeds/` datasets (owner + cadence) + `ops`
+    `load-reference`: idempotent, environment-aware upsert; loaded tags/codes/
+    holidays/deadlines (re-run = 0 changes; loads under production).
+  - **Observability** — stdlib JSON logs + request-id contextvar (uvicorn routed
+    through it) + fail-safe optional error tracker (`sentry-sdk`/GlitchTip);
+    `docs/standards/api-standards.md`; `docs/compliance/` (PIA, register, breach
+    runbook, retention) + expanded `docs/operations/` runbooks.
+  - Compose: `clamav` (profile `clamav`) + GlitchTip (profile `observability`) —
+    neither in default `up`/CI. Deps: Pillow, pillow-heif, clamd, sentry-sdk.
+- **Verified:** **pytest 132/132** (was 68; +64), **lint-imports 3/3**; full chain
+  `0001→0008` idempotent (×2) + downgrade-to-base → re-upgrade clean; attachment
+  upload→scan→download round-trip with EXIF stripped on the served copy, and
+  fail-closed rejects (infected/oversized/SVG/bad-magic/pending); notification
+  dispatch inline **and** celery→worker end-to-end (`ops.dispatch_notification`
+  registered, row → `sent`); `oc_app` denied UPDATE/DELETE on both new append-only
+  tables; `load-reference` idempotent + prod-safe; `/health` healthy;
+  `/api/v1/config` fail-safe OFF; JSON logs carry the request id; Laragon
+  untouched.
+- **Decisions:** see `docs/modules/foundation.md` §7 (attachments full-pipeline +
+  ClamAV-opt-in; retention ≠ soft delete; outbox signature-stable; effective-dated
+  never-boolean data; pure WD engine; report lineage append-only+unaudited;
+  seed-framework cadences; observability logs-now/tracker-profile).
+- **Phase 0 QA gate:** manual test guide added (foundation.md §8); CHANGELOG
+  promoted to **0.1.0**; `APP_VERSION` bumped `0.1.0.dev1 → 0.1.0`; tagged
+  **`phase-0-complete`**; **first push** of `master` + tags to `origin`.
+- **Docs updated:** foundation.md (§1/§4/§6/§7/§8), tech-stack.md (deps/services/
+  CLI/external), database-standards.md (§8 effective-dated + tenant-override),
+  api-standards.md (new), docs/compliance/ (new, 5 files), docs/operations/
+  (4 new runbooks), CHANGELOG.md, this file.
+- **Next Session Prompt (archived):** Stage B (Phase 2) — Identity & Access —
+  full text in the top block as of this session.
 
 ### Session 5 — 2026-07-23 — Stage A Increment 3 (integrations + bootstrap) ✅
 
