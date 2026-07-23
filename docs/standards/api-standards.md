@@ -24,8 +24,10 @@ de-facto convention since Increment 1 (`GET /api/v1/config`).
 
 - **`X-Request-ID`** — every request is tagged with a request id (honored from an
   inbound `X-Request-ID`, else generated). It is echoed on the response and flows
-  into structured logs and the audit context (`created_by`/actor arrives with
-  auth in Stage B).
+  into structured logs and the audit context. Since Stage B / Increment 2 the
+  authenticated **actor** also flows in: `AuthPrincipalMiddleware` resolves the
+  session cookie to `request.state.user`, and `get_session` injects `actor_id` so
+  audited writes attribute to the real user (`created_by`/`updated_by`/audit chain).
 - **JSON only** for request and response bodies (`application/json`); file
   downloads stream bytes with the correct `Content-Type` + `Content-Disposition`.
 - **Money is server-computed**; the API returns computed `numeric(12,2)` values
@@ -70,9 +72,45 @@ prose:
 
 ## §5. Deferred to later stages
 
-- **AuthN/AuthZ** (Stage B): bearer/session auth, RBAC, per-route permission
-  checks, and the real actor on `created_by`/audit. Until then, protected
-  surfaces (e.g. the attachments upload/download router) are built as service
-  methods with an injected authorization hook, not exposed HTTP routes.
+- **AuthN** landed Stage B / Increment 2 — see §6. **AuthZ** (RBAC per-route
+  permission checks with the Redis-cached, org-scoped resolver) lands Increment 3;
+  B2 ships only a minimal DB-backed `require_permission` for the admin session /
+  password-reset routes, behind the same dependency signature B3 will reuse.
+  Protected surfaces still without HTTP routes (e.g. the attachments
+  upload/download router) keep their injected authorization hook until B3/B4.
 - **Rate limiting, pagination envelope, WebSocket channels** (Stage D+) as the
   first real read/write endpoints land.
+
+## §6. Sessions, authentication & CSRF (Stage B / Increment 2)
+
+**Cookie-based server-side sessions — no bearer tokens.** Login verifies the
+Argon2id password (`core/security/password.py`, reused) and mints an opaque session
+id (`secrets.token_urlsafe`, 256-bit) stored server-side in Redis (db 4); the id
+rides an **HttpOnly, `SameSite=Lax`, `Secure` (off only for local http), `Path=/api`**
+cookie (`oc_session`). The raw id never appears in a response body — sessions are
+addressed by their `sha256` handle. The id is fresh at login (fixation defense) and
+**rotates** on privilege change (MFA completion, password change).
+
+- **Timeouts (server-enforced every request):** 12 h absolute; idle 30 min for
+  system_admin/approver/auditor, 60 min for staff; a used session slides its
+  `last_seen_at`. Logout **destroys the server-side record** (not just the cookie).
+- **Revocation:** a password change revokes all other sessions; deactivation +
+  admin reset revoke all. Concurrent sessions are capped (default 3, oldest evicted).
+- **Password policy (NIST 800-63B-4):** min 12, no composition, no rotation, a
+  bundled top-100k blocklist; the reference's "min 8 + letter+number" is a recorded
+  deviation.
+- **Throttle-not-lockout:** per-account + per-IP counters, exponential backoff after
+  5 failures (never a permanent lock), generic failure message (no user enumeration).
+- **TOTP MFA** (approver/admin) is a two-step challenge; break-glass local admin
+  bypasses the future LDAP backend but not password/MFA.
+- **CSRF:** `SameSite=Lax` is the floor; every non-safe method (POST/PUT/PATCH/
+  DELETE) must additionally carry the custom header `X-Requested-With` (the SPA
+  fetch wrapper sets it) or the request is rejected `403 csrf_failed` before any IO.
+- **Error slugs** (envelope §3): `invalid_credentials` (401, generic),
+  `too_many_attempts` (429 + `Retry-After`), `mfa_required` (200 body /
+  `mfa_failed` 401), `password_change_required` / `mfa_setup_required` (403 gates),
+  `password_policy` (422, `details` = failing rule codes), `csrf_failed` (403).
+- **Auditability:** login/throttle/MFA outcomes → `core_login_attempts`; password
+  and MFA-enable changes ride the hash chain via the `core_users` UPDATE (secret
+  redacted); logout / session-revoke → `append_auth_event` (a hash-chained
+  `core_audit_logs` row, no secret). Never a credential in any log.

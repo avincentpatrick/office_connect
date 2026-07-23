@@ -5,3 +5,7 @@
 
 # Entrypoint / ops scripts are shell too.
 scripts/entrypoint.sh text eol=lf
+
+# Vendored password blocklist — binary (gzip), excluded from language stats/diffs.
+*.gz binary
+office_connect/core/security/blocklists/*.gz linguist-vendored

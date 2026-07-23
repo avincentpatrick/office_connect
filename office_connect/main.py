@@ -14,7 +14,10 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from office_connect import APP_VERSION
+from office_connect.core.api.errors import register_error_handlers
 from office_connect.core.api.router import api_router
+from office_connect.core.auth.middleware import AuthPrincipalMiddleware, CSRFMiddleware
+from office_connect.core.auth.session_store import SessionStore
 from office_connect.core.config import get_settings
 from office_connect.core.db import engine
 from office_connect.core.logging import configure_logging, request_id_ctx
@@ -29,17 +32,34 @@ async def lifespan(app: FastAPI):
     configure_logging(level=settings.log_level, json_logs=settings.log_json)
     init_error_tracking(settings)
     app.state.redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+    # Auth sessions (Increment 2): a SEPARATE Redis client on db 4 (not the db-0
+    # config cache) + the server-side session store the auth middleware reads.
+    app.state.session_redis = aioredis.from_url(
+        settings.resolved_session_redis_url, decode_responses=True
+    )
+    app.state.session_store = SessionStore(app.state.session_redis, settings)
     # Register the notification enqueuer (ops → core injection) so celery-mode
     # dispatch works: send_notification enqueues to the worker after commit.
     # app → ops import is import-linter-legal (only `core` may not import ops).
     import office_connect.ops.tasks  # noqa: F401
     yield
+    await app.state.session_redis.aclose()
     await app.state.redis.aclose()
     await engine.dispose()
 
 
 app = FastAPI(title=settings.app_name, version=APP_VERSION, lifespan=lifespan)
 app.include_router(api_router)
+
+# Structured error envelope for every raised HTTPException/APIError/validation
+# error (api-standards §3) — the first exception handlers in the app.
+register_error_handlers(app)
+
+# Auth + CSRF middleware. Starlette runs middleware in REVERSE registration order,
+# so adding these two here (before request_id_middleware is defined below) yields
+# the nesting: request_id (outermost) → CSRF → auth-principal → route.
+app.add_middleware(AuthPrincipalMiddleware, cookie_name=settings.session_cookie_name)
+app.add_middleware(CSRFMiddleware, header_name=settings.csrf_header_name)
 
 
 @app.middleware("http")

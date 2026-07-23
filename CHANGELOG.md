@@ -12,6 +12,27 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage B (Phase 2) Increment 2 — authentication** (2026-07-23): the login
+  runtime on the B1 identity floor (**no migration**). **Cookie-based server-side
+  sessions** on Redis (logical db 4) — an opaque HttpOnly/`SameSite=Lax`/`Path=/api`
+  session id, fresh at login and rotated on privilege change; logout destroys the
+  server-side record; server-enforced timeouts (12 h absolute; 30 min idle for
+  privileged roles / 60 min staff); a concurrent-session cap (3, oldest evicted);
+  revoke-all on password change / deactivation; "active sessions" listing + remote
+  revoke. **Argon2id login** reusing the B1 hasher, with transparent re-hash on
+  cost upgrade. **NIST 800-63B-4 password policy** — min 12, no composition, no
+  rotation, and a vendored **top-100k blocklist** (no runtime cloud call).
+  **Throttle-not-lockout** — per-account + per-IP backoff after 5 failures with a
+  generic, non-enumerating failure. **TOTP MFA** (approver/admin; NPC 2023-06) —
+  two-step challenge with enrollment, replay-protected, force-enrollment for
+  privileged accounts. **Break-glass** local login (bypasses the future LDAP
+  backend). **Custom-header CSRF** on every non-GET. **Auth + CSRF middleware** put
+  the real principal on the request so audited writes carry the true `actor_id`;
+  logout/session-revoke ride the hash chain via a new `append_auth_event` (no
+  secret ever logged). Endpoints under `/api/v1/auth/*` (login, logout, me,
+  password change, MFA enroll/confirm/verify, own + admin session management,
+  admin password reset) plus the first structured **error envelope**. Adds `pyotp`.
+  Verified: **pytest 213 (+58), lint-imports 3/3**, no schema change.
 - **Stage B (Phase 2) Increment 1 — identity schema + deferred-FK closure**
   (2026-07-23): the identity floor for "one login". **Split identity model** —
   `core_staff` (plantilla person directory, a superset) + `core_users` (auth

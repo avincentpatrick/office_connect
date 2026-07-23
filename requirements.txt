@@ -45,6 +45,10 @@ sentry-sdk==2.20.0
 # recorded in docs/standards/tech-stack.md (standing rule 9); the stored PHC hash
 # self-describes its cost so raising it later re-hashes on next login.
 argon2-cffi==23.1.0
+# TOTP MFA (RFC 6238) for approver/admin roles (Increment 2; NPC Circular 2023-06).
+# Pure-Python (no OS libs); returns the otpauth:// provisioning URI so the client
+# renders the QR — no QR-image dependency needed server-side.
+pyotp==2.9.0
 
 # --- QA gates (pytest + architecture contracts) ---
 pytest==8.3.4

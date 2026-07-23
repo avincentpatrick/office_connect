@@ -38,11 +38,18 @@ the same session** (session-end checklist step 3).
 | clamd | 1.0.2 | Attachments: pure-Python ClamAV TCP client (lazy-imported; scanner is injectable + fail-closed) |
 | sentry-sdk | 2.20.0 | Observability (Increment 4): error tracking (GlitchTip-compatible); lazy-imported, active only with `SENTRY_DSN` |
 | argon2-cffi | 23.1.0 | Auth (Stage B): Argon2id password hashing (`core/security/password.py`). **Cost params: `time_cost=2`, `memory_cost=19 MiB (19456 KiB)`, `parallelism=1`** (OWASP / RFC 9106 option 2, on-prem-sized). Self-contained manylinux wheels (no apt). PHC hash self-describes cost → raise deliberately + re-hash on next login |
+| pyotp | 2.9.0 | Auth (Stage B / Inc 2): TOTP MFA (RFC 6238) for approver/admin roles (NPC Circular 2023-06). Pure-Python; returns the `otpauth://` provisioning URI so the client renders the QR — **no QR-image dependency** server-side. `valid_window=1` (±30 s skew); a used code is single-use within its step (Redis `SETNX`) |
 | pytest | 8.3.4 | Test runner (QA gates) |
 | pytest-asyncio | 0.24.0 | Async test support |
 | asgi-lifespan | 2.1.0 | Runs FastAPI lifespan under httpx `ASGITransport` in tests |
 | import-linter | 2.1 | Enforces "modules import core, never each other" (`pyproject.toml`) |
 | tzdata | 2024.2 | IANA zoneinfo data for slim images / Windows hosts |
+
+**Vendored package data (no runtime cloud call):** the NIST 800-63B-4 password
+blocklist — SecLists `Pwdb_top-100000.txt` (100k entries) — is committed **gzipped**
+at `office_connect/core/security/blocklists/top-100000.txt.gz` (~432 KB; provenance
++ SHA-256 in the sibling `README.md`, marked binary + `linguist-vendored` in
+`.gitattributes`). Loaded lazily into a normalized `frozenset` on first check.
 
 ## 3. Infrastructure images & services (`docker-compose.yml`)
 
@@ -64,6 +71,12 @@ Increment-4 env (app + worker): `ATTACHMENT_SCANNER`/`CLAMAV_HOST`/`CLAMAV_PORT`
 Celery uses the **Redis transport** (already-pinned `redis` package — no
 `celery[redis]` extra needed): broker on Redis logical **db 1**, results on
 **db 2**, so the app config cache (db 0) never collides.
+
+**Redis logical-DB map:** db 0 = app config cache · db 1 = Celery broker · db 2 =
+Celery results · db 3 = GlitchTip (observability profile) · **db 4 = auth sessions
++ throttle + pending-MFA** (Stage B / Inc 2, `SESSION_REDIS_DB`; a dedicated client
+on `app.state.session_redis`). db 4 was chosen over the brief's db 3 to avoid the
+GlitchTip keyspace when the observability profile runs — no `docker-compose` change.
 
 Port deconfliction with the coexisting Laragon `dev_pims` app: Laragon owns
 80/3306/8000/5173/6379; Office-Connect uses 8001/5432/6380 (+5174 for Vite later).

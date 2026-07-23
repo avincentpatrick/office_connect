@@ -12,7 +12,7 @@ Nothing user-facing precedes it (`references/Phased_Rollout_Assessment.md` §3).
 | Increment 2 — ops: deploy, backup/restore, Celery, explicit-step migrations, git remote | 0 / Stage A | ✅ done (session 4) — proven-restore drill green, worker/beat up, pytest 31/31 |
 | Increment 3 — integrations: storage/email drivers, bootstrap CLI, token contract | 0 / Stage A | ✅ done (session 5) — pytest 68/68; local storage round-trip, email drivers + outbox stub, bootstrap CLI (prod-refusing), `/api/v1/config` tokens |
 | Increment 4 — spine amendments (master plan §2 Stage A) | 0 / Stage A | ✅ done (session 6) — pytest 132; taxonomy/UACS/holiday+WD engine/compliance calendar/attachments (ClamAV-opt-in)/notification outbox/report lineage/seed framework/observability; **Phase 0 QA gate → tag `phase-0-complete`, first push** |
-| Auth / RBAC / staff directory ("one login") | 2 / Stage B | **in progress** — Increment B1 ✅ (identity schema + org units + roles/permissions + deferred-FK closure + RBAC seeds + break-glass promotion + credential redaction; pytest 155, lint 3/3, head `0010`). B2 (auth), B3 (RBAC enforcement), B4 (wiring + directory + PIA) next |
+| Auth / RBAC / staff directory ("one login") | 2 / Stage B | **in progress** — B1 ✅ (identity schema + RBAC seeds + break-glass + credential redaction, head `0010`) · B2 ✅ (auth: Redis sessions on db 4, Argon2id login, NIST password policy + top-100k blocklist, throttle, TOTP MFA, CSRF, actor injection, `auth.*` events; **pytest 213, lint 3/3, no migration**). B3 (RBAC enforcement), B4 (wiring + directory + PIA) next |
 
 > **2026-07-23:** sequencing and scope now governed by [`docs/master-plan.md`](../master-plan.md)
 > (Stage A = Phase 0 increments 2–4; Stage B = Phase 2). This doc keeps the
@@ -162,12 +162,14 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
 
 - **B1 — identity schema + deferred-FK closure ✅** (this section's tables +
   RBAC + break-glass + credential redaction; migrations `0009`/`0010`).
-- **B2 — authentication:** Redis server-side sessions (new logical db 3),
-  Argon2id login (hasher already in `core/security/`), NIST 800-63B-4 password
-  policy + blocklist, throttle-not-lockout, custom-header CSRF, break-glass login
-  path, TOTP MFA (MFA columns already on `core_users`); auth middleware injects
-  the principal into `set_audit_context(actor_id=…)`; `core_login_attempts` +
-  `auth.*` audit events.
+- **B2 — authentication ✅** — Redis server-side sessions (logical **db 4**, not
+  db 3: GlitchTip already holds db 3), Argon2id login (hasher reused), NIST
+  800-63B-4 password policy + vendored top-100k blocklist, throttle-not-lockout,
+  custom-header CSRF, two-step TOTP MFA + force-enrollment for approver/admin,
+  break-glass local login path; `AuthPrincipalMiddleware` → `request.state.user` →
+  `get_session` injects `actor_id`; `core_login_attempts` rows + `auth.*` events
+  (logout/revoke via the new `append_auth_event` hash-chained row). No migration.
+  **pytest 213, lint 3/3.** See §7 (Stage B Increment 2).
 - **B3 — RBAC enforcement:** `require_permission` dependency, Redis-cached
   effective-permission set (invalidated by `core_users.permissions_version`),
   org-unit-scoped grants, delegation/OIC (uses `core_user_roles.valid_from/to`),
@@ -221,6 +223,65 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
   immutable; JSON logs carry the request id.)*
 
 ## 7. Decisions log
+
+- **2026-07-23 (Stage B Increment 2 — authentication)** — the auth runtime on the
+  B1 floor. **No migration** (identity schema complete). pytest 213, lint 3/3.
+  Key decisions (user-confirmed at kickoff + engineering calls):
+  - **Sessions on Redis logical db 4, not db 3.** The brief said db 3, but GlitchTip
+    already holds db 3 on the same instance (observability profile); db 4 avoids the
+    collision with no `docker-compose` change. A separate `app.state.session_redis`
+    client (the config-cache client stays on db 0).
+  - **`core ↛ ops` held.** The brief's "derive the session URL via
+    `ops/dsn.redis_url_with_db`" would break the import-linter contract, so a
+    behaviourally-identical `redis_db_url` twin lives in `core/config.py`; every
+    `core/auth/*` module takes its Redis client by injection. `lint-imports` 3/3.
+  - **Server-side sessions, opaque id.** `secrets.token_urlsafe` (256-bit) in an
+    HttpOnly / SameSite=Lax / Secure(non-local) / `Path=/api` cookie; a Redis Hash
+    `session:{id}` + per-user ZSET index. Fresh id at login (fixation defense),
+    rotated on privilege change; logout destroys the server record; cap 3 (evict
+    oldest); revoke-all on password change / deactivation. Timeouts server-enforced:
+    12 h absolute, idle 30 min privileged / 60 min staff (tier snapshotted at login,
+    so the hot path needs no DB hit).
+  - **Single-tenant auth confirmed** (no `tenant_id` in the session record) — the
+    B1 revisit note is resolved; multi-tenancy joins the record when a real second
+    tenant appears.
+  - **Auth as two middlewares + dependencies.** `request_id → CSRF → auth-principal
+    → route`; `AuthPrincipalMiddleware` sets `request.state.user` (never raises for
+    anon, fails closed on a Redis blip so config/health never 500); the 401/403 gates
+    (`require_session`, the `must_change_password`/`mfa_setup_required` gates) are
+    dependencies. `get_session` injects `actor_id` from `request.state.user`
+    (duck-typed to avoid a cycle); **login self-attributes** its own write (no
+    principal yet at login).
+  - **Error envelope introduced** (`core/api/errors.py`) — the first exception
+    handlers: `APIError` + Starlette HTTPException + RequestValidationError (strips
+    `input`/`ctx` so a bad body never echoes the password) + a generic 500 that also
+    sets `X-Request-ID` (closes the BaseHTTPMiddleware gap). api-standards §3 shape.
+  - **NIST 800-63B-4 password policy** — min 12, no composition, no rotation, a
+    vendored **top-100k blocklist** (SecLists, gzipped package data, lazy frozenset,
+    no runtime cloud call), NFKC normalization at every hash/verify site (leaves
+    `core/security/password.py` untouched). The reference's "min 8 + letter+number"
+    is the recorded deviation (master-plan §5). `needs_rehash` upgrades on login.
+  - **Throttle-not-lockout** — per-account (hashed identifier) + per-IP Redis
+    counters, exponential backoff after 5 failures (never a permanent lock), reset on
+    success; both increment for unknown identifiers so a 429 can't enumerate; login
+    failures return one generic 401 and a dummy-hash verify keeps unknown-user timing
+    indistinguishable.
+  - **TOTP MFA (pyotp)** — required for approver/admin (NPC 2023-06); a **two-step**
+    challenge (password → `mfa_required` + 5-min pending token → verify), single-use
+    within the step (replay guard). **Force-enrollment, not hard block**: a
+    privileged account without MFA gets an `mfa_setup_required` session limited to
+    enroll/confirm/logout (a hard block would deadlock the first break-glass login).
+    Break-glass verifies **locally** above any future `auth_source=ldap` routing.
+  - **Semantic audit for session-lifecycle events.** logout / session-revoked change
+    no audited business row and the `action` CHECK forbids new verbs, so
+    `append_auth_event` appends a hash-chained `core_audit_logs` row (`action=insert`,
+    logical `table_name='core_sessions'`, `row_pk=user`, a forbidden-key guard so no
+    secret can enter). password/MFA-enable events ride the natural `core_users`
+    UPDATE (secret redacted). Chosen over log-only (Rule 5, "everything auditable").
+  - **Minimal `require_permission` now.** B2 ships an uncached DB-backed permission
+    check (soft-delete-filtered, valid-window) for the admin session / password-reset
+    routes; B3 swaps the internals for the Redis-cached, org-scoped resolver behind
+    the same signature.
 
 - **2026-07-23 (Stage B Increment 1 — identity schema + deferred-FK closure)** —
   the identity floor. pytest 155/155, lint 3/3, migration head `0010`. Key
@@ -463,3 +524,34 @@ repo root with the stack up (`docker compose up -d`; ports 8001/5432/6380).
    request made with `-H "X-Request-ID: probe"` shows `"request_id": "probe"` on
    its access-log line.
 10. **Coexistence.** Laragon `dev_pims` (80/3306/8000) is untouched.
+
+### 8a. Stage B Increment 2 — authentication (manual)
+
+Stack up, then bake in the auth deps once: `docker compose build app worker`
+(adds `pyotp`). Automated proof: `docker compose exec app pytest -q` → **213
+green**; `docker compose exec app lint-imports` → 3 kept.
+
+1. **Provision a login.** `docker compose exec app python -m
+   office_connect.ops.bootstrap seed-rbac` then `... promote-admin` prints a
+   one-time temp password for `settings.bootstrap_admin` (break-glass
+   `system_admin`, forced change).
+2. **Login sets an HttpOnly cookie.** `curl -i -c jar.txt -H "X-Requested-With:1"
+   -H "Content-Type: application/json" -X POST
+   http://localhost:8001/api/v1/auth/login -d '{"identifier":"<email>",
+   "password":"<temp>"}'` → `200`, `Set-Cookie: oc_session=…; HttpOnly; SameSite=lax`.
+   A wrong password → `401 {"error":{"code":"invalid_credentials"}}` (identical for
+   an unknown email — no enumeration). Five wrong tries → `429 too_many_attempts`
+   + `Retry-After`.
+3. **CSRF.** The same POST **without** `-H "X-Requested-With:1"` → `403 csrf_failed`.
+4. **Session is server-side + revocable.** `curl -b jar.txt
+   http://localhost:8001/api/v1/auth/me` → your account; `curl -b jar.txt -c jar.txt
+   -H "X-Requested-With:1" -X POST .../auth/logout` → `200`; `/auth/me` again →
+   `401` (the Redis record is destroyed, not just the cookie).
+5. **Actor lands in the chain.** After a login, the `core_users` `last_login_at`
+   UPDATE audit row carries `actor_id = <the user>` (proven by
+   `tests/test_auth_audit_events.py`); logout writes an `append_auth_event`
+   `core_sessions` row with **no** credential, and `verify_chain` stays intact.
+6. **MFA (approver/admin).** `POST /auth/mfa/enroll` → `otpauth://` URI (+ secret);
+   scan into an authenticator; `POST /auth/mfa/confirm {code}` enables it. A later
+   login returns `mfa_required` + a token; `POST /auth/mfa/verify {mfa_token,code}`
+   completes it. A privileged account with no MFA is held at `mfa_setup_required`.

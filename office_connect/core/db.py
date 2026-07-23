@@ -41,10 +41,17 @@ from office_connect.core import soft_delete as _soft_delete  # noqa: E402,F401
 
 
 async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency: one session per request, audit context pre-seeded
-    with the request id (the actor is added by auth in Phase 2)."""
+    """FastAPI dependency: one session per request, audit context pre-seeded with
+    the request id and — once ``AuthPrincipalMiddleware`` has resolved the cookie —
+    the authenticated actor, so authenticated writes attribute to the real user in
+    the hash chain. ``request.state.user`` is duck-typed (``.user_id``) on purpose:
+    importing ``Principal`` here would create a cycle (``core.auth`` imports
+    ``SessionLocal`` from this module). Login self-attributes its own write."""
+    user = getattr(request.state, "user", None)
     async with SessionLocal() as session:
         set_audit_context(
-            session, request_id=getattr(request.state, "request_id", None)
+            session,
+            actor_id=(user.user_id if user is not None else None),
+            request_id=getattr(request.state, "request_id", None),
         )
         yield session

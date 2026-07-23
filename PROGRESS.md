@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage B Increment 2 (B2): Authentication — Redis sessions, Argon2id login, password policy, throttle, CSRF, break-glass login, TOTP MFA.**
+> **Resume Office-Connect — Stage B Increment 3 (B3): RBAC enforcement — Redis-cached `require_permission` (invalidated by `permissions_version`), org-unit-scoped grants, delegation/OIC via `valid_from/to`, maker-checker DB checks, read-only auditor role + printable chain-verification report.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,92 +10,104 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **Stage B (Phase 2) IN PROGRESS** — Increment **B1 ✅** (identity
-  schema + deferred-FK closure). Phase 0 / Stage A remains complete + pushed
-  (tag `phase-0-complete`, `origin/master` = `5eb19a4`). **Migration head `0010`**
-  (local; not pushed — Stage B pushes only at its QA gate, tag `phase-2-complete`).
-  **Next: Increment B2 — Authentication.** Master Plan v1 in force.
-- **Last session:** #7 — 2026-07-23 — **Stage B Increment 1**: the identity floor.
-  Split identity (`core_staff` directory + `core_users` auth, `staff_id` FK);
-  self-referencing `core_org_units`; RBAC tables (`core_roles`/`core_permissions`/
-  `core_role_permissions`/org-scoped `core_user_roles` with PG16 `NULLS NOT
-  DISTINCT` + `valid_from/to`); append-only `core_login_attempts`. The
-  **deferred-FK closure** (`0010`) constrained every `*_by`/`actor_id`/
-  `division_id`/`section_id`/`recipient_user_id`/`disposed_by`/`generated_by`/
-  `tenant_id` deferred since Phase 0. **Credential redaction** pulled forward
-  (`__audit_exclude__` → `[redacted]` for `password_hash`/`mfa_secret`, INSERT +
-  UPDATE). **Argon2id** hasher (`core/security/`). RBAC seeds (27 perms / 4 roles
-  / 41 grants) + `bootstrap seed-rbac` + `promote-admin` (break-glass login) +
-  synthetic org/staff fixtures. Migrations `0009`–`0010`. **Verified: pytest
-  155/155, lint-imports 3/3**; full chain `0001→0010` idempotent + downgrade-to-
-  base→re-upgrade clean; FK closure asserted; redaction proven; `verify_chain`
-  intact.
-- **Decisions this session (user-confirmed at kickoff):** identity = **split**
-  (`core_staff` + `core_users`); directory seed = **CSS-IS decoupled** (separate
-  system, inbound feed later; synthetic dev fixtures now); audit-payload SPI =
-  **IDs + field names only** (credential subset executed now); single-tenant auth
-  (no `tenant_id`, revisit before B2). See `docs/modules/foundation.md` §7.
-- **Blockers / waiting on user:** none. *(Dev note: `argon2-cffi` is in
-  `requirements.txt` + pip-installed into the running app/worker; bake it in with
-  an image rebuild — `docker compose build app worker` — before B2.)*
+- **Phase:** **Stage B (Phase 2) IN PROGRESS** — Increments **B1 ✅ + B2 ✅**.
+  Phase 0 / Stage A remains complete + pushed (tag `phase-0-complete`,
+  `origin/master` = `5eb19a4`). **Migration head still `0010`** (B2 added no
+  migration; local, not pushed — Stage B pushes only at its QA gate, tag
+  `phase-2-complete`, after B4). **Next: Increment B3 — RBAC enforcement.**
+  Master Plan v1 in force.
+- **Last session:** #8 — 2026-07-23 — **Stage B Increment 2 (authentication)**.
+  Built the login runtime on the B1 floor, **no migration**. New `core/auth/`
+  package (session_store, policy, principal, password_policy, throttle, mfa,
+  verifiers, service, middleware, dependencies) + `core/api/auth.py` +
+  `core/api/errors.py` + `core/api/schemas/`. **Redis server-side sessions on
+  db 4** (not db 3 — GlitchTip collision; a core-local `redis_db_url` keeps
+  `core ↛ ops` green): opaque HttpOnly/SameSite=Lax/Path=/api cookie, Hash +
+  per-user ZSET, fresh id at login / rotate on privilege change, 12h absolute +
+  30/60-min idle, cap 3, revoke-all on password change. **Argon2id login**
+  (reused) + transparent re-hash. **NIST 800-63B-4 policy** + **vendored top-100k
+  blocklist** (gzipped package data). **Throttle-not-lockout** (per-account +
+  per-IP backoff, generic 401, dummy-hash timing parity). **Two-step TOTP MFA**
+  (pyotp) + force-enrollment for approver/admin. **Break-glass** local login.
+  **Custom-header CSRF** + **auth-principal middleware** → `get_session` injects
+  the real `actor_id`. **`append_auth_event`** hash-chains logout/session-revoke
+  within the `action=insert` CHECK (logical `core_sessions`, no secret). First
+  **error envelope** handlers. **Verified: pytest 213/213 (+58), lint-imports
+  3/3**; live end-to-end login/logout/MFA/change-password via curl; chain intact.
+- **Decisions this session (user-confirmed at kickoff):** single-tenant auth (no
+  `tenant_id`) — B1 revisit note resolved; logout/revoke = **hash-chained semantic
+  rows** (`append_auth_event`); sessions on **Redis db 4** (not the briefed db 3);
+  researched session defaults (12h/30-60/cap 3). Engineering calls: force-MFA-
+  enrollment (not block), two-step MFA, minimal DB-backed `require_permission` now,
+  committed gzipped blocklist. See `docs/modules/foundation.md` §7 (B2).
+- **Blockers / waiting on user:** none. *(Dev note: `pyotp` is in `requirements.txt`
+  + pip-installed into the running app/worker; the image was rebuilt this session —
+  if starting fresh, `docker compose build app worker` bakes in `argon2-cffi` +
+  `pyotp`.)*
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Stage B Increment B1 is COMPLETE (identity floor). In place at migration
-head 0010: split identity (core_staff directory + core_users auth, staff_id FK),
-self-referencing core_org_units, RBAC tables (core_roles/core_permissions/
-core_role_permissions/org-scoped core_user_roles with PG16 NULLS NOT DISTINCT +
-valid_from/to), append-only core_login_attempts, and the deferred-FK closure
-(0010) constraining every *_by/actor_id/division_id/section_id/recipient_user_id/
-disposed_by/generated_by/tenant_id. Credential redaction is live (core_users
-__audit_exclude__ = {password_hash, mfa_secret} → [redacted] in the chain).
-Argon2id hasher exists (core/security/password.py). RBAC seeded (27 perms/4 roles/
-41 grants) via bootstrap seed-rbac; break-glass login via bootstrap promote-admin.
-pytest 155/155, lint-imports 3/3. Nothing pushed (Stage B pushes only at its QA
-gate). Read CLAUDE.md, then docs/research/round1/auth-rbac-onprem.md,
-master-plan.md §2 Stage B, and docs/modules/foundation.md §5 "Stage B increment
-plan" + §7 (Increment 1 decisions).
-Task: Build Increment B2 — Authentication. Per auth-rbac-onprem.md:
-  (1) Redis server-side sessions on a NEW logical db (db 3, via
-      ops/dsn.redis_url_with_db; session_secret already in config): opaque
-      secrets.token_urlsafe id in an HttpOnly/Secure/SameSite=Lax cookie;
-      session record session:{id} + per-user user_sessions:{user_id} set;
-      regenerate id on login; revoke-all on password change / deactivation;
-      bounded concurrent sessions.
-  (2) Login/logout endpoints (new core/api/auth.py, mounted in core/api/router.py
-      under /api/v1). NIST 800-63B-4 password policy (min 12 + on-prem top-100k
-      blocklist; no composition rules / no forced rotation — record the
-      reference's "letter+number" as a documented deviation). Reuse
-      core/security/password.py (hash + needs_rehash). must_change_password flow.
-  (3) Throttle-not-lockout (Redis per-account + per-IP counters + backoff after 5;
-      generic failure message — no user enumeration). Write core_login_attempts
-      rows + auth.login.*/auth.logout/auth.session.revoked/auth.password.* audit
-      events. Break-glass LOGIN path (the is_break_glass account bypasses the
-      future LDAP backend).
-  (4) TOTP MFA (add pyotp to requirements.txt + tech-stack.md) for approver/admin
-      roles (NPC 2023-06); mfa_enabled/mfa_secret columns already exist on
-      core_users (no migration needed).
-  (5) Custom-header CSRF middleware on all non-GET routes (SameSite=Lax floor).
-      Auth middleware resolves the principal → request.state.user; extend
-      get_session (core/db.py) to set_audit_context(actor_id=…) so writes attribute
-      to the real user. Update main.py request_id_middleware note.
-Files: office_connect/core/auth/ (session service, password policy, throttle, mfa),
-office_connect/core/api/auth.py, office_connect/core/api/router.py,
-office_connect/core/db.py (actor injection), office_connect/main.py (CSRF + auth
-middleware), office_connect/core/config.py (session db, cookie, timeouts), a
-bundled password blocklist, requirements.txt + docs/standards/tech-stack.md (pyotp),
-docs/standards/api-standards.md (session/CSRF contract), docs/modules/foundation.md,
-tests/. NO migration expected (identity schema is complete).
-Acceptance: login sets an HttpOnly session cookie + regenerates id; logout destroys
-the server-side record; wrong password throttles with a generic message and writes
-a core_login_attempts row; password change revokes all sessions; MFA required for
-approver/admin; CSRF rejects a non-GET without the custom header; an authenticated
-write lands the real actor_id in the audit chain; pytest green; lint-imports green.
-Open questions for the user: (a) session idle/absolute timeouts (default: 12h
-absolute; idle 30 min approver/admin, 60 min staff — confirm); (b) concurrent-
-session cap (default 3); (c) confirm single-tenant auth (no tenant_id) before
-wiring sessions, per the B1 revisit note.
+Context: Stage B Increments B1 + B2 are COMPLETE. Identity schema at head 0010 (no
+B2 migration). Authentication is live: cookie-based Redis server-side sessions on
+db 4 (core/auth/session_store.py; opaque HttpOnly/SameSite=Lax/Path=/api cookie,
+Hash + per-user ZSET, rotate on privilege change, 12h absolute / 30-60min idle,
+cap 3, revoke-all), Argon2id login + re-hash, NIST password policy + vendored
+top-100k blocklist, throttle-not-lockout, two-step TOTP MFA + force-enrollment,
+break-glass local login, custom-header CSRF, error envelope. AuthPrincipalMiddleware
+sets request.state.user; core/db.py get_session injects actor_id; logout/revoke are
+hash-chained via core/audit.py append_auth_event. A MINIMAL, UNCACHED, DB-backed
+require_permission(perm) already exists in core/auth/dependencies.py (used by the
+admin session/reset routes) — B3 REPLACES its internals behind the same signature.
+core_users.permissions_version (int, bumped on grant/revoke) and
+core_user_roles.valid_from/valid_to (delegation window) already exist. RBAC seeded
+(27 perms/4 roles/41 grants). pytest 213/213, lint-imports 3/3. Nothing pushed
+(Stage B pushes only at its QA gate). Read CLAUDE.md, then
+docs/research/round1/auth-rbac-onprem.md, master-plan.md §2 Stage B + §3.1
+(COA gates), and docs/modules/foundation.md §5 "Stage B increment plan" + §7
+(B1 + B2 decisions).
+Task: Build Increment B3 — RBAC enforcement. Per auth-rbac-onprem.md + master-plan:
+  (1) Redis-cached effective-permission set per user, keyed/invalidated by
+      core_users.permissions_version (bump the version on any grant/revoke →
+      the cache is stale-safe, takes effect next request). Swap require_permission's
+      internals to read the cache (fall back to the DB query on a miss); keep the
+      dependency signature stable. Code authorizes on permission STRINGS, never role
+      names.
+  (2) Org-unit-scoped authorization: core_user_roles.org_unit_id NULL = global grant;
+      set = scoped. Resolve an approver by walking the requester's core_org_units
+      ancestry (self-ref parent_org_unit_id). Add a scope parameter to
+      require_permission (e.g. scope=REQUESTER_ORG) for org-bounded checks.
+  (3) Delegation / OIC: time-bounded grants via core_user_roles.valid_from/valid_to
+      (already honored by the B2 permission query) — confirm at kickoff whether a
+      dedicated delegation table is wanted or valid_from/to suffices (foundation §5
+      says the latter; master-plan §2 mentions a table).
+  (4) Maker-checker: a DB-level pairwise-distinct check pattern for DV Boxes A/B/C
+      (COA 92-389 / NGICS) — the reusable check that later reimbursement approvals
+      call (no self-approval; distinct approvers per box).
+  (5) Read-only AUDITOR role (COA Res. 2020-034): a permission-gated, printable
+      chain-verification report endpoint that runs core/audit.py verify_chain and
+      renders a per-record timeline + PASS/FAIL. auditor is read-only everywhere.
+  (6) Grant/revoke service (admin): create/soft-delete core_user_roles rows, bump
+      the target user's permissions_version, invalidate the Redis permission cache,
+      and emit rbac.role.granted/revoked audit events.
+Files: office_connect/core/auth/ (a permissions-cache module + require_permission
+rewrite + org-scope resolver + maker-checker helper), office_connect/core/api/
+(RBAC admin + auditor report endpoints), possibly core/api/schemas/, tests/,
+docs/standards/api-standards.md (authz contract), docs/modules/foundation.md,
+CHANGELOG. Likely NO migration (identity schema is complete) — flag if maker-checker
+needs one (it may defer to the reimbursement vertical, Stage C).
+Acceptance: require_permission resolves from the Redis cache and a grant/revoke bumps
+permissions_version so the change lands on the NEXT request; an org-scoped permission
+denies a requester outside the grantee's org subtree; a time-expired delegation grant
+no longer authorizes; maker-checker rejects a self-approval / same-approver-twice;
+the auditor report prints a chain-verification PASS and is denied to non-auditors;
+pytest green; lint-imports 3/3.
+Open questions for the user: (a) delegation via valid_from/to only vs a dedicated
+delegation/OIC table (default: valid_from/to, per foundation §5); (b) does B3's
+maker-checker ship as a reusable core helper now or defer the concrete DV Box A/B/C
+wiring to Stage C reimbursement (default: ship the reusable helper + tests now,
+wire the boxes at Stage C); (c) permission-cache TTL + invalidation strategy
+(default: cache keyed by permissions_version, short TTL backstop, no pub/sub).
 ```
 
 ---
@@ -107,7 +119,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
-| B | 2 | Identity & access: auth / RBAC / directory / delegation | in progress (B1 ✅) | 7– | — | — |
+| B | 2 | Identity & access: auth / RBAC / directory / delegation | in progress (B1 ✅ · B2 ✅) | 7–8 | — | — |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
@@ -129,6 +141,55 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 8 — 2026-07-23 — Stage B Increment 2 (authentication)
+
+- **Phase(s):** 2 / Stage B (B2) · **Commit:** `session(2026-07-23)` — **local
+  only** (Stage B pushes at its QA gate, tag `phase-2-complete`, after B4).
+- **Kickoff decisions (user-confirmed):** single-tenant auth (no `tenant_id`) —
+  B1 revisit note resolved; logout/session-revoke recorded as **hash-chained
+  semantic rows** (`append_auth_event`) not log-only; sessions on **Redis db 4**
+  (the briefed db 3 collides with GlitchTip); **researched session defaults**
+  (12h absolute / 30-60min idle / cap 3). Engineering calls: force-MFA-enrollment
+  (not hard block), two-step MFA, minimal DB-backed `require_permission` now,
+  committed gzipped top-100k blocklist.
+- **Done (no migration — identity schema complete):**
+  - **`core/auth/` package** — `session_store` (Redis Hash `session:{id}` +
+    per-user ZSET, opaque 256-bit id, absolute/idle TTL, cap eviction, lazy index
+    prune, rotate), `policy` (pure timeout/tier math), `principal` (DB-free
+    request principal), `password_policy` (NIST 12+/no-composition/no-rotation +
+    NFKC + blocklist + context-word checks; recorded deviation), `throttle`
+    (per-account + per-IP backoff, enumeration-parity), `mfa` (pyotp TOTP, skew,
+    single-use replay guard), `verifiers` (break-glass-above-LDAP branch),
+    `service` (login/MFA/logout/change-password state machine with dummy-hash
+    timing parity), `middleware` (CSRF + auth-principal), `dependencies`
+    (`require_session`/gates/`require_permission`/`require_reauth`).
+  - **`core/api/`** — `auth.py` (login/logout/me/password.change/mfa.enroll/
+    confirm/verify/own+admin session mgmt/admin reset; cookie set/clear),
+    `errors.py` (first structured error-envelope handlers + `APIError`),
+    `schemas/auth.py` (first Pydantic wire models); router mounts `auth`.
+  - **Wiring** — `config.py` (core-local `redis_db_url` twin + session/cookie/
+    throttle/MFA settings + resolver properties), `main.py` (session-Redis client +
+    `SessionStore` on `app.state`, CSRF + auth middleware, `register_error_handlers`),
+    `db.py` (`get_session` injects `actor_id` from `request.state.user`),
+    `audit.py` (`append_auth_event` — hash-chained `action=insert` `core_sessions`
+    row within the CHECK, forbidden-key guard). `.env.example` auth block.
+  - **Blocklist** — vendored SecLists `Pwdb_top-100000.txt` gzipped
+    (`core/security/blocklists/`, ~432 KB, provenance README, `.gitattributes`
+    binary+vendored), lazy `frozenset`. **Dep**: `pyotp==2.9.0`.
+- **Verified:** **pytest 213/213** (was 155; +58 across policy/blocklist/mfa/
+  throttle/session-store/login-flow/mfa-flow/password-change/audit-events/csrf/
+  redis-config), **lint-imports 3/3** (the `core ↛ ops` boundary held via the
+  core-local URL helper); live curl walkthrough — login sets an HttpOnly cookie,
+  wrong-vs-unknown are byte-identical 401s, 5 fails → 429, logout destroys the
+  server record, MFA two-step, password-change revokes other sessions; the login
+  `last_login_at` UPDATE carries the real `actor_id`, logout/revoke append valid
+  chain rows with no credential, `verify_chain` intact.
+- **Decisions:** see `docs/modules/foundation.md` §7 (Stage B Increment 2).
+- **Docs updated:** foundation.md (§1/§5/§7/§8a), api-standards.md (§2/§5 + new
+  §6 session/CSRF contract), tech-stack.md (pyotp + db-4 map + vendored blocklist),
+  requirements.txt, CHANGELOG.md, `.env.example`, this file.
+- **Next:** Increment B3 — RBAC enforcement (see the Next Session Prompt).
 
 ### Session 7 — 2026-07-23 — Stage B Increment 1 (identity schema + deferred-FK closure)
 

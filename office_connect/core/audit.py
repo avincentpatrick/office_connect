@@ -25,6 +25,7 @@ from typing import Any
 
 from sqlalchemy import event, insert, select, text
 from sqlalchemy import inspect as sa_inspect
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from office_connect.core.base import Base, SoftDeleteMixin
 from office_connect.core.models.audit_log import AuditLog
@@ -302,3 +303,87 @@ def _write_audit_rows(session, flush_context) -> None:
         prev = row_hash
 
     conn.execute(insert(AuditLog.__table__), rows)
+
+
+# --- semantic auth-event append (Stage B / Increment 2) -------------------
+
+# Keys a session-lifecycle event payload may NEVER carry — no credential/secret
+# can ever enter the immutable chain (auth-rbac-onprem.md; database-standards §7).
+_FORBIDDEN_EVENT_KEYS = frozenset(
+    {"password", "password_hash", "mfa_secret", "secret", "session_id", "sid",
+     "code", "totp", "token"}
+)
+
+
+async def append_auth_event(
+    session: AsyncSession,
+    *,
+    event: str,
+    subject_user_id: int,
+    actor_id: int | None = None,
+    request_id: str | None = None,
+    data: dict[str, Any] | None = None,
+) -> None:
+    """Append ONE hash-chained audit row for a session-lifecycle event that mutates
+    no audited business row — ``auth.logout`` / ``auth.session.revoked`` (logout is
+    a pure Redis op; revoke-all deletes Redis records). Login/mfa/password events
+    already ride the chain via ``core_login_attempts`` + the natural ``core_users``
+    UPDATE, so this helper is deliberately narrow.
+
+    It respects the ``action`` CHECK (``insert``) and writes a *logical*
+    ``table_name='core_sessions'`` (``row_pk`` = the subject user — a sanctioned
+    no-FK generic pointer). ``verify_chain`` reconstructs these rows identically, so
+    they sit in the one existing chain. A forbidden ``data`` key raises — no secret
+    can enter. Call AFTER flushing any pending ORM changes so this row chains after
+    them; it writes on the session's own connection, committing atomically with it.
+    """
+    data = data or {}
+    forbidden = _FORBIDDEN_EVENT_KEYS.intersection(data)
+    if forbidden:
+        raise ValueError(
+            f"auth event payload may not carry secrets: {sorted(forbidden)}"
+        )
+    info = session.sync_session.info
+    actor_id = actor_id if actor_id is not None else info.get("actor_id")
+    request_id = request_id if request_id is not None else info.get("request_id")
+
+    conn = await session.connection()
+    await conn.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext('core_audit_logs'))")
+    )
+    prev = (
+        await conn.execute(
+            select(AuditLog.row_hash).order_by(AuditLog.id.desc()).limit(1)
+        )
+    ).scalar_one_or_none() or GENESIS_HASH
+
+    at = utc_now()
+    new = {"event": event, **{k: serialize_value(v) for k, v in data.items()}}
+    payload = build_payload(
+        table="core_sessions",
+        row_pk=subject_user_id,
+        action="insert",
+        actor_id=actor_id,
+        request_id=request_id,
+        at=at,
+        old=None,
+        new=new,
+    )
+    row_hash = compute_row_hash(prev, payload)
+    await conn.execute(
+        insert(AuditLog.__table__),
+        [
+            {
+                "created_at": at,
+                "actor_id": actor_id,
+                "request_id": request_id,
+                "table_name": "core_sessions",
+                "row_pk": subject_user_id,
+                "action": "insert",
+                "old_data": None,
+                "new_data": new,
+                "prev_hash": prev,
+                "row_hash": row_hash,
+            }
+        ],
+    )

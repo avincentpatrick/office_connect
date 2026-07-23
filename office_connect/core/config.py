@@ -1,8 +1,21 @@
 """Application settings, loaded from environment / .env (pydantic-settings v2)."""
 
 from functools import lru_cache
+from urllib.parse import urlsplit, urlunsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def redis_db_url(base_url: str, db: int) -> str:
+    """Point a ``redis://`` URL at a specific logical DB, keeping auth/host.
+
+    A core-local twin of ``office_connect.ops.dsn.redis_url_with_db`` — duplicated
+    ON PURPOSE so ``core`` never imports ``ops`` (the import-linter contract that
+    the B2 resume brief's "derive via ops/dsn" instruction would have broken).
+    Keep the two behaviourally identical.
+    """
+    parts = urlsplit(base_url)
+    return urlunsplit(parts._replace(path=f"/{db}"))
 
 
 class Settings(BaseSettings):
@@ -54,6 +67,45 @@ class Settings(BaseSettings):
 
     session_secret: str = "dev-only-change-me"
 
+    # --- Auth / sessions (Stage B / Increment 2) ---
+    # Server-side sessions live on a DEDICATED Redis logical DB (db 4) so the
+    # keyspace never collides with the config cache (db 0), the Celery broker /
+    # results (db 1 / 2), or GlitchTip (db 3, observability profile). Set
+    # SESSION_REDIS_URL to override the whole URL; else it derives from redis_url.
+    session_redis_db: int = 4
+    session_redis_url: str | None = None
+    # Opaque session-id cookie. HttpOnly + SameSite=Lax are always on; Secure is
+    # resolved from app_env unless forced (SESSION_COOKIE_SECURE=false for local
+    # http dev). Path narrows the cookie to the API surface.
+    session_cookie_name: str = "oc_session"
+    session_cookie_secure: bool | None = None  # None -> True unless app_env=="local"
+    session_cookie_path: str = "/api"
+    session_cookie_samesite: str = "lax"
+    session_cookie_domain: str | None = None
+    # Server-enforced lifetimes (auth-rbac-onprem.md): 12h absolute; idle 30 min
+    # for privileged roles / 60 min for staff; reauth window for high-impact acts.
+    session_absolute_seconds: int = 12 * 3600
+    session_idle_privileged_seconds: int = 30 * 60
+    session_idle_staff_seconds: int = 60 * 60
+    session_reauth_seconds: int = 5 * 60
+    session_max_concurrent: int = 3
+    session_cap_policy: str = "evict_oldest"  # or "reject"
+    # Throttle-not-lockout: per-account + per-IP counters, exponential backoff
+    # after N consecutive failures (never a permanent lock), reset on success.
+    throttle_threshold: int = 5
+    throttle_backoff_base_seconds: int = 1
+    throttle_backoff_ceiling_seconds: int = 300
+    throttle_window_seconds: int = 900
+    # Custom-header CSRF (SameSite=Lax floor + a header the SPA fetch wrapper sets).
+    csrf_header_name: str = "X-Requested-With"
+    # NIST 800-63B-4 password policy (no composition, no rotation; blocklist).
+    pwd_min_length: int = 12
+    pwd_max_length: int = 128
+    # TOTP MFA (RFC 6238) — required for these role codes (NPC Circular 2023-06).
+    mfa_issuer: str = "Office-Connect"
+    mfa_valid_window: int = 1
+    mfa_required_role_codes: frozenset[str] = frozenset({"system_admin", "approver"})
+
     # --- Storage driver (Increment 3) ---
     # local = content-addressed volume store (prod default, on-prem posture,
     # master-plan §4 #3); gdrive = Google Drive (kept for tenants that want it).
@@ -101,6 +153,20 @@ class Settings(BaseSettings):
     attachment_scanner: str | None = None
     clamav_host: str | None = None
     clamav_port: int = 3310
+
+    @property
+    def resolved_session_redis_url(self) -> str:
+        """The session store's Redis URL — explicit override, else redis_url@db."""
+        return self.session_redis_url or redis_db_url(
+            self.redis_url, self.session_redis_db
+        )
+
+    @property
+    def resolved_cookie_secure(self) -> bool:
+        """Secure cookie flag — on everywhere except local http dev, unless forced."""
+        if self.session_cookie_secure is None:
+            return self.app_env != "local"
+        return self.session_cookie_secure
 
 
 @lru_cache
