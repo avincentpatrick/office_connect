@@ -2,36 +2,43 @@
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** Stage A (= Phase 0) — **Increment 1 ✅**; Increments 2–4 remain.
-  **Master Plan v1 adopted** (`docs/master-plan.md`) — stages A–I + Wave 2,
-  4 new modules + DTWIS rename, Rule 10 (shared service first) locked.
-- **Last session:** #3 — 2026-07-23 — comprehensive master plan: 18-digest
-  deep research (2 rounds), owner scope additions, connectedness contract,
-  reference-corrections ledger, all docs restructured.
-- **Blockers / waiting on user:** none (R-0 author decisions and the Stage A
-  open questions can be prepared in parallel — master plan §4)
+- **Phase:** Stage A (= Phase 0) — **Increments 1 ✅, 2 ✅**; Increments 3–4
+  remain. **Master Plan v1 adopted** (`docs/master-plan.md`).
+- **Last session:** #4 — 2026-07-23 — Increment 2 (ops): backup + proven-restore
+  drill (`verify_chain()` green), Celery worker/beat + nightly backup task,
+  explicit-step migrations (dev-only env-gated advisory-locked boot migration),
+  deploy guard, operations runbooks. Verified end-to-end (wiped-volume deploy,
+  drill, task via broker; **pytest 31/31, lint-imports 3/3**).
+- **Decisions this session:** git remote = **GitHub private**; off-box backup
+  target = **second/external disk**; pg client pinned to major 16; ops in a new
+  `office_connect/ops/` package.
+- **Blockers / waiting on user:** the **private git remote must be created**
+  (GitHub private repo) so the Phase 0 push can fire at the Inc-4 gate — needs
+  the user's GitHub account (see Next Session Prompt open questions).
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — paste this to resume)*
 
 ```text
-Context: Office-Connect Master Plan v1 is adopted (docs/master-plan.md);
-Phase 0 / Stage A Increment 1 is complete (31 QA-gate tests green). Read
-CLAUDE.md, then master-plan.md §2 Stage A, then docs/modules/foundation.md §3.
-Task: Build Stage A Increment 2 (ops) per the REVISED foundation.md §3:
-(1) deploy script with live-DB/version-bump/CHANGELOG guards, (2) scheduled
-pg_dump -Fc backup with 3-2-1 placement + ONE PROVEN RESTORE (drill includes
-verify_chain() on the restored DB), (3) enable the Celery worker service +
-first beat backup task, (4) migrations as an EXPLICIT deploy step (dev-only
-env-gated boot migration allowed), (5) provision the private git remote on
-hardware that is NOT the future production server.
-Files: scripts/, docker-compose.yml (worker), office_connect/worker.py (new),
-office_connect/main.py, docs/modules/foundation.md.
-Acceptance: from a wiped volume, the documented deploy sequence (migrate step
-then compose up) comes up read-write; a backup file is produced and restored
-into a scratch DB with verify_chain() green; pytest still 31/31; lint-imports
-green.
-Open questions for the user: off-box backup destination (second disk /
-network share / Drive)? Private remote host (GitHub private / Gitea / other)?
+Context: Office-Connect Master Plan v1 is adopted (docs/master-plan.md); Phase 0
+/ Stage A Increments 1 (schema spine) and 2 (ops) are complete — backup+restore
+drill, Celery worker/beat, explicit-step migrations, deploy guard all verified
+(pytest 31/31, lint-imports 3/3). Read CLAUDE.md, then master-plan.md §2 Stage A,
+then docs/modules/foundation.md §3 (Increment 3).
+Task: Build Stage A Increment 3 (integrations + bootstrap): (1) storage driver
+abstraction (local-volume driver as the prod default per master-plan §4 #3;
+Google Drive driver kept for tenants that want it) behind a clean interface,
+(2) SMTP + Gmail two-driver email abstraction wired behind a notification
+outbox stub + a test-email path, (3) a bootstrap CLI that creates the first
+System Admin and refuses fixtures in prod + synthetic fixtures, (4) the
+design-token contract served via GET /api/v1/config (ui-standards §2).
+Files: office_connect/core/ (storage/, email/, config endpoint), a new
+bootstrap CLI (office_connect/ops/ or a core cli), docs/modules/foundation.md.
+Acceptance: local-volume storage round-trips a file; test email sends via the
+selected driver (or logs in dev); bootstrap creates an admin and refuses in
+prod; /api/v1/config returns the token contract; pytest green; lint-imports 3/3.
+Open questions for the user: CREATE THE PRIVATE GITHUB REPO (empty, private) and
+share the URL so the remote can be wired and the Phase 0 push can fire at the
+Increment-4 gate. Confirm storage default = local volume for prod.
 ```
 
 ---
@@ -42,7 +49,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
-| A | 0 (inc 1–4) | Foundation: spine ✅, ops, integrations, spine amendments | in progress | 1–3 | pending | — |
+| A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations, spine amendments | in progress | 1–4 | pending | — |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | not started | — | — | — |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
@@ -65,6 +72,51 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 4 — 2026-07-23 — Stage A Increment 2 (ops) ✅
+
+- **Phase(s):** 0 / Stage A · **Commit:** `session(2026-07-23)` — local
+- **Done:**
+  - **Backup + proven-restore drill** (`office_connect/ops/`): `pg_dump -Fc` as
+    the owner role → `office_connect/backups`; restore-drill creates a scratch
+    DB, `pg_restore`s, and re-runs `verify_chain()` — seeding a real ≥3-link
+    audited chain first so the check is never vacuously green; hard scratch-name
+    guard; `--force` cleanup. CLI: `python -m office_connect.ops
+    {backup,restore-drill,backup-and-drill}`.
+  - **Celery worker + single beat** (`office_connect/worker.py`, compose
+    `worker`+`beat`): Redis transport (broker db 1 / results db 2), nightly
+    backup task; verified running end-to-end via the broker.
+  - **Explicit-step migrations**: `alembic upgrade head` as a deploy step;
+    migration-on-boot demoted to a dev-only, env-gated (`OC_MIGRATE_ON_BOOT`),
+    **advisory-locked** convenience in a container entrypoint (once per
+    container; refused when `APP_ENV=production`). New `core/migrate.py`.
+  - **Deploy guard** (`office_connect/ops/deploy_guard.py`, `--mode dev|release`)
+    + `scripts/deploy.ps1` dev wrapper + `docs/operations/{deploy,backup-restore}.md`
+    POSIX-sh runbooks.
+  - Image: `postgresql-client-16` (PGDG, base-codename-derived) + `ENTRYPOINT`;
+    `.gitignore` (backups/dumps/pgpass), `.gitattributes` (LF for `*.sh`),
+    `.dockerignore` (entrypoint allowed through); new import-linter contract
+    "core never imports ops or worker".
+  - **Bugs caught & fixed during verification:** base image moved to Debian
+    trixie (dropped the bad `bookworm-pgdg` repo); pg client 17-vs-server-16
+    `transaction_timeout` restore failure (pinned client to 16); `str(URL)`
+    password masking broke asyncpg scratch-DB auth (`render_as_string(
+    hide_password=False)`); `scripts` excluded by `.dockerignore`.
+- **Verified:** wiped-volume deploy both ways (explicit step + dev-convenience
+  boot migration) → healthy, read-write, schema at 0001; `backup-and-drill` →
+  audit_rows=3, verify=ok, scratch dropped, dump on host; backup task via broker
+  → succeeded; **pytest 31/31**; **lint-imports 3/3**; deploy guard passes
+  `--mode dev`, blocks `--mode release` on the `.dev1` version.
+- **Decisions:** see `docs/modules/foundation.md` §7 (pg-client major match,
+  owner-role backups, seed-before-drill, hide_password, Redis db separation,
+  single beat, entrypoint boot-migrate, GitHub-private remote / second-disk
+  backup target).
+- **Docs updated:** foundation.md, tech-stack.md, CHANGELOG.md, this file; new
+  `docs/operations/deploy.md` + `backup-restore.md`.
+- **Deferred:** provision the GitHub private remote (needs the user's repo) —
+  first push fires at the Phase 0 / Increment-4 gate (push-per-phase).
+- **Next Session Prompt (archived):** Stage A Increment 3 (integrations +
+  bootstrap) — full text in the top block as of this session.
 
 ### Session 3 — 2026-07-23 — Comprehensive Master Plan v1 ✅
 

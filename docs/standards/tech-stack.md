@@ -42,11 +42,22 @@ the same session** (session-end checklist step 3).
 |---|---|---|---|
 | `db` | postgres:16-alpine | 5432 | volume `pgdata`; healthcheck `pg_isready`; roles: `oc_dev` (owner/migrations), `oc_app` (runtime, no DELETE) |
 | `redis` | redis:7-alpine | **6380** → 6379 | 6380 avoids Laragon's 6379 |
-| `app` | built from `Dockerfile` | 8001 | uvicorn `office_connect.main:app`; 8000 is Laragon's |
-| *(worker)* | same image | — | Celery worker — commented out until Increment 2 |
+| `app` | built from `Dockerfile` | 8001 | uvicorn `office_connect.main:app`; 8000 is Laragon's; entrypoint runs the dev-only env-gated boot migration |
+| `worker` | same image | — | Celery worker (`office_connect.worker.celery_app`); runs the nightly `pg_dump` backup task; carries the owner DSN; `restart: unless-stopped` |
+| `beat` | same image | — | Celery beat scheduler — **single instance only** (never scale; duplicate schedulers = duplicate backups); schedule state on volume `beatdata` |
+
+Celery uses the **Redis transport** (already-pinned `redis` package — no
+`celery[redis]` extra needed): broker on Redis logical **db 1**, results on
+**db 2**, so the app config cache (db 0) never collides.
 
 Port deconfliction with the coexisting Laragon `dev_pims` app: Laragon owns
 80/3306/8000/5173/6379; Office-Connect uses 8001/5432/6380 (+5174 for Vite later).
+
+**Image system dependencies** (`Dockerfile`, beyond `requirements.txt`):
+
+| Package | Source | Purpose |
+|---|---|---|
+| `postgresql-client-16` | PGDG apt (suite = base image codename) | `pg_dump`/`pg_restore`/`createdb`/`dropdb` for backup + restore drill. Client MAJOR must **match** the PG16 server (a newer client emits SET commands PG16 rejects on restore). Bump with the `db` image tag. |
 
 ## 4. Frontend stack — DEFERRED
 
@@ -64,6 +75,9 @@ exact versions and libraries **the session the frontend scaffold lands**.
 | Alembic CLI | Migrations (runs as `oc_dev` via `MIGRATION_DATABASE_URL`) |
 | `scripts/setup-windows.ps1` | One-time elevated prerequisites installer |
 | `scripts/smoke-test.ps1` | Build + health-check the stack |
+| `scripts/deploy.ps1` | Dev deploy wrapper (backup → guard → migrate → up); mirrors `docs/operations/deploy.md` (authoritative POSIX-sh prod runbook) |
+| `scripts/entrypoint.sh` | Container entrypoint; dev-only env-gated advisory-locked boot migration then execs the service command |
+| `office_connect.ops` CLI | `python -m office_connect.ops {backup,restore-drill,backup-and-drill}` + `office_connect.ops.deploy_guard` |
 | Git | Local commits per session; push + tag per phase (see `development-workflow.md` §4) |
 | Claude Code (AI assistant) | Pair-builds the project; session contract in `CLAUDE.md` |
 

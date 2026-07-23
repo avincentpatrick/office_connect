@@ -43,6 +43,10 @@ services:
         condition: service_healthy
     environment:
       APP_ENV: ${APP_ENV:-local}
+      # Dev-only convenience: advisory-locked `alembic upgrade head` at boot so a
+      # fresh `compose up` comes up read-write. Prod leaves this OFF (explicit
+      # migrate step); the entrypoint also refuses it when APP_ENV=production.
+      OC_MIGRATE_ON_BOOT: ${OC_MIGRATE_ON_BOOT:-true}
       # Runtime role (created by migration 0001) — least privilege.
       DATABASE_URL: postgresql+asyncpg://oc_app:${OC_APP_PASSWORD:-oc_app_pw}@db:5432/${POSTGRES_DB:-office_connect}
       # Owner role — Alembic + privileged test fixtures only.
@@ -59,18 +63,47 @@ services:
       - ./alembic.ini:/app/alembic.ini
       - ./pyproject.toml:/app/pyproject.toml
       - ./tests:/app/tests
+      - ./backups:/app/backups                 # dumps land on the host (3-2-1 local leg)
 
-  # Celery worker — enabled once background tasks (OCR, exports, backups) exist
-  # (Phase 0 Increment 2).
-  # worker:
-  #   build: .
-  #   depends_on:
-  #     redis:
-  #       condition: service_healthy
-  #   environment:
-  #     DATABASE_URL: postgresql+asyncpg://oc_app:${OC_APP_PASSWORD:-oc_app_pw}@db:5432/${POSTGRES_DB:-office_connect}
-  #     REDIS_URL: redis://redis:6379/0
-  #   command: celery -A office_connect.worker.celery_app worker --loglevel=info
+  # Celery worker — runs the nightly pg_dump backup task (Increment 2). Carries
+  # the OWNER DSN (oc_dev) so pg_dump/pg_restore can dump/restore the full DB.
+  # OC_MIGRATE_ON_BOOT is intentionally UNSET here — only the app migrates in dev.
+  worker:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DATABASE_URL: postgresql+asyncpg://oc_app:${OC_APP_PASSWORD:-oc_app_pw}@db:5432/${POSTGRES_DB:-office_connect}
+      MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-oc_dev}:${POSTGRES_PASSWORD:-oc_dev_pw}@db:5432/${POSTGRES_DB:-office_connect}
+      OC_APP_PASSWORD: ${OC_APP_PASSWORD:-oc_app_pw}
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A office_connect.worker.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - ./office_connect:/app/office_connect
+      - ./backups:/app/backups
+
+  # Celery beat — SINGLE scheduler instance. Never scale this service and never
+  # embed `--beat` on a scaled worker: two schedulers = duplicate backups.
+  # Only needs Redis (it enqueues tasks by name; the worker does the DB work).
+  beat:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      REDIS_URL: redis://redis:6379/0
+    command: celery -A office_connect.worker.celery_app beat --loglevel=info --schedule /var/run/celery/celerybeat-schedule
+    volumes:
+      - ./office_connect:/app/office_connect
+      - beatdata:/var/run/celery
 
 volumes:
   pgdata:
+  beatdata:

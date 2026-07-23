@@ -17,6 +17,15 @@ dist/
 # Local Docker data volume (if bind-mounted)
 pgdata/
 
+# Backups & DB artifacts — NEVER commit (full DB contents; real PII later).
+# The git remote is a disaster-recovery artifact; a dump here would leak data.
+backups/
+*.dump
+*.pgdump
+*.pgpass
+# Celery beat schedule state (regenerated at runtime)
+celerybeat-schedule*
+
 # OS / IDE
 .DS_Store
 Thumbs.db

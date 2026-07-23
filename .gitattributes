@@ -1,0 +1,7 @@
+# Shell scripts MUST stay LF — they run inside the Linux app container and the
+# production Ubuntu VM. A CRLF shebang breaks them ("bash: $'\r': command not
+# found"). Authored on Windows dev, so enforce LF explicitly.
+*.sh text eol=lf
+
+# Entrypoint / ops scripts are shell too.
+scripts/entrypoint.sh text eol=lf

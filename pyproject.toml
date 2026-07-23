@@ -10,6 +10,14 @@ type = "forbidden"
 source_modules = ["office_connect.core"]
 forbidden_modules = ["office_connect.modules"]
 
+# core is the pure foundation floor: it must not depend on the ops tooling or
+# the Celery worker (they import core, never the reverse).
+[[tool.importlinter.contracts]]
+name = "core never imports ops or worker"
+type = "forbidden"
+source_modules = ["office_connect.core"]
+forbidden_modules = ["office_connect.ops", "office_connect.worker"]
+
 [[tool.importlinter.contracts]]
 name = "modules are independent of each other"
 type = "independence"

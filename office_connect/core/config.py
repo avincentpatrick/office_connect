@@ -28,6 +28,22 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://redis:6379/0"
 
+    # --- Celery (Increment 2) ---
+    # Broker/result backends default to a DIFFERENT logical Redis DB than the
+    # app config cache (which uses redis_url db 0) so keyspaces never collide;
+    # worker.py derives db 1 (broker) / db 2 (results) from redis_url when these
+    # are unset. Override via CELERY_BROKER_URL / CELERY_RESULT_BACKEND.
+    celery_broker_url: str | None = None
+    celery_result_backend: str | None = None
+
+    # --- Backup / restore drill (Increment 2) ---
+    # In-container directory the nightly pg_dump writes to (bind-mounted to the
+    # host ./backups). Retention keeps the newest N dumps. The restore drill
+    # creates/drops a scratch DB whose name starts with this prefix.
+    backups_dir: str = "/app/backups"
+    backup_retention: int = 7
+    scratch_db_prefix: str = "office_connect_restore"
+
     session_secret: str = "dev-only-change-me"
 
     # --- Phase 0 Increment 3 placeholders (drivers land later) ---

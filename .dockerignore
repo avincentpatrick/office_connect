@@ -10,5 +10,8 @@ references
 docs
 node_modules
 pgdata
-scripts
+# Keep dev-only PowerShell scripts out of the image, but the container needs
+# the entrypoint (dev-only env-gated boot migration).
+scripts/*
+!scripts/entrypoint.sh
 README.md

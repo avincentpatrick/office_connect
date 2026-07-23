@@ -9,7 +9,7 @@ Nothing user-facing precedes it (`references/Phased_Rollout_Assessment.md` §3).
 |---|---|---|
 | Dev environment (Docker, ports, health) | 0 (pre-work) | ✅ done (session 1) |
 | Increment 1 — schema spine + conventions + tests | 0 | ✅ done (session 2) — 31 QA-gate tests green, adversarially reviewed |
-| Increment 2 — ops: deploy, backup/restore, Celery, explicit-step migrations, git remote | 0 / Stage A | not started |
+| Increment 2 — ops: deploy, backup/restore, Celery, explicit-step migrations, git remote | 0 / Stage A | ✅ done (session 4) — proven-restore drill green, worker/beat up, pytest 31/31 |
 | Increment 3 — integrations: storage/email drivers, bootstrap CLI, token contract | 0 / Stage A | not started |
 | Increment 4 — spine amendments (master plan §2 Stage A) | 0 / Stage A | not started |
 | Auth / RBAC / staff directory ("one login") | 2 / Stage B | not started |
@@ -145,13 +145,50 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
 - UTC↔Manila round-trip; naive datetimes rejected
 - `/api/v1/config` fail-safe OFF, never 500
 - `lint-imports` green
-- *(Increment 2 adds: one proven backup restore incl. `verify_chain()` on the
-  restored DB; explicit-step migration proven from a wiped volume)*
+- *(Increment 2 adds — all verified session 4:* one proven backup restore incl.
+  `verify_chain()` on the restored DB *(the drill seeds a real ≥3-link chain
+  first, so the check is never vacuously green)*; explicit-step migration proven
+  from a wiped volume; dev-convenience advisory-locked boot migration; Celery
+  worker/beat up with the nightly-backup task firing end-to-end; deploy guard
+  passes `--mode dev` and blocks `--mode release` on the `.devN` version.)*
 - *(Increment 4 adds: holiday-calendar working-day math; compliance-deadline
   seed loads; attachment pipeline round-trip incl. fail-closed download)*
 
 ## 7. Decisions log
 
+- **2026-07-23 (Increment 2 ops — session 4)** — backup/restore + Celery +
+  explicit-step migrations built and verified. Key decisions:
+  - **pg client pinned to major 16** (PGDG apt, base-codename-derived) to MATCH
+    the PG16 server — a *newer* pg_dump (17) emits `SET transaction_timeout`
+    which a PG16 server rejects on restore, so "client newer than server" is
+    NOT safe for the dump→restore round-trip. Bump the `db` image tag and the
+    client together.
+  - **Backups + scratch-DB create/drop run as `oc_dev`** (owner/superuser via
+    `MIGRATION_DATABASE_URL`); `oc_app` is SELECT-only with no `CREATEDB`.
+  - **The restore drill seeds a real audited chain first** (insert+update+
+    soft_delete via `OCSession`) so `verify_chain()` walks ≥3 real links — a
+    freshly-migrated DB's chain is empty and would pass vacuously. Never seeds
+    when the chain is non-empty or `APP_ENV=production`.
+  - **`swap_database` must render with `hide_password=False`** — SQLAlchemy's
+    `str(URL)` masks the password as `***`, which broke asyncpg auth on the
+    scratch-DB URL (the CLI tools were unaffected as `libpq_env` reads the raw
+    `url.password`).
+  - **New `office_connect/ops/` package** (backup, restore drill, deploy guard,
+    dsn); a new import-linter contract keeps `core` from importing `ops`/
+    `worker` (lint-imports now **3/3**).
+  - **Celery broker/results on Redis db 1/2** (app config cache stays on db 0);
+    the backup task is pure-subprocess (no async loop in the worker). **Beat is
+    a dedicated single-replica service** — never `--scale beat`.
+  - **Boot migration demoted to a dev-only, env-gated convenience**
+    (`OC_MIGRATE_ON_BOOT`, default OFF) in a container **entrypoint** (once per
+    container, not per uvicorn worker), advisory-locked; hard-refused when
+    `APP_ENV=production`. Prod runs the explicit `alembic upgrade head` step.
+  - **Deploy guard** = cross-platform Python in-container (`--mode dev|release`);
+    git-tag check stays host-side; runbooks in `docs/operations/` are POSIX-sh
+    authoritative (prod = Ubuntu VM), `scripts/deploy.ps1` is the dev wrapper.
+  - **Private git remote = GitHub private**; off-box backup target = second/
+    external disk (host-side copy step, documented). Remote is *provisioned*
+    now; first push fires at the Phase 0 gate (push-per-phase).
 - **2026-07-22** — 9 standing dev rules issued; naming = prefixed **plural**;
   soft deletes on all business tables (append-only exception); commit per
   session / push per phase; PK = BIGINT identity (no UUIDs); `*_by` columns
