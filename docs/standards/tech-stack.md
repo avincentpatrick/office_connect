@@ -30,6 +30,9 @@ the same session** (session-end checklist step 3).
 | pydantic-settings | 2.7.1 | `.env`-driven typed settings |
 | python-dotenv | 1.0.1 | `.env` loading |
 | httpx | 0.28.1 | HTTP client; also drives ASGI tests |
+| google-api-python-client | 2.156.0 | Google Drive storage driver + Gmail email driver (Increment 3); pure-Python |
+| google-auth | 2.37.0 | Service-account credentials for the Google drivers |
+| google-auth-httplib2 | 0.2.0 | httplib2 transport the Google API client uses |
 | pytest | 8.3.4 | Test runner (QA gates) |
 | pytest-asyncio | 0.24.0 | Async test support |
 | asgi-lifespan | 2.1.0 | Runs FastAPI lifespan under httpx `ASGITransport` in tests |
@@ -77,7 +80,7 @@ exact versions and libraries **the session the frontend scaffold lands**.
 | `scripts/smoke-test.ps1` | Build + health-check the stack |
 | `scripts/deploy.ps1` | Dev deploy wrapper (backup → guard → migrate → up); mirrors `docs/operations/deploy.md` (authoritative POSIX-sh prod runbook) |
 | `scripts/entrypoint.sh` | Container entrypoint; dev-only env-gated advisory-locked boot migration then execs the service command |
-| `office_connect.ops` CLI | `python -m office_connect.ops {backup,restore-drill,backup-and-drill}` + `office_connect.ops.deploy_guard` |
+| `office_connect.ops` CLI | `python -m office_connect.ops {backup,restore-drill,backup-and-drill}` + `office_connect.ops.deploy_guard` + `office_connect.ops.bootstrap {init,create-admin,load-fixtures,send-test-email}` (Increment 3) |
 | Git | Local commits per session; push + tag per phase (see `development-workflow.md` §4) |
 | Claude Code (AI assistant) | Pair-builds the project; session contract in `CLAUDE.md` |
 
@@ -85,8 +88,10 @@ exact versions and libraries **the session the frontend scaffold lands**.
 
 | Service | Role | Status |
 |---|---|---|
-| Google Drive / Docs API | Storage driver + template assembly (plan S-5) | Phase 0 Increment 3 |
-| SMTP / Gmail API | Two-driver email abstraction | Phase 0 Increment 3 |
+| Google Drive API | Storage driver (Shared-Drive target; local volume is the prod default) | **Built** Increment 3 (`core/storage/gdrive.py`) |
+| SMTP | Email driver — the on-prem default transport (stdlib `smtplib`) | **Built** Increment 3 (`core/email/smtp.py`) |
+| Gmail API | Alternate email driver (Workspace domain-wide delegation) | **Built** Increment 3 (`core/email/gmail.py`) |
+| Google Docs API | Template assembly (plan S-5) | Deferred to the template→PDF service |
 | Hugging Face Space | Legacy CSS-IS host until its migration (Phases 1/8) | External, unchanged |
 
 ## 7. Production substrate (post-development)

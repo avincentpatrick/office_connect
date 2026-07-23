@@ -10,7 +10,7 @@ Nothing user-facing precedes it (`references/Phased_Rollout_Assessment.md` §3).
 | Dev environment (Docker, ports, health) | 0 (pre-work) | ✅ done (session 1) |
 | Increment 1 — schema spine + conventions + tests | 0 | ✅ done (session 2) — 31 QA-gate tests green, adversarially reviewed |
 | Increment 2 — ops: deploy, backup/restore, Celery, explicit-step migrations, git remote | 0 / Stage A | ✅ done (session 4) — proven-restore drill green, worker/beat up, pytest 31/31 |
-| Increment 3 — integrations: storage/email drivers, bootstrap CLI, token contract | 0 / Stage A | not started |
+| Increment 3 — integrations: storage/email drivers, bootstrap CLI, token contract | 0 / Stage A | ✅ done (session 5) — pytest 68/68; local storage round-trip, email drivers + outbox stub, bootstrap CLI (prod-refusing), `/api/v1/config` tokens |
 | Increment 4 — spine amendments (master plan §2 Stage A) | 0 / Stage A | not started |
 | Auth / RBAC / staff directory ("one login") | 2 / Stage B | not started |
 
@@ -151,11 +151,64 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
   from a wiped volume; dev-convenience advisory-locked boot migration; Celery
   worker/beat up with the nightly-backup task firing end-to-end; deploy guard
   passes `--mode dev` and blocks `--mode release` on the `.devN` version.)*
+- *(Increment 3 adds — all verified session 5:* local-volume storage
+  round-trips a file (content-addressed, atomic write, dedup) + factory driver
+  selection; email drivers (SMTP/Gmail/log) send/build correctly + auto-select;
+  notification outbox stub routes through the selected driver; `send-test-email`
+  path works (logs in dev); bootstrap CLI `init`/`create-admin`/`load-fixtures`/
+  `send-test-email` — idempotent, `load-fixtures` **refused in production**;
+  `create-admin` record lands in the non-public tenant `settings` bag and is
+  **never** served by `/api/v1/config`; `/api/v1/config` serves the `tokens`
+  contract (neutral defaults + branding merge, present even under the DB
+  fail-safe); WCAG-AA contrast on the default palette; migration 0002 idempotent
+  + reversible.)*
 - *(Increment 4 adds: holiday-calendar working-day math; compliance-deadline
   seed loads; attachment pipeline round-trip incl. fail-closed download)*
 
 ## 7. Decisions log
 
+- **2026-07-23 (Increment 3 integrations + bootstrap — session 5)** — storage/
+  email drivers, notification outbox stub, bootstrap CLI, and the design-token
+  contract built and verified (pytest 68/68, lint-imports 3/3). Key decisions
+  (user-confirmed at session start):
+  - **Storage default = local content-addressed volume** (on-prem posture,
+    master plan §4 #3 resolved). One `StorageDriver` interface
+    (`core/storage/`); the **Google Drive** driver is fully implemented and kept
+    for tenants that want it, with **Shared-Drive verification** (refuses a My
+    Drive folder — service-account uploads there are unrecoverable). `key` = the
+    content SHA-256; blob `delete` is physical and reserved for the Increment-4
+    attachments/retention layer, never a business row.
+  - **Email = two real drivers + a dev fail-safe.** SMTP (stdlib `smtplib`, the
+    default transport) and Gmail API (domain-wide delegation) behind an
+    `EmailDriver` interface; a **`log`** driver records instead of sending and is
+    **auto-selected when no SMTP is configured**, so a fresh dev stack exercises
+    the path without a mail server. Drivers sit behind a **notification outbox
+    stub** (`core/notifications/`) — the durable `core_notifications` table +
+    Celery retry + notification center are **Increment 4**; the caller-facing
+    seam signature won't change (Rule 10 — one notifications service, no
+    duplication).
+  - **Google libraries added now** (`google-api-python-client`, `google-auth`,
+    `google-auth-httplib2`) — pure-Python, imported **lazily** inside the drivers
+    so importing the modules needs neither the packages nor credentials; the
+    local + SMTP defaults never pay for Google. Google drivers are unit-tested
+    with the client mocked (no real creds in dev).
+  - **Bootstrap "System Admin" deferred to Stage B.** No `core_users` table
+    exists yet (the `core_users`-vs-`core_staff` identity split is a Stage B
+    decision, §5), so `create-admin` **records the designated admin's email/name**
+    into a new **non-public** `core_tenant_configs.settings` JSONB (migration
+    0002) for Stage B to promote — it does not create a login. `settings` is
+    **never** served by `/api/v1/config` (branding stays the only public bag), so
+    the admin email cannot leak to the unauthenticated endpoint. Bootstrap DB
+    writes go through the least-privilege `oc_app` role via `OCSession`, so
+    they're audited like ordinary app writes; `load-fixtures` hard-refuses
+    `APP_ENV=production`.
+  - **Design tokens = concrete WCAG-AA neutral defaults + branding merge.**
+    `NEUTRAL_TOKENS` (`core/ui/tokens.py`) is the single source of truth, served
+    under `tokens` in `/api/v1/config` and always present (even the DB fail-safe
+    returns the full neutral set). Tenant `branding.tokens` overrides are
+    deep-merged; unknown keys ignored. This fills the *values* half of
+    ui-standards §9 early; the Tailwind/component mapping (§7) stays deferred to
+    the first React surface.
 - **2026-07-23 (Increment 2 ops — session 4)** — backup/restore + Celery +
   explicit-step migrations built and verified. Key decisions:
   - **pg client pinned to major 16** (PGDG apt, base-codename-derived) to MATCH

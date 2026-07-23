@@ -12,6 +12,29 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Phase 0 Increment 3 — integrations + bootstrap** (2026-07-23): the outward-
+  facing seams the later modules consume. **Storage driver abstraction**
+  (`core/storage/`): a content-addressed interface with a **local-volume driver**
+  (the on-prem production default — atomic writes, SHA-256 dedup, bind-mounted
+  `./storage`) and a **Google Drive driver** (Shared-Drive-verified). **Email
+  driver abstraction** (`core/email/`): **SMTP** (stdlib, the default transport),
+  **Gmail API**, and a **log** driver (dev fail-safe that records instead of
+  sending), auto-selected by config, behind a **notification outbox stub**
+  (`core/notifications/`, core-service #4 seam) with a **test-email path**.
+  **Design-token contract**: `GET /api/v1/config` now serves a **`tokens`** object
+  — WCAG-AA neutral defaults (palette, 4-px spacing scale, type scale) as the
+  single source of truth, with tenant `branding.tokens` overrides merged in;
+  present even under the DB fail-safe. **Bootstrap CLI**
+  (`python -m office_connect.ops.bootstrap`): `init` (idempotent tenant + flag
+  setup), `create-admin` (records the designated System Admin into a **non-public**
+  tenant `settings` bag for Stage B to promote — no login yet, no user table
+  until Stage B), `load-fixtures` (synthetic dev activities, **refused in
+  production**), `send-test-email`. Migration 0002 adds the non-public
+  `core_tenant_configs.settings` JSONB (never exposed by `/api/v1/config`).
+  Verified end-to-end: local storage round-trips a file (host + container),
+  test email sends via the selected driver (logs in dev), bootstrap works and
+  refuses fixtures in prod, config serves tokens without leaking the admin;
+  **pytest 68/68, lint-imports 3/3**, migration idempotent + reversible.
 - **Phase 0 Increment 2 — ops** (2026-07-23): operability + recoverability for
   the foundation floor. Scheduled `pg_dump -Fc` backups (owner role, 3-2-1
   local leg in `./backups`, retention 7) plus a **proven-restore drill** that

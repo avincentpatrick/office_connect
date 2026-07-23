@@ -43,6 +43,18 @@ The named CSS custom-property categories. The backend serves tenant values via
 Status colors are **semantic and platform-wide** — a green chip means the same
 thing on every page of every module.
 
+> **Neutral default values filled — Increment 3 (2026-07-23).** The concrete
+> default values for every category above (a WCAG-AA palette, the 4-px spacing
+> scale, the type scale, radius/shadow) now live in code as the single source of
+> truth ([`office_connect/core/ui/tokens.py`](../../office_connect/core/ui/tokens.py),
+> `NEUTRAL_TOKENS`) and are served by `GET /api/v1/config` under a **`tokens`**
+> key (always present — a degraded/fail-safe config still returns the full
+> neutral set, so the UI is never token-less). Tenant overrides go in
+> `core_tenant_configs.branding.tokens` (same nested shape) and are deep-merged
+> over the defaults; unknown token names are ignored (fail-safe). `to_css_variables()`
+> flattens a token tree to `--oc-*` custom properties for the React/Tailwind
+> layer (§7). The default color pairs are AA-verified in `tests/test_tokens.py`.
+
 ## 3. Component inventory — LOCKED (names & behavior contracts; visuals deferred)
 
 No page may use a component outside this inventory; additions **amend this doc
@@ -107,7 +119,14 @@ the deferred choice.
 Each §3 component gets its visual spec (spacing, states, exact markup)
 appended here the session it is first implemented.
 
-## 9. Theming / multi-tenant branding — DEFERRED · *fill-trigger: tenant theming work (Phase 3)*
+## 9. Theming / multi-tenant branding — PARTIALLY FILLED (Increment 3) · *remaining fill-trigger: tenant theming UI (Phase 3)*
 
-How tenant `branding` JSON maps onto the token contract; per-tenant logo,
-name, brand color; fallback to the neutral Office-Connect defaults.
+**Filled (Increment 3):** the branding→token mapping and the neutral-defaults
+fallback are now concrete — tenant `branding.tokens` (nested, same shape as
+`NEUTRAL_TOKENS`) is deep-merged over the platform defaults by `build_tokens()`
+and served via `GET /api/v1/config` (§2 note). Unknown keys are ignored; a
+tenant that sets nothing gets the neutral Office-Connect defaults.
+
+**Still deferred (Phase 3, first React surface):** the tenant-facing theming UI
+(logo/name/brand-color editor + preview), the Tailwind config that renders the
+served tokens into a `:root` block (§7), and per-tenant asset (logo) storage.

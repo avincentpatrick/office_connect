@@ -46,8 +46,27 @@ class Settings(BaseSettings):
 
     session_secret: str = "dev-only-change-me"
 
-    # --- Phase 0 Increment 3 placeholders (drivers land later) ---
+    # --- Storage driver (Increment 3) ---
+    # local = content-addressed volume store (prod default, on-prem posture,
+    # master-plan §4 #3); gdrive = Google Drive (kept for tenants that want it).
+    storage_driver: str = "local"
+    # In-container dir the local driver writes to (bind-mounted to host ./storage).
+    storage_dir: str = "/app/storage"
+    # Google Drive target (a Shared Drive folder id); the driver verifies the
+    # target lives on a Shared Drive before uploading.
+    gdrive_folder_id: str | None = None
+
+    # --- Email driver (Increment 3) ---
+    # None = auto: 'smtp' when smtp_host is set, else 'log' (dev fail-safe that
+    # logs instead of sending). Explicit values: 'smtp' | 'gmail' | 'log'.
+    email_driver: str | None = None
+    # Gmail API delegated sender (domain-wide delegation); falls back to smtp_from.
+    gmail_sender: str | None = None
+
+    # --- Google service-account credentials (storage + email; Increment 3) ---
     google_credentials_path: str | None = None
+
+    # --- SMTP (Increment 3) ---
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_user: str | None = None

@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage A / Phase 0 Increment 3 (integrations + bootstrap).**
+> **Resume Office-Connect — Stage A / Phase 0 Increment 4 (spine amendments) — the Phase 0 QA gate.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,43 +10,86 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** Stage A (= Phase 0) — **Increments 1 ✅, 2 ✅**; Increments 3–4
-  remain. **Master Plan v1 adopted** (`docs/master-plan.md`).
-- **Last session:** #4 — 2026-07-23 — Increment 2 (ops): backup + proven-restore
-  drill (`verify_chain()` green), Celery worker/beat + nightly backup task,
-  explicit-step migrations (dev-only env-gated advisory-locked boot migration),
-  deploy guard, operations runbooks. Verified end-to-end (wiped-volume deploy,
-  drill, task via broker; **pytest 31/31, lint-imports 3/3**).
-- **Decisions this session:** git remote = **GitHub private**; off-box backup
-  target = **second/external disk**; pg client pinned to major 16; ops in a new
-  `office_connect/ops/` package.
+- **Phase:** Stage A (= Phase 0) — **Increments 1 ✅, 2 ✅, 3 ✅**; **Increment 4
+  is the last one — it closes Phase 0 (QA gate → first push + tag).** **Master
+  Plan v1 adopted** (`docs/master-plan.md`).
+- **Last session:** #5 — 2026-07-23 — Increment 3 (integrations + bootstrap):
+  storage driver abstraction (local-volume prod default + Shared-Drive-verified
+  Google Drive), email drivers (SMTP/Gmail/log) behind a notification outbox
+  stub + test-email path, bootstrap CLI (`init`/`create-admin`/`load-fixtures`/
+  `send-test-email`, prod-refusing; admin recorded to a non-public tenant
+  `settings` bag for Stage B), and the design-token contract served via
+  `/api/v1/config` (`tokens` = WCAG-AA neutral defaults + branding merge).
+  Migration 0002 (non-public `settings` JSONB). Verified end-to-end
+  (**pytest 68/68, lint-imports 3/3**; migration idempotent + reversible).
+- **Decisions this session:** storage default = **local content-addressed
+  volume** (master plan §4 #3 resolved); **Google Drive + Gmail fully built now**
+  (lazy imports; mocked in tests); **create-admin deferred to Stage B** (records
+  intent in non-public `settings`, no user table yet); **tokens = concrete
+  WCAG-AA neutral defaults + `branding.tokens` merge** (fills ui-standards §9
+  values early). See `docs/modules/foundation.md` §7.
 - **Blockers / waiting on user:** none. Private git remote **provisioned**
   (`origin` → `github.com/avincentpatrick/office_connect`, `git ls-remote`
-  verified — **no push yet**; first push fires at the Phase 0 / Inc-4 gate).
+  verified — **still no push**; first push fires when Increment 4 passes the
+  Phase 0 QA gate).
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
 Context: Office-Connect Master Plan v1 is adopted (docs/master-plan.md); Phase 0
-/ Stage A Increments 1 (schema spine) and 2 (ops) are complete — backup+restore
-drill, Celery worker/beat, explicit-step migrations, deploy guard all verified
-(pytest 31/31, lint-imports 3/3). Read CLAUDE.md, then master-plan.md §2 Stage A,
-then docs/modules/foundation.md §3 (Increment 3).
-Task: Build Stage A Increment 3 (integrations + bootstrap): (1) storage driver
-abstraction (local-volume driver as the prod default per master-plan §4 #3;
-Google Drive driver kept for tenants that want it) behind a clean interface,
-(2) SMTP + Gmail two-driver email abstraction wired behind a notification
-outbox stub + a test-email path, (3) a bootstrap CLI that creates the first
-System Admin and refuses fixtures in prod + synthetic fixtures, (4) the
-design-token contract served via GET /api/v1/config (ui-standards §2).
-Files: office_connect/core/ (storage/, email/, config endpoint), a new
-bootstrap CLI (office_connect/ops/ or a core cli), docs/modules/foundation.md.
-Acceptance: local-volume storage round-trips a file; test email sends via the
-selected driver (or logs in dev); bootstrap creates an admin and refuses in
-prod; /api/v1/config returns the token contract; pytest green; lint-imports 3/3.
-Open questions for the user: git remote is wired (origin ->
-github.com/avincentpatrick/office_connect; push deferred to the Inc-4 gate).
-Confirm storage default = local volume for prod.
+/ Stage A Increments 1 (schema spine), 2 (ops), and 3 (integrations + bootstrap)
+are complete — storage/email drivers, notification outbox stub, bootstrap CLI,
+and the /api/v1/config token contract all verified (pytest 68/68, lint-imports
+3/3; migration head at 0002). Read CLAUDE.md, then master-plan.md §2 Stage A
+(Increment 4) + §1.1 core-services registry, then docs/modules/foundation.md §3
+(Increment 4) + §4. Increment 4 is the LAST Phase-0 increment — it ends at the
+Phase 0 QA gate (development-workflow.md §6): promote CHANGELOG [Unreleased] to
+0.1.0, bump APP_VERSION, tag phase-0-complete, and do the FIRST push to the
+provisioned GitHub remote.
+Task: Build Stage A Increment 4 (spine amendments) — new Alembic migration(s) in
+the single chain, each table with its full mandatory column set (database-
+standards §6) and append-only tables REVOKE UPDATE from oc_app (§13):
+  (1) core_activities hardening + core_activity_tags (GAD/CCET/DRR/UHC taxonomies
+      as configurable rows, never boolean columns).
+  (2) core_pap_codes + core_object_codes skeletons (per-FY PREXC tree, effective-
+      dated, UACS never-reuse/deactivate semantics; travel object = 5-02-01-010-00).
+  (3) core_holidays — PH holidays + work-suspension calendar; the single working-
+      day math engine for every deadline (implement + unit-test the WD math).
+  (4) core_compliance_deadlines — the statutory calendar as effective-dated,
+      tenant-overridable data (seed from master-plan §3.4).
+  (5) core_attachments service — upload pipeline (stream cap, magic-byte allowlist
+      JPEG/PNG/WebP/PDF, SHA-256, ClamAV fail-closed, Pillow re-encode/EXIF-strip),
+      auth-checked streaming downloads only; built on the Increment-3 StorageDriver
+      (local-volume). Add ClamAV to the compose stack.
+  (6) Notification outbox TABLES + in-app notification-center schema — replace the
+      Increment-3 core/notifications stub's body with persist-to-outbox + after-
+      commit dispatch + Celery retry (caller-facing signature unchanged).
+  (7) Report-lineage table (core_report_lineages; Blueprint Day-1 #17).
+  (8) Seed framework: idempotent, environment-aware; named owner + cadence for
+      external datasets (PSGC quarterly, holiday proclamations annually, GRDS/
+      threshold revisions).
+  (9) docs/compliance/ (PIA template, processing register, breach runbook,
+      retention schedule) + expand docs/operations/ scaffolds.
+  (10) API-versioning + observability standards: structured JSON logs w/ request
+       IDs; self-hosted error tracker in compose.
+Files: alembic/versions/0003_*.py (+ more as needed), office_connect/core/
+(models/, attachments service, notifications outbox, holiday/deadline services,
+report lineage), docker-compose.yml (ClamAV), docs/modules/foundation.md,
+docs/standards/*, docs/compliance/ (new), docs/operations/.
+Acceptance: alembic upgrade head idempotent (x2) + clean downgrade; every table
+carries its mandatory column set (append-only carry none of updated_*/deleted_*
+and REVOKE UPDATE holds); holiday-calendar working-day math correct across a
+holiday/weekend/suspension; compliance-deadline seed loads; attachment pipeline
+round-trip incl. fail-closed download (infected/oversized/bad-type rejected);
+notification outbox persists + dispatches with retry; pytest green; lint-imports
+3/3. THEN the Phase 0 QA gate: manual test guide exists; CHANGELOG promoted to
+0.1.0 + APP_VERSION bumped; tag phase-0-complete; push branch + tags to origin;
+fill the phase-tracker Pushed cell.
+Open questions for the user: confirm the Phase-0 gate push is authorized once QA
+is green (first push to GitHub). Scope check: is the full attachments+ClamAV
+pipeline in Increment 4, or split (schema + service now, ClamAV hardening at the
+gate)? Confirm self-hosted error tracker choice (e.g. GlitchTip) before adding to
+compose.
 ```
 
 ---
@@ -57,7 +100,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
-| A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations, spine amendments | in progress | 1–4 | pending | — |
+| A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments | in progress | 1–5 | pending (Inc 4) | — |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | not started | — | — | — |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
@@ -80,6 +123,62 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 5 — 2026-07-23 — Stage A Increment 3 (integrations + bootstrap) ✅
+
+- **Phase(s):** 0 / Stage A · **Commit:** `session(2026-07-23)` — local
+- **Done:**
+  - **Storage driver abstraction** (`office_connect/core/storage/`):
+    `StorageDriver` ABC (content-addressed by SHA-256; `save`/`open`/`read`/
+    `exists`/`delete`), **`LocalVolumeStorageDriver`** (the prod default —
+    sharded `ab/cd/<sha256>` store, atomic `.partial`→`replace` + fsync,
+    dedup; bind-mounted `./storage`→`/app/storage`), **`GoogleDriveStorageDriver`**
+    (lazy client, **Shared-Drive verification** — refuses My Drive folders),
+    `get_storage_driver()` factory on `STORAGE_DRIVER`.
+  - **Email drivers** (`core/email/`): `EmailDriver` ABC + shared MIME builder;
+    **SMTP** (stdlib `smtplib`, STARTTLS, the default transport), **Gmail API**
+    (lazy client, domain-wide delegation, base64url send), **log** (dev
+    fail-safe — records, doesn't send); `get_email_driver()` auto-selects
+    `smtp` if `SMTP_HOST` set else `log`.
+  - **Notification outbox stub** (`core/notifications/`, core-service #4 seam):
+    `send_notification()` routes email events through the selected driver now;
+    `send_test_email()` is the Increment-3 test-email path. Durable outbox
+    table + retry + notification center flagged for Increment 4 (signature
+    stable — Rule 10, no duplication).
+  - **Design-token contract** (`core/ui/tokens.py`): `NEUTRAL_TOKENS` (WCAG-AA
+    palette + 4-px spacing + type scale + shape) as the single source of truth,
+    `build_tokens(branding)` deep-merges `branding.tokens` overrides (unknown
+    keys ignored), `to_css_variables()` → `--oc-*`. Served under `tokens` in
+    `GET /api/v1/config` — always present (neutral even under the DB fail-safe).
+  - **Bootstrap CLI** (`office_connect/ops/bootstrap.py`): `init` (idempotent
+    tenant + module flags), `create-admin` (records admin into the non-public
+    `core_tenant_configs.settings` bag for Stage B; not a login), `load-fixtures`
+    (synthetic activities, **refused in production**), `send-test-email`. DB
+    writes via `oc_app`/`OCSession` (audited); async-from-sync per restore_drill.
+  - **Migration 0002**: non-public `core_tenant_configs.settings` JSONB (never
+    served by `/api/v1/config`); `settings` mapped on `TenantConfig`.
+  - Deps: `google-api-python-client` 2.156.0 + `google-auth` 2.37.0 +
+    `google-auth-httplib2` 0.2.0 (pure-Python, lazy-imported); storage bind
+    mount + `STORAGE_DRIVER`/`STORAGE_DIR` env on app+worker; `.gitignore`
+    `storage/`; `.env.example` driver settings.
+- **Verified:** **pytest 68/68** (was 31; +37 across storage/email/notifications/
+  tokens/config/bootstrap); **lint-imports 3/3**; migration 0002 idempotent (x2)
+  + downgrade→re-upgrade clean; bootstrap CLI init/create-admin/load-fixtures/
+  send-test-email all work end-to-end; `load-fixtures` refuses `APP_ENV=production`;
+  local storage round-trips a real file (host `./storage` + container);
+  `/api/v1/config` serves `tokens` and does **not** leak `bootstrap_admin`/the
+  admin email; `/health` healthy; Laragon `dev_pims` untouched.
+- **Decisions:** see `docs/modules/foundation.md` §7 (local-volume storage
+  default; Google drivers fully built + lazy; create-admin deferred to Stage B
+  via non-public `settings`; tokens = neutral defaults + branding merge).
+- **Docs updated:** foundation.md (§1 status, §6 gates, §7 decisions), ui-standards.md
+  (§2 note + §9 partial-fill), tech-stack.md (google deps + drivers + bootstrap
+  CLI), database-standards.md (§11 `settings` bag), master-plan.md (§4 #3
+  resolved), CHANGELOG.md, this file.
+- **Git remote:** unchanged — provisioned, **still no push**; first push fires
+  when Increment 4 passes the Phase 0 QA gate (push-per-phase).
+- **Next Session Prompt (archived):** Stage A Increment 4 (spine amendments) —
+  full text in the top block as of this session.
 
 ### Session 4 — 2026-07-23 — Stage A Increment 2 (ops) ✅
 

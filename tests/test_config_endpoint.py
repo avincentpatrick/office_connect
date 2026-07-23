@@ -7,6 +7,7 @@ from sqlalchemy import text
 import office_connect.core.api.config as config_api
 from office_connect import APP_VERSION
 from office_connect.core.config import get_settings
+from office_connect.core.ui.tokens import NEUTRAL_TOKENS
 
 SEED_FLAG_KEYS = ("module.reimbursement", "module.css_is", "module.dmwis")
 
@@ -111,3 +112,53 @@ async def test_db_failure_fail_safe_off(client, monkeypatch):
     body = response.json()
     assert body["features"] == {}
     assert body["tenant"] == config_api._NEUTRAL_TENANT
+
+
+async def test_tokens_served_with_defaults(client):
+    """The design-token contract (ui-standards §2) rides on /api/v1/config."""
+    body = (await client.get("/api/v1/config")).json()
+    tokens = body["tokens"]
+    assert tokens["color"]["brand"] == NEUTRAL_TOKENS["color"]["brand"]
+    assert set(tokens["status"]) == {"done", "warn", "blocked", "waiting"}
+    assert tokens["space"]["1"] == "4px"
+
+
+async def test_tokens_present_even_on_db_failure(client, monkeypatch):
+    """A degraded config still serves usable neutral tokens (never token-less)."""
+
+    def _boom():
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(config_api, "SessionLocal", _boom)
+    body = (await client.get("/api/v1/config")).json()
+    assert body["tokens"]["color"]["brand"] == NEUTRAL_TOKENS["color"]["brand"]
+    assert "waiting" in body["tokens"]["status"]
+
+
+async def test_branding_overrides_tokens(client, owner_session):
+    """Tenant branding.tokens overrides the neutral brand token."""
+    try:
+        await owner_session.execute(
+            text(
+                "UPDATE core_tenant_configs "
+                "SET branding = '{\"tokens\": {\"color\": {\"brand\": \"#abcdef\"}}}'::jsonb "
+                "WHERE id = (SELECT id FROM core_tenant_configs ORDER BY id LIMIT 1)"
+            )
+        )
+        await owner_session.commit()
+        r = aioredis.from_url(get_settings().redis_url, decode_responses=True)
+        await r.delete(config_api.CACHE_KEY)
+        await r.aclose()
+
+        body = (await client.get("/api/v1/config")).json()
+        assert body["tokens"]["color"]["brand"] == "#abcdef"
+        # Untouched tokens still fall back to neutral defaults.
+        assert body["tokens"]["color"]["bg"] == NEUTRAL_TOKENS["color"]["bg"]
+    finally:
+        await owner_session.execute(
+            text(
+                "UPDATE core_tenant_configs SET branding = '{}'::jsonb "
+                "WHERE id = (SELECT id FROM core_tenant_configs ORDER BY id LIMIT 1)"
+            )
+        )
+        await owner_session.commit()

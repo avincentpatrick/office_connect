@@ -55,6 +55,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       BASE_URL: ${BASE_URL:-http://localhost:8001}
       SESSION_SECRET: ${SESSION_SECRET:-dev-only-change-me}
+      # Storage driver (Increment 3): local content-addressed volume store.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_DIR: /app/storage
     ports:
       - "8001:8001"          # host 8001 -> avoids Laravel `php artisan serve` (8000)
     volumes:
@@ -64,6 +67,7 @@ services:
       - ./pyproject.toml:/app/pyproject.toml
       - ./tests:/app/tests
       - ./backups:/app/backups                 # dumps land on the host (3-2-1 local leg)
+      - ./storage:/app/storage                 # local-volume attachments store
 
   # Celery worker — runs the nightly pg_dump backup task (Increment 2). Carries
   # the OWNER DSN (oc_dev) so pg_dump/pg_restore can dump/restore the full DB.
@@ -82,10 +86,13 @@ services:
       MIGRATION_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-oc_dev}:${POSTGRES_PASSWORD:-oc_dev_pw}@db:5432/${POSTGRES_DB:-office_connect}
       OC_APP_PASSWORD: ${OC_APP_PASSWORD:-oc_app_pw}
       REDIS_URL: redis://redis:6379/0
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_DIR: /app/storage
     command: celery -A office_connect.worker.celery_app worker --loglevel=info --concurrency=2
     volumes:
       - ./office_connect:/app/office_connect
       - ./backups:/app/backups
+      - ./storage:/app/storage
 
   # Celery beat — SINGLE scheduler instance. Never scale this service and never
   # embed `--beat` on a scaled worker: two schedulers = duplicate backups.

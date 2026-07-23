@@ -196,7 +196,11 @@ override, every config or flag change, every soft delete. The app DB role has
 ## 11. JSONB
 
 - **Allowed:** per-row `custom` extension bags; computed `totals` snapshots;
-  rule grammars (`required_rule`, `auto_checks`); audit `old_data`/`new_data`.
+  rule grammars (`required_rule`, `auto_checks`); audit `old_data`/`new_data`;
+  a **non-public tenant `settings`** config bag (`core_tenant_configs.settings`,
+  added 2026-07-23) — distinct from `branding`: `branding` is served publicly by
+  `GET /api/v1/config`, `settings` is **never** exposed there (holds e.g. the
+  bootstrap-admin record). Keep any personal/sensitive value out of `branding`.
 - **Forbidden:** anything other modules must join on, filter by, or FK to —
   spine keys are always real columns.
 - GIN-index JSONB columns that get queried.

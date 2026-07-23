@@ -23,6 +23,10 @@ backups/
 *.dump
 *.pgdump
 *.pgpass
+# Local-volume storage VOLUME at the repo root (attachments; real uploads/PII
+# later) — same reasoning. Anchored with a leading slash so it never matches the
+# source package office_connect/core/storage/.
+/storage/
 # Celery beat schedule state (regenerated at runtime)
 celerybeat-schedule*
 

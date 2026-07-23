@@ -479,7 +479,7 @@ calendar; surfaced as countdown cards on Government Outputs with amber/red state
 |---|---|---|---|
 | 1 | R-0 set: liquidation clock basis (calendar vs WD), signatory chains per kind, cert-C wet-sign capture, directory seed detail, DTE cluster/HUC seed list (reframed: 3-cluster + PSGC map) | per research defaults; confirm with FMS/COA | R-0 |
 | 2 | Off-box backup destination; git remote host | remote = GitHub private or Gitea on non-prod hardware; backups = second machine + offline disk | Stage A |
-| 3 | Attachment storage: Google Drive vs local volume | local volume for prod (on-prem posture); Drive driver kept for tenants that want it | Stage A / deployment |
+| 3 | Attachment storage: Google Drive vs local volume | **RESOLVED (Stage A / Increment 3):** local content-addressed volume is the prod default; the Shared-Drive-verified Google Drive driver is built and kept for tenants that want it (`core/storage/`). Runtime choice via `STORAGE_DRIVER`. | ~~Stage A / deployment~~ ✅ |
 | 4 | Audit payload policy for SPI values | log IDs + changed-field names only for SPI-bearing tables | Stage B |
 | 5 | E-signature validity per artifact | wet-ink remains the record; system PDF = workflow artifact; revisit with COA auditor + PNPKI later | Stage C+ |
 | 6 | "MRR" meaning | ISO 9001 §9.3 Management Review Report | confirm with bureau, Stage F |

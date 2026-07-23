@@ -14,6 +14,7 @@ from sqlalchemy import select
 from office_connect import APP_VERSION
 from office_connect.core.db import SessionLocal
 from office_connect.core.models import FeatureFlag, TenantConfig
+from office_connect.core.ui.tokens import build_tokens
 
 router = APIRouter()
 
@@ -74,6 +75,10 @@ async def get_config(request: Request):
     payload = {
         "tenant": tenant,
         "branding": branding,
+        # Design-token contract (ui-standards §2): neutral defaults + tenant
+        # branding overrides. Always present — even the DB fail-safe (branding
+        # {}) yields the full neutral token set, so the UI is never token-less.
+        "tokens": build_tokens(branding),
         "features": features,
         "version": APP_VERSION,
     }

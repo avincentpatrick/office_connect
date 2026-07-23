@@ -17,7 +17,13 @@ class TenantConfig(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     # Display timezone only — storage is always UTC (database-standards.md §9).
     timezone: Mapped[str] = mapped_column(server_default="Asia/Manila")
     # Branding values feed the UI design-token contract (ui-standards.md §2)
-    # via GET /api/v1/config.
+    # via GET /api/v1/config. Token overrides live under branding["tokens"].
     branding: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
+    # Non-public tenant configuration bag — NEVER served by /api/v1/config.
+    # Holds the bootstrap-admin record (Increment 3) and future non-branding
+    # config. Kept off the unauthenticated config endpoint on purpose.
+    settings: Mapped[dict[str, Any]] = mapped_column(
         JSONB, server_default=text("'{}'::jsonb")
     )
