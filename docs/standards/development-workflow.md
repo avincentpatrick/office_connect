@@ -32,17 +32,26 @@ Run in order, every session, no exceptions:
    schema-convention decision → `database-standards.md`; UI decision →
    `ui-standards.md` (same session, not later).
 4. **Update `CHANGELOG.md`** — add user-visible changes under `[Unreleased]`.
-5. **Write the Next Session Prompt** — into the top block of `PROGRESS.md`,
-   in the §3 format. The outgoing session also archives a copy in its own
-   session-log entry.
+5. **Write the Next Session Prompt** — refresh **both** the one-line
+   **▶ RESUME** and the detailed **▶ NEXT SESSION PROMPT** brief at the top of
+   `PROGRESS.md` (§3 two-tier format). The outgoing session also archives the
+   brief in its own session-log entry.
 6. **Local git commit** — `git add -A` then
    `git commit -m "session(YYYY-MM-DD): <one-line summary>"`. **Local only.**
 7. **Phase gate (only if a phase's QA gate passed this session)** — see §6.
 
 ## 3. Next Session Prompt standard
 
-A fenced text block written to be **pasted verbatim** at the start of the next
-session. It must be self-contained:
+The handoff has **two tiers** at the top of `PROGRESS.md`, both refreshed every
+session end:
+
+1. **▶ RESUME** — a **one-line** pointer the user actually copies, naming the
+   next unit of work (e.g. *"Resume Office-Connect — Stage A Increment 3"*). The
+   assistant expands it by reading Current Status + the brief below + the cited
+   module docs (the start-of-session ritual), then confirms before starting.
+2. **▶ NEXT SESSION PROMPT** — the **detailed, self-contained brief** the
+   assistant expands the one-liner into. Keep it complete so the resume works
+   even without the one-liner:
 
 ```text
 Context: <1–2 lines — where the project stands>
@@ -52,8 +61,8 @@ Acceptance: <how to know the task is done — command(s) + expected result>
 Open questions for the user: <decisions needed, or "none">
 ```
 
-It lives in the **NEXT SESSION PROMPT** block near the top of `PROGRESS.md`
-(overwritten each session) and is archived in each session-log entry.
+Both tiers live near the top of `PROGRESS.md` (overwritten each session); the
+detailed brief is archived in each session-log entry.
 
 ## 4. Git strategy
 

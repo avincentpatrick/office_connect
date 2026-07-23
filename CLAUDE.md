@@ -15,12 +15,13 @@ module: **Local Travel Reimbursement**, built on the Phase 0–2 foundation floo
 *Next Session Prompt* say exactly where to resume. Never start work without
 them; confirm the prompt with the user.
 
-**▶ To resume (copy-paste handoff):** open [`PROGRESS.md`](PROGRESS.md) and copy
-the fenced ` ```text ` block under **▶ NEXT SESSION PROMPT** (very top of the
-file) — paste it as your first message to Claude. That block is the **single,
-always-current handoff**: it is rewritten at the end of every session (standing
-rule 3 / session-end checklist step 5), so it is the only thing you ever need to
-copy to start the next session. **Every session must end by refreshing it** —
+**▶ To resume (one line):** open [`PROGRESS.md`](PROGRESS.md) and copy the single
+line under **▶ RESUME** at the top — e.g. *"Resume Office-Connect — Stage A
+Increment 3"* — and paste it as your first message. That is all you paste.
+Claude then reads *Current Status* + the **▶ NEXT SESSION PROMPT** brief (rule 3;
+the detailed, self-contained task/acceptance/files spec) plus the cited module
+docs, expands the one line into the full task, and confirms before starting.
+**Every session must end by refreshing both the RESUME line and the brief** —
 that is the guaranteed hand-off, not an optional courtesy.
 
 ## Doc map & precedence
@@ -86,7 +87,7 @@ phase's QA gate passes. No remote yet — provision before Phase 0 closes.
 2. Update touched `docs/modules/*.md`
 3. Update standards/tech-stack docs if triggered
 4. Update `CHANGELOG.md` `[Unreleased]`
-5. Write the Next Session Prompt (top of `PROGRESS.md`)
+5. Refresh the **▶ RESUME** line + **▶ NEXT SESSION PROMPT** brief (top of `PROGRESS.md`)
 6. Local git commit — a session is not over until this lands
 
 ## Hard prohibitions

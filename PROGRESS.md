@@ -1,5 +1,13 @@
 # Office-Connect — Progress Tracker
 
+## ▶ RESUME *(copy this one line to start the next session)*
+
+> **Resume Office-Connect — Stage A / Phase 0 Increment 3 (integrations + bootstrap).**
+
+That one line is all you paste. Per the start-of-session ritual I read the
+*Current Status* + *Next Session Prompt* below (and the cited module docs) to
+expand it into the full task and confirm with you before starting.
+
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
 - **Phase:** Stage A (= Phase 0) — **Increments 1 ✅, 2 ✅**; Increments 3–4
@@ -16,7 +24,7 @@
   (`origin` → `github.com/avincentpatrick/office_connect`, `git ls-remote`
   verified — **no push yet**; first push fires at the Phase 0 / Inc-4 gate).
 
-## ▶ NEXT SESSION PROMPT *(rule 3 — paste this to resume)*
+## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
 Context: Office-Connect Master Plan v1 is adopted (docs/master-plan.md); Phase 0
