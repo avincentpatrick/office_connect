@@ -12,9 +12,9 @@
 - **Decisions this session:** git remote = **GitHub private**; off-box backup
   target = **second/external disk**; pg client pinned to major 16; ops in a new
   `office_connect/ops/` package.
-- **Blockers / waiting on user:** the **private git remote must be created**
-  (GitHub private repo) so the Phase 0 push can fire at the Inc-4 gate — needs
-  the user's GitHub account (see Next Session Prompt open questions).
+- **Blockers / waiting on user:** none. Private git remote **provisioned**
+  (`origin` → `github.com/avincentpatrick/office_connect`, `git ls-remote`
+  verified — **no push yet**; first push fires at the Phase 0 / Inc-4 gate).
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — paste this to resume)*
 
@@ -36,9 +36,9 @@ bootstrap CLI (office_connect/ops/ or a core cli), docs/modules/foundation.md.
 Acceptance: local-volume storage round-trips a file; test email sends via the
 selected driver (or logs in dev); bootstrap creates an admin and refuses in
 prod; /api/v1/config returns the token contract; pytest green; lint-imports 3/3.
-Open questions for the user: CREATE THE PRIVATE GITHUB REPO (empty, private) and
-share the URL so the remote can be wired and the Phase 0 push can fire at the
-Increment-4 gate. Confirm storage default = local volume for prod.
+Open questions for the user: git remote is wired (origin ->
+github.com/avincentpatrick/office_connect; push deferred to the Inc-4 gate).
+Confirm storage default = local volume for prod.
 ```
 
 ---
@@ -113,8 +113,9 @@ build; the PIA-per-module gate applies before real data in ANY environment
   backup target).
 - **Docs updated:** foundation.md, tech-stack.md, CHANGELOG.md, this file; new
   `docs/operations/deploy.md` + `backup-restore.md`.
-- **Deferred:** provision the GitHub private remote (needs the user's repo) —
-  first push fires at the Phase 0 / Increment-4 gate (push-per-phase).
+- **Git remote:** provisioned post-commit — `origin` →
+  `github.com/avincentpatrick/office_connect` (`git ls-remote` verified, **no
+  push**); first push fires at the Phase 0 / Increment-4 gate (push-per-phase).
 - **Next Session Prompt (archived):** Stage A Increment 3 (integrations +
   bootstrap) — full text in the top block as of this session.
 
