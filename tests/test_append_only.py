@@ -18,11 +18,23 @@ DENIED_STATEMENTS = [
     "DELETE FROM core_notification_deliveries WHERE id = 1",
     "UPDATE core_report_lineages SET report_type = 'x' WHERE id = 1",
     "DELETE FROM core_report_lineages WHERE id = 1",
+    # Stage B: core_login_attempts is append-only (created_* only, REVOKE UPDATE).
+    "UPDATE core_login_attempts SET outcome = 'success' WHERE id = 1",
+    "DELETE FROM core_login_attempts WHERE id = 1",
+    "TRUNCATE core_login_attempts",
     "DELETE FROM core_activities WHERE id = 1",
     "DELETE FROM core_attachments WHERE id = 1",
     "DELETE FROM core_notifications WHERE id = 1",
     "DELETE FROM core_feature_flags WHERE id = 1",
     "DELETE FROM core_tenant_configs WHERE id = 1",
+    # Stage B identity: no DELETE anywhere for oc_app.
+    "DELETE FROM core_users WHERE id = 1",
+    "DELETE FROM core_user_roles WHERE id = 1",
+    "DELETE FROM core_role_permissions WHERE id = 1",
+    "DELETE FROM core_roles WHERE id = 1",
+    "DELETE FROM core_permissions WHERE id = 1",
+    "DELETE FROM core_org_units WHERE id = 1",
+    "DELETE FROM core_staff WHERE id = 1",
     "TRUNCATE core_audit_logs",
 ]
 

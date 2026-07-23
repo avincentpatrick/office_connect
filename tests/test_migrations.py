@@ -15,6 +15,11 @@ BUSINESS_TABLES = {
     "core_activity_tag_assignments",
     "core_attachments",
     "core_notifications",
+    # Stage B (Phase 2) identity
+    "core_staff",
+    "core_users",
+    "core_role_permissions",
+    "core_user_roles",
 }
 LOOKUP_TABLES = {
     "core_feature_flags",
@@ -23,12 +28,17 @@ LOOKUP_TABLES = {
     "core_object_codes",
     "core_holidays",
     "core_compliance_deadlines",
+    # Stage B (Phase 2) identity
+    "core_org_units",
+    "core_roles",
+    "core_permissions",
 }
 APPEND_ONLY_TABLES = {
     "core_audit_logs",
     "core_query_logs",
     "core_notification_deliveries",
     "core_report_lineages",
+    "core_login_attempts",
 }
 AUDIT_COLS = {"created_at", "created_by", "updated_at", "updated_by"}
 SOFT_DELETE_COLS = {"deleted_at", "deleted_by"}

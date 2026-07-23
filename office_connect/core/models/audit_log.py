@@ -11,7 +11,7 @@ the chain (CSS-IS lesson). Rows are written exclusively by the listeners in
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, CheckConstraint, Identity, Index
+from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Identity, Index
 from sqlalchemy.dialects.postgresql import CHAR, JSONB, TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -33,7 +33,9 @@ class AuditLog(Base):
         BigInteger, Identity(always=True), primary_key=True
     )
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))  # app-set
-    actor_id: Mapped[int | None] = mapped_column(BigInteger)  # future FK core_users.id
+    actor_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )
     request_id: Mapped[str | None]
     table_name: Mapped[str]
     row_pk: Mapped[int] = mapped_column(BigInteger)

@@ -12,7 +12,7 @@ countdown cards; working-day math via ``core/workdays.py`` when
 from datetime import date
 from typing import Any
 
-from sqlalchemy import BigInteger, Date, Enum, Index, text
+from sqlalchemy import BigInteger, Date, Enum, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -68,6 +68,8 @@ class ComplianceDeadline(PKMixin, AuditColsMixin, SoftDeleteMixin, LookupMixin, 
         JSONB, server_default=text("'{}'::jsonb")
     )
     use_working_day_math: Mapped[bool] = mapped_column(server_default=text("true"))
-    tenant_id: Mapped[int | None] = mapped_column(BigInteger)  # NULL = platform default
+    tenant_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_tenant_configs.id")
+    )  # NULL = platform default
     effective_from: Mapped[date] = mapped_column(Date)
     effective_to: Mapped[date | None] = mapped_column(Date)

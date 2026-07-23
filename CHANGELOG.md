@@ -11,6 +11,33 @@ makes the push-per-phase rule auditable.
 
 ## [Unreleased]
 
+### Added
+- **Stage B (Phase 2) Increment 1 — identity schema + deferred-FK closure**
+  (2026-07-23): the identity floor for "one login". **Split identity model** —
+  `core_staff` (plantilla person directory, a superset) + `core_users` (auth
+  accounts with a nullable `staff_id` FK). **Org units** — the self-referencing
+  `core_org_units` tree (office/division/section/unit) that scopes every approval
+  role. **RBAC tables** — `core_roles`, `core_permissions`,
+  `core_role_permissions`, and org-unit-scoped `core_user_roles` (grant uniqueness
+  uses PG16 `NULLS NOT DISTINCT`; `valid_from`/`valid_to` reserved for B3
+  delegation). **Login-attempt log** — append-only `core_login_attempts`
+  (anti-enumeration, never stores the password). **Deferred-FK closure** —
+  migration `0010` constrains every ownership/actor/org column deferred since
+  Phase 0 (`created_by`/`updated_by`/`deleted_by`/`actor_id`/`recipient_user_id`/
+  `disposed_by`/`generated_by` → `core_users`, `division_id`/`section_id` →
+  `core_org_units`, `tenant_id` → `core_tenant_configs`); the sanctioned
+  polymorphic/generic-pointer columns stay unconstrained. **Credential
+  redaction** — `password_hash`/`mfa_secret` values never enter the immutable
+  audit chain (a `[redacted]` marker keeps the field name; INSERT + UPDATE).
+  **Argon2id** password hashing (`core/security/password.py`). **RBAC seeds** —
+  idempotent permission (27) + role (4) catalogs and a grant resolver (41 default
+  grants) with tombstoned revocations; new `bootstrap seed-rbac` +
+  `promote-admin` (break-glass login from the recorded bootstrap admin, temp
+  password printed once). Synthetic org-unit + staff dev fixtures (CSS-IS
+  decoupled). Migrations `0009`–`0010`. Verified: **pytest 155/155, lint-imports
+  3/3**, full chain `0001→0010` idempotent + reversible, FK closure asserted,
+  redaction proven, `verify_chain` intact.
+
 ## [0.1.0] — 2026-07-23 — Phase 0 (Stage A) complete
 
 ### Added

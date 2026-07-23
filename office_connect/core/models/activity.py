@@ -9,7 +9,7 @@ just less reportable.
 from datetime import date
 from typing import Any
 
-from sqlalchemy import BigInteger, Date, Enum, Index, text
+from sqlalchemy import BigInteger, Date, Enum, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -30,8 +30,12 @@ class Activity(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
 
     title: Mapped[str]
     ppa_code: Mapped[str | None]  # WFP linkage later; free until then
-    division_id: Mapped[int | None] = mapped_column(BigInteger)  # future FK (Phase 2)
-    section_id: Mapped[int | None] = mapped_column(BigInteger)  # future FK (Phase 2)
+    division_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_org_units.id")
+    )
+    section_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_org_units.id")
+    )
     date_start: Mapped[date] = mapped_column(Date)
     date_end: Mapped[date | None] = mapped_column(Date)
     venue: Mapped[str | None]

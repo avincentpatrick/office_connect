@@ -53,7 +53,7 @@ reimb_claims      reimb_cash_advances    reimb_itinerary_legs
 |---|---|
 | status history | `*_status_histories` |
 | config | `*_configs` |
-| staff | *(open — `core_users` vs `core_staff` identity split is a Phase 2 decision, see `docs/modules/foundation.md`)* |
+| staff | `core_staff` *(RESOLVED 2026-07-23, Stage B: identity is **split** — `core_staff` is the plantilla person directory, `core_users` the auth accounts (`staff_id` FK). "staff" is a mass noun kept as-is; documented exception. See `docs/modules/foundation.md` §5/§7.)* |
 
 ## 3. Keys
 
@@ -140,6 +140,16 @@ override, every config or flag change, every soft delete. The app DB role has
 > entity IDs and changed-**field names**, not sensitive values; display values
 > resolve at read time. Rationale: RA 10173 vs immutable logs
 > (`docs/research/round1/dpa-retention-audit-compliance.md`).
+>
+> **Mechanism (Stage B Increment 1):** a model declares
+> `__audit_exclude__ = frozenset({...})` naming the SPI/secret columns whose
+> **values** must never enter the chain; the audit listeners
+> (`office_connect/core/audit.py`) replace those values with a `[redacted]`
+> marker at write time (the field **name** is still recorded, so "the field
+> changed" stays auditable), on both INSERT and UPDATE. `core_users` uses this
+> for `password_hash` / `mfa_secret` — a credential can never be sealed
+> unremovably into the chain. Broader person-field SPI (staff PII) joins the
+> denylist with the query-log middleware in Increment B4.
 
 ## 8. Soft deletes (standing rule 6)
 

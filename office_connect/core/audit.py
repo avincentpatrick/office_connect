@@ -28,6 +28,7 @@ from sqlalchemy import inspect as sa_inspect
 
 from office_connect.core.base import Base, SoftDeleteMixin
 from office_connect.core.models.audit_log import AuditLog
+from office_connect.core.models.login_attempt import LoginAttempt
 from office_connect.core.models.notification import NotificationDelivery
 from office_connect.core.models.query_log import QueryLog
 from office_connect.core.models.report_lineage import ReportLineage
@@ -37,7 +38,19 @@ from office_connect.core.time import UTC, utc_now
 GENESIS_HASH = "0" * 64
 _PENDING_KEY = "pending_audit"
 # The append-only logs are never themselves audited (they ARE log mechanisms).
-_UNAUDITED = (AuditLog, QueryLog, NotificationDelivery, ReportLineage)
+_UNAUDITED = (AuditLog, QueryLog, NotificationDelivery, ReportLineage, LoginAttempt)
+
+# SPI / secret columns whose VALUES never enter the immutable hash chain (a chain
+# row can never be redacted). The field NAME is still recorded (so "the field
+# changed" stays auditable); only the value is replaced by this marker. A model
+# opts a column in via ``__audit_exclude__`` (a frozenset of column keys). This is
+# the Stage-B execution of the audit-payload SPI policy (database-standards §7,
+# master-plan §4 #4) for credential secrets; broader person-field SPI lands in B4.
+_REDACTED = "[redacted]"
+
+
+def _audit_exclude(obj: Any) -> frozenset[str]:
+    return getattr(type(obj), "__audit_exclude__", frozenset())
 
 
 # --- pure hash core -------------------------------------------------------
@@ -184,6 +197,7 @@ def _capture_changes(session, flush_context, instances) -> None:
         if not session.is_modified(obj, include_collections=False):
             continue
         state = sa_inspect(obj)
+        excluded = _audit_exclude(obj)
         old_diff: dict[str, Any] = {}
         new_diff: dict[str, Any] = {}
         for attr in state.mapper.column_attrs:
@@ -192,12 +206,15 @@ def _capture_changes(session, flush_context, instances) -> None:
             history = state.attrs[attr.key].history
             if not history.has_changes():
                 continue
-            old_diff[attr.key] = serialize_value(
-                history.deleted[0] if history.deleted else None
-            )
-            new_diff[attr.key] = serialize_value(
-                history.added[0] if history.added else None
-            )
+            old_value = history.deleted[0] if history.deleted else None
+            new_value = history.added[0] if history.added else None
+            if attr.key in excluded:
+                # Record that an SPI/secret field changed, never its value.
+                old_diff[attr.key] = _REDACTED if old_value is not None else None
+                new_diff[attr.key] = _REDACTED if new_value is not None else None
+                continue
+            old_diff[attr.key] = serialize_value(old_value)
+            new_diff[attr.key] = serialize_value(new_value)
         if not new_diff:
             continue
         action = "update"
@@ -242,12 +259,19 @@ def _write_audit_rows(session, flush_context) -> None:
         row_pk = state.dict.get(pk_key)  # populated by the INSERT/UPDATE just run
         if action == "insert":
             # Full row image from values present post-INSERT (no lazy loads —
-            # unfetched server defaults are simply omitted).
-            new_diff = {
-                attr.key: serialize_value(state.dict[attr.key])
-                for attr in state.mapper.column_attrs
-                if attr.key in state.dict
-            }
+            # unfetched server defaults are simply omitted). SPI/secret columns
+            # are redacted (field name kept, value withheld) so the immutable
+            # chain never seals an un-removable secret (§7 payload policy).
+            excluded = _audit_exclude(obj)
+            new_diff = {}
+            for attr in state.mapper.column_attrs:
+                if attr.key not in state.dict:
+                    continue
+                value = state.dict[attr.key]
+                if attr.key in excluded:
+                    new_diff[attr.key] = _REDACTED if value is not None else None
+                else:
+                    new_diff[attr.key] = serialize_value(value)
             old_diff = None
         at = utc_now()
         payload = build_payload(

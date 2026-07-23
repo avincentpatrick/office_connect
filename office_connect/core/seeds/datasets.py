@@ -21,6 +21,7 @@ from office_connect.core.models import (
     PapCode,
 )
 from office_connect.core.seeds.base import SeedDataset
+from office_connect.core.seeds.rbac import PERMISSIONS_DATASET, ROLES_DATASET
 
 _ALL = ("all",)
 _FY = date(2026, 1, 1)
@@ -182,10 +183,15 @@ COMPLIANCE_DEADLINES = SeedDataset(
 )
 
 # Registry order matters only for readability; each dataset is independent.
+# The RBAC catalogs (permissions, roles) are public config — they load in every
+# environment; the role→permission GRANTS are wired by ``core/seeds/rbac.py``
+# (bespoke resolver, run via ``bootstrap seed-rbac``), not as a SeedDataset.
 REGISTRY: tuple[SeedDataset, ...] = (
     ACTIVITY_TAGS,
     OBJECT_CODES,
     PAP_CODES,
     HOLIDAYS,
     COMPLIANCE_DEADLINES,
+    PERMISSIONS_DATASET,
+    ROLES_DATASET,
 )

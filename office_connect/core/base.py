@@ -11,7 +11,7 @@ Implements docs/standards/database-standards.md:
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Identity, MetaData, true
+from sqlalchemy import BigInteger, ForeignKey, Identity, MetaData, true
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.sql import func
@@ -47,30 +47,43 @@ class AuditColsMixin:
 
     ``updated_at``'s ``onupdate`` fires on ORM updates only — deliberate,
     consistent with app-level auditing (raw-SQL writes are out of contract).
+
+    The ``*_by`` columns FK to ``core_users.id`` (Stage B). SQLAlchemy copies a
+    mixin's ``mapped_column`` — ForeignKey included — into every subclass, so
+    this one declaration realizes the deferred-FK closure across every business/
+    lookup table; the DB constraints are added by migration ``0010``. NULLs are
+    valid (system/owner writes carry no actor).
     """
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    created_by: Mapped[int | None] = mapped_column(BigInteger)  # future FK core_users.id
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )
     updated_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
         onupdate=utc_now,
     )
-    updated_by: Mapped[int | None] = mapped_column(BigInteger)  # future FK core_users.id
+    updated_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )
 
 
 class SoftDeleteMixin:
     """Soft-delete columns (§8, rule 6). ``deleted_at IS NULL`` = live row.
 
     The global filter in ``core/soft_delete.py`` keys off this mixin; never
-    set these columns directly — use ``soft_delete()``.
+    set these columns directly — use ``soft_delete()``. ``deleted_by`` FKs to
+    ``core_users.id`` (added by migration ``0010``; see ``AuditColsMixin``).
     """
 
     deleted_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
-    deleted_by: Mapped[int | None] = mapped_column(BigInteger)  # future FK core_users.id
+    deleted_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )
 
 
 class LookupMixin:

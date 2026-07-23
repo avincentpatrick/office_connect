@@ -37,6 +37,7 @@ the same session** (session-end checklist step 3).
 | pillow-heif | 0.21.0 | Attachments: HEIC/HEIF decode → JPEG normalization; bundles libheif |
 | clamd | 1.0.2 | Attachments: pure-Python ClamAV TCP client (lazy-imported; scanner is injectable + fail-closed) |
 | sentry-sdk | 2.20.0 | Observability (Increment 4): error tracking (GlitchTip-compatible); lazy-imported, active only with `SENTRY_DSN` |
+| argon2-cffi | 23.1.0 | Auth (Stage B): Argon2id password hashing (`core/security/password.py`). **Cost params: `time_cost=2`, `memory_cost=19 MiB (19456 KiB)`, `parallelism=1`** (OWASP / RFC 9106 option 2, on-prem-sized). Self-contained manylinux wheels (no apt). PHC hash self-describes cost → raise deliberately + re-hash on next login |
 | pytest | 8.3.4 | Test runner (QA gates) |
 | pytest-asyncio | 0.24.0 | Async test support |
 | asgi-lifespan | 2.1.0 | Runs FastAPI lifespan under httpx `ASGITransport` in tests |
@@ -91,7 +92,7 @@ exact versions and libraries **the session the frontend scaffold lands**.
 | `scripts/smoke-test.ps1` | Build + health-check the stack |
 | `scripts/deploy.ps1` | Dev deploy wrapper (backup → guard → migrate → up); mirrors `docs/operations/deploy.md` (authoritative POSIX-sh prod runbook) |
 | `scripts/entrypoint.sh` | Container entrypoint; dev-only env-gated advisory-locked boot migration then execs the service command |
-| `office_connect.ops` CLI | `python -m office_connect.ops {backup,restore-drill,backup-and-drill,scan-pending}` + `office_connect.ops.deploy_guard` + `office_connect.ops.bootstrap {init,create-admin,load-fixtures,load-reference,send-test-email}` (Inc 4 adds `scan-pending` + `load-reference`) |
+| `office_connect.ops` CLI | `python -m office_connect.ops {backup,restore-drill,backup-and-drill,scan-pending}` + `office_connect.ops.deploy_guard` + `office_connect.ops.bootstrap {init,create-admin,load-fixtures,load-reference,seed-rbac,promote-admin,send-test-email}` (Stage B adds `seed-rbac` + `promote-admin`) |
 | Git | Local commits per session; push + tag per phase (see `development-workflow.md` §4) |
 | Claude Code (AI assistant) | Pair-builds the project; session contract in `CLAUDE.md` |
 

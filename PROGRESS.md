@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage B (Phase 2): Identity & Access — auth, RBAC, staff directory, delegation.**
+> **Resume Office-Connect — Stage B Increment 2 (B2): Authentication — Redis sessions, Argon2id login, password policy, throttle, CSRF, break-glass login, TOTP MFA.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,82 +10,92 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **Stage A (= Phase 0) COMPLETE** — Increments 1 ✅, 2 ✅, 3 ✅, 4 ✅;
-  all Phase 0 QA-gate checks pass; tagged **`phase-0-complete`** and **pushed to
-  GitHub** (`origin/master` = `5eb19a4`, tag on remote — verified via
-  `git ls-remote`; the first push, after re-authenticating as `avincentpatrick`).
-  **Next: Stage B (Phase 2) — Identity & Access.** Master Plan v1 in force
-  (`docs/master-plan.md`).
-- **Last session:** #6 — 2026-07-23 — Increment 4 (spine amendments) + Phase 0
-  gate: the shared day-1 tables + services — activity taxonomies, UACS/PREXC
-  codes, holiday + working-day engine, statutory compliance calendar (22 rows),
-  content-addressed **attachments service** (magic-byte allowlist, EXIF strip,
-  HEIC→JPEG, fail-closed ClamAV-opt-in scan, retention), **notification outbox**
-  (durable + in-app center + Celery retry/dead-letter; stub replaced,
-  signature-stable), report lineage, an idempotent **seed framework**, and
-  **observability** (JSON logs + request IDs + fail-safe GlitchTip profile).
-  Migrations `0003`–`0008`. Verified end-to-end (**pytest 132/132, lint-imports
-  3/3**; full chain idempotent ×2 + downgrade-to-base→re-upgrade clean;
-  attachment round-trip incl. EXIF strip + fail-closed download; notification
-  dispatch inline **and** celery→worker; JSON logs carry the request id).
-- **Decisions this session:** attachments = **full pipeline now, ClamAV opt-in**
-  (injectable fail-closed scanner; compose profile); observability = **JSON logs
-  now, tracker as a profile** (fail-safe `SENTRY_DSN`); auth-checked attachment
-  download router + per-user notification prefs **defer to Stage B** (no auth
-  yet — built as service seams). See `docs/modules/foundation.md` §7.
-- **Blockers / waiting on user:** none. (The first push initially failed — the
-  cached GitHub credential was for `icvpitahc`, which lacks write access; cleared
-  it and re-authenticated as `avincentpatrick`, then the push landed.)
+- **Phase:** **Stage B (Phase 2) IN PROGRESS** — Increment **B1 ✅** (identity
+  schema + deferred-FK closure). Phase 0 / Stage A remains complete + pushed
+  (tag `phase-0-complete`, `origin/master` = `5eb19a4`). **Migration head `0010`**
+  (local; not pushed — Stage B pushes only at its QA gate, tag `phase-2-complete`).
+  **Next: Increment B2 — Authentication.** Master Plan v1 in force.
+- **Last session:** #7 — 2026-07-23 — **Stage B Increment 1**: the identity floor.
+  Split identity (`core_staff` directory + `core_users` auth, `staff_id` FK);
+  self-referencing `core_org_units`; RBAC tables (`core_roles`/`core_permissions`/
+  `core_role_permissions`/org-scoped `core_user_roles` with PG16 `NULLS NOT
+  DISTINCT` + `valid_from/to`); append-only `core_login_attempts`. The
+  **deferred-FK closure** (`0010`) constrained every `*_by`/`actor_id`/
+  `division_id`/`section_id`/`recipient_user_id`/`disposed_by`/`generated_by`/
+  `tenant_id` deferred since Phase 0. **Credential redaction** pulled forward
+  (`__audit_exclude__` → `[redacted]` for `password_hash`/`mfa_secret`, INSERT +
+  UPDATE). **Argon2id** hasher (`core/security/`). RBAC seeds (27 perms / 4 roles
+  / 41 grants) + `bootstrap seed-rbac` + `promote-admin` (break-glass login) +
+  synthetic org/staff fixtures. Migrations `0009`–`0010`. **Verified: pytest
+  155/155, lint-imports 3/3**; full chain `0001→0010` idempotent + downgrade-to-
+  base→re-upgrade clean; FK closure asserted; redaction proven; `verify_chain`
+  intact.
+- **Decisions this session (user-confirmed at kickoff):** identity = **split**
+  (`core_staff` + `core_users`); directory seed = **CSS-IS decoupled** (separate
+  system, inbound feed later; synthetic dev fixtures now); audit-payload SPI =
+  **IDs + field names only** (credential subset executed now); single-tenant auth
+  (no `tenant_id`, revisit before B2). See `docs/modules/foundation.md` §7.
+- **Blockers / waiting on user:** none. *(Dev note: `argon2-cffi` is in
+  `requirements.txt` + pip-installed into the running app/worker; bake it in with
+  an image rebuild — `docker compose build app worker` — before B2.)*
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Phase 0 / Stage A is COMPLETE and pushed (tag phase-0-complete). The
-foundation floor is in place: schema spine + hash-chained audit + soft delete;
-ops (backup/proven-restore, Celery worker/beat, explicit-step migrations);
-integrations (storage + email drivers, bootstrap CLI, /api/v1/config tokens);
-and the Increment-4 spine amendments — activity taxonomies, UACS/PREXC codes,
-holiday + working-day engine, compliance calendar, attachments service,
-notification outbox, report lineage, seed framework, observability (pytest
-132/132, lint-imports 3/3; migration head 0008). Read CLAUDE.md, then
-master-plan.md §2 Stage B + §1.1 (staff directory #14), then
-docs/modules/foundation.md §5 (Phase 2 plan) which already scopes this stage.
-Task: Build Stage B (Phase 2) — Identity & Access ("one login"). Per
-foundation.md §5 + docs/research/round1/auth-rbac-onprem.md:
-  (1) Resolve the OPEN DECISION first: core_users vs core_staff (one identity
-      table vs auth-users + staff-directory split) — this also settles the
-      irregular plural "staff". Confirm with the user at kickoff.
-  (2) core_users/core_roles/permissions + org units; the deferred-FK migration
-      that finally constrains every *_by / actor_id / division_id / section_id /
-      recipient_user_id / holder_id across the whole spine (Inc 1–4 left these
-      nullable BIGINT).
-  (3) Auth: Redis server-side sessions, Argon2id, NIST 800-63B-4 password policy
-      (len 12+ + blocklist; no composition rules / no forced rotation — record
-      the reference's "letter+number" as a deviation), throttle-not-lockout,
-      custom-header CSRF, break-glass local admin, TOTP MFA for approver/admin
-      (NPC 2023-06).
-  (4) RBAC: permission strings + role→permission tables + org-unit-scoped grants;
-      delegation/OIC (on-behalf-of); maker-checker DB checks; read-only auditor
-      role (COA Res. 2020-034) + printable chain-verification report.
-  (5) Wire the deferred surfaces Inc 4 built as seams: the authenticated
-      attachments upload/download router (inject the real RBAC authorize closure
-      through (holder_kind, holder_id)), and notification per-user prefs +
-      recipient_user_id resolution.
-  (6) Staff directory: greenfield core tables seeded via CSV import from a CSS-IS
-      export (recommended default — confirm at kickoff); query-log middleware;
-      audit-payload SPI policy decision (master plan §4 #4) executes here.
-Files: alembic/versions/0009_*.py (+ the deferred-FK migration),
-office_connect/core/ (auth, rbac, models/users+roles+orgunits, directory),
-office_connect/core/api/ (auth + attachments routers), docs/modules/foundation.md,
-docs/standards/*, docs/compliance/ (per-module PIA before real data).
-Acceptance: migration idempotent + reversible; login/logout/session lifecycle;
-RBAC denies/permits per permission + org scope; delegation works; maker-checker
-enforced; deferred FKs added cleanly; attachments router auth-checked end-to-end;
-pytest green; lint-imports green. Phase 2 has its own QA gate (tag phase-2-complete).
-Open questions for the user: (a) core_users vs core_staff identity model; (b)
-staff-directory seed = greenfield + CSV-from-CSS-IS (default) or another source;
-(c) confirm the audit-payload SPI policy (what personal values may enter the
-immutable hash-chained log) before any real data.
+Context: Stage B Increment B1 is COMPLETE (identity floor). In place at migration
+head 0010: split identity (core_staff directory + core_users auth, staff_id FK),
+self-referencing core_org_units, RBAC tables (core_roles/core_permissions/
+core_role_permissions/org-scoped core_user_roles with PG16 NULLS NOT DISTINCT +
+valid_from/to), append-only core_login_attempts, and the deferred-FK closure
+(0010) constraining every *_by/actor_id/division_id/section_id/recipient_user_id/
+disposed_by/generated_by/tenant_id. Credential redaction is live (core_users
+__audit_exclude__ = {password_hash, mfa_secret} → [redacted] in the chain).
+Argon2id hasher exists (core/security/password.py). RBAC seeded (27 perms/4 roles/
+41 grants) via bootstrap seed-rbac; break-glass login via bootstrap promote-admin.
+pytest 155/155, lint-imports 3/3. Nothing pushed (Stage B pushes only at its QA
+gate). Read CLAUDE.md, then docs/research/round1/auth-rbac-onprem.md,
+master-plan.md §2 Stage B, and docs/modules/foundation.md §5 "Stage B increment
+plan" + §7 (Increment 1 decisions).
+Task: Build Increment B2 — Authentication. Per auth-rbac-onprem.md:
+  (1) Redis server-side sessions on a NEW logical db (db 3, via
+      ops/dsn.redis_url_with_db; session_secret already in config): opaque
+      secrets.token_urlsafe id in an HttpOnly/Secure/SameSite=Lax cookie;
+      session record session:{id} + per-user user_sessions:{user_id} set;
+      regenerate id on login; revoke-all on password change / deactivation;
+      bounded concurrent sessions.
+  (2) Login/logout endpoints (new core/api/auth.py, mounted in core/api/router.py
+      under /api/v1). NIST 800-63B-4 password policy (min 12 + on-prem top-100k
+      blocklist; no composition rules / no forced rotation — record the
+      reference's "letter+number" as a documented deviation). Reuse
+      core/security/password.py (hash + needs_rehash). must_change_password flow.
+  (3) Throttle-not-lockout (Redis per-account + per-IP counters + backoff after 5;
+      generic failure message — no user enumeration). Write core_login_attempts
+      rows + auth.login.*/auth.logout/auth.session.revoked/auth.password.* audit
+      events. Break-glass LOGIN path (the is_break_glass account bypasses the
+      future LDAP backend).
+  (4) TOTP MFA (add pyotp to requirements.txt + tech-stack.md) for approver/admin
+      roles (NPC 2023-06); mfa_enabled/mfa_secret columns already exist on
+      core_users (no migration needed).
+  (5) Custom-header CSRF middleware on all non-GET routes (SameSite=Lax floor).
+      Auth middleware resolves the principal → request.state.user; extend
+      get_session (core/db.py) to set_audit_context(actor_id=…) so writes attribute
+      to the real user. Update main.py request_id_middleware note.
+Files: office_connect/core/auth/ (session service, password policy, throttle, mfa),
+office_connect/core/api/auth.py, office_connect/core/api/router.py,
+office_connect/core/db.py (actor injection), office_connect/main.py (CSRF + auth
+middleware), office_connect/core/config.py (session db, cookie, timeouts), a
+bundled password blocklist, requirements.txt + docs/standards/tech-stack.md (pyotp),
+docs/standards/api-standards.md (session/CSRF contract), docs/modules/foundation.md,
+tests/. NO migration expected (identity schema is complete).
+Acceptance: login sets an HttpOnly session cookie + regenerates id; logout destroys
+the server-side record; wrong password throttles with a generic message and writes
+a core_login_attempts row; password change revokes all sessions; MFA required for
+approver/admin; CSRF rejects a non-GET without the custom header; an authenticated
+write lands the real actor_id in the audit chain; pytest green; lint-imports green.
+Open questions for the user: (a) session idle/absolute timeouts (default: 12h
+absolute; idle 30 min approver/admin, 60 min staff — confirm); (b) concurrent-
+session cap (default 3); (c) confirm single-tenant auth (no tenant_id) before
+wiring sessions, per the B1 revisit note.
 ```
 
 ---
@@ -97,7 +107,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
-| B | 2 | Identity & access: auth / RBAC / directory / delegation | not started | — | — | — |
+| B | 2 | Identity & access: auth / RBAC / directory / delegation | in progress (B1 ✅) | 7– | — | — |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
@@ -119,6 +129,49 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 7 — 2026-07-23 — Stage B Increment 1 (identity schema + deferred-FK closure)
+
+- **Phase(s):** 2 / Stage B (B1) · **Commit:** `session(2026-07-23)` — **local
+  only** (Stage B pushes at its QA gate, tag `phase-2-complete`, after B4).
+- **Kickoff decisions (user-confirmed):** identity = **split** (`core_staff`
+  directory + `core_users` auth); directory seed **decoupled from CSS-IS**
+  (separate system, inbound feed later; synthetic dev fixtures now); audit-payload
+  SPI = **IDs + field names only** (credential subset executed now); scope =
+  detail B1, roadmap B2–B4.
+- **Done (migrations 0009–0010):**
+  - **Identity tables** — self-ref `core_org_units` (office/division/section/unit);
+    `core_staff` (plantilla directory, superset); `core_users` (auth,
+    nullable `staff_id` FK, MFA columns pre-built for B2); `core_roles`,
+    `core_permissions`, `core_role_permissions`; org-scoped `core_user_roles`
+    (**PG16 `NULLS NOT DISTINCT`** grant uniqueness + `valid_from/to` for B3);
+    append-only `core_login_attempts` (anti-enumeration, REVOKE UPDATE).
+  - **Deferred-FK closure (`0010`)** — the single "core_users referential
+    closure": `created_by`/`updated_by`/`deleted_by` (mixin, all 18 business/
+    lookup tables) + bespoke `actor_id`/`recipient_user_id`/`disposed_by`/
+    `generated_by`/log `created_by` → `core_users`; `division_id`/`section_id` →
+    `core_org_units`; `tenant_id` → `core_tenant_configs`. Sanctioned no-FK
+    (`core_attachments.holder_*`, `core_audit_logs.row_pk`) left alone. All
+    pre-existing `*_by` are NULL → validated with no backfill.
+  - **Credential redaction** (pulled forward from B4) — `core_users.__audit_exclude__
+    = {password_hash, mfa_secret}`; the audit listeners write `[redacted]` (field
+    name kept, value withheld) on INSERT + UPDATE, so a secret never seals into
+    the immutable chain (database-standards §7).
+  - **Argon2id hasher** (`core/security/password.py`, `argon2-cffi`; params in
+    tech-stack.md). **RBAC seeds** — permission (27) + role (4) `SeedDataset`s in
+    `REGISTRY` + a bespoke grant resolver (`core/seeds/rbac.py`, 41 grants,
+    tombstoned revocations). **Bootstrap** — new `seed-rbac` + `promote-admin`
+    (break-glass login from `settings.bootstrap_admin`, temp password once);
+    `load-fixtures` now also seeds a synthetic org tree + staff.
+- **Verified:** **pytest 155/155** (was 132; +23), **lint-imports 3/3**; full
+  chain `0001→0010` idempotent (×2) + downgrade-to-base → re-upgrade clean; FK
+  closure asserted (`test_identity_schema`); `oc_app` denied UPDATE/DELETE on
+  `core_login_attempts` + no DELETE on any identity table; RBAC seed idempotent +
+  every-permission-exists gate; break-glass promotion idempotent + temp password
+  verifies; `password_hash`/`mfa_secret` `[redacted]` in the chain (INSERT +
+  UPDATE) with `verify_chain` intact.
+- **Decisions:** see `docs/modules/foundation.md` §7 (Stage B Increment 1).
+- **Next:** Increment B2 — Authentication (see the Next Session Prompt).
 
 ### Session 6 — 2026-07-23 — Stage A Increment 4 (spine amendments) + Phase 0 gate ✅
 

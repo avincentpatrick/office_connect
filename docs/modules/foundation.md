@@ -12,7 +12,7 @@ Nothing user-facing precedes it (`references/Phased_Rollout_Assessment.md` §3).
 | Increment 2 — ops: deploy, backup/restore, Celery, explicit-step migrations, git remote | 0 / Stage A | ✅ done (session 4) — proven-restore drill green, worker/beat up, pytest 31/31 |
 | Increment 3 — integrations: storage/email drivers, bootstrap CLI, token contract | 0 / Stage A | ✅ done (session 5) — pytest 68/68; local storage round-trip, email drivers + outbox stub, bootstrap CLI (prod-refusing), `/api/v1/config` tokens |
 | Increment 4 — spine amendments (master plan §2 Stage A) | 0 / Stage A | ✅ done (session 6) — pytest 132; taxonomy/UACS/holiday+WD engine/compliance calendar/attachments (ClamAV-opt-in)/notification outbox/report lineage/seed framework/observability; **Phase 0 QA gate → tag `phase-0-complete`, first push** |
-| Auth / RBAC / staff directory ("one login") | 2 / Stage B | not started |
+| Auth / RBAC / staff directory ("one login") | 2 / Stage B | **in progress** — Increment B1 ✅ (identity schema + org units + roles/permissions + deferred-FK closure + RBAC seeds + break-glass promotion + credential redaction; pytest 155, lint 3/3, head `0010`). B2 (auth), B3 (RBAC enforcement), B4 (wiring + directory + PIA) next |
 
 > **2026-07-23:** sequencing and scope now governed by [`docs/master-plan.md`](../master-plan.md)
 > (Stage A = Phase 0 increments 2–4; Stage B = Phase 2). This doc keeps the
@@ -147,12 +147,35 @@ dependency; recommended default — confirm at Stage B kickoff). Deferred FKs
 (`*_by`, `division_id`, `section_id`) in one migration; query-log middleware;
 audit-payload SPI policy decision executes here (master plan §4 #4).
 
-**Open decisions (resolve before Stage B starts):**
-- **`core_users` vs `core_staff`** — one identity table or auth-users vs
-  staff-directory split; also settles the irregular plural ("staff").
-- **Directory seed detail** — greenfield + CSV import is the recommended
-  default (`references/Reimbursement_First_Dependency_Analysis.md` §7;
-  master plan §4 #1).
+**Open decisions (RESOLVED at Stage B kickoff, 2026-07-23):**
+- **`core_users` vs `core_staff`** → **SPLIT.** `core_staff` = plantilla person
+  directory (superset); `core_users` = auth accounts with a nullable `staff_id`
+  FK. `*_by`/`actor_id` → `core_users`; person/org data resolves via
+  `core_users.staff_id → core_staff`. Settles the "staff" plural (database-
+  standards §2). See §7 (Stage B Increment 1).
+- **Directory seed detail** → **decoupled from CSS-IS.** CSS-IS is a separate
+  system that will *feed* person data in for display — no code dependency, no CSV
+  coupling in B1. Schema built now; dev/UAT on synthetic fixtures (`bootstrap
+  load-fixtures`); real inbound ingestion deferred to B4/later.
+
+### Stage B increment plan
+
+- **B1 — identity schema + deferred-FK closure ✅** (this section's tables +
+  RBAC + break-glass + credential redaction; migrations `0009`/`0010`).
+- **B2 — authentication:** Redis server-side sessions (new logical db 3),
+  Argon2id login (hasher already in `core/security/`), NIST 800-63B-4 password
+  policy + blocklist, throttle-not-lockout, custom-header CSRF, break-glass login
+  path, TOTP MFA (MFA columns already on `core_users`); auth middleware injects
+  the principal into `set_audit_context(actor_id=…)`; `core_login_attempts` +
+  `auth.*` audit events.
+- **B3 — RBAC enforcement:** `require_permission` dependency, Redis-cached
+  effective-permission set (invalidated by `core_users.permissions_version`),
+  org-unit-scoped grants, delegation/OIC (uses `core_user_roles.valid_from/to`),
+  maker-checker DB checks, auditor role + printable chain-verification report.
+- **B4 — wire seams + directory + compliance:** authed attachments router,
+  notification recipient/prefs resolution, CSS-IS inbound directory ingestion +
+  admin provisioning, query-log middleware, full person-field SPI policy, Stage-B
+  PIA, then the **phase-2 QA gate** (tag `phase-2-complete`).
 
 ## 6. QA gates (Phase 0)
 
@@ -199,6 +222,50 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
 
 ## 7. Decisions log
 
+- **2026-07-23 (Stage B Increment 1 — identity schema + deferred-FK closure)** —
+  the identity floor. pytest 155/155, lint 3/3, migration head `0010`. Key
+  decisions (user-confirmed at kickoff):
+  - **Identity = split.** `core_staff` (plantilla person directory, superset) +
+    `core_users` (auth accounts, nullable `staff_id` FK; break-glass/system
+    accounts carry none). `*_by`/`actor_id` → `core_users` (the acting login);
+    person/org data resolves via `core_users.staff_id → core_staff`. Resolves the
+    "staff" irregular plural (database-standards §2).
+  - **Deferred-FK closure in two migrations.** `0009` creates the eight identity
+    tables (org units, staff, users, roles, permissions, role_permissions,
+    user_roles, login_attempts) with structural FKs inline; `0010` is the single
+    "core_users referential closure" — it constrains every deferred
+    `created_by`/`updated_by`/`deleted_by`/`actor_id`/`recipient_user_id`/
+    `disposed_by`/`generated_by` → `core_users`, `division_id`/`section_id` →
+    `core_org_units`, `tenant_id` → `core_tenant_configs`. The FK is declared once
+    on `AuditColsMixin`/`SoftDeleteMixin` (cascades to all 18 business/lookup
+    tables) plus per-model on the bespoke log columns. All pre-existing `*_by`
+    are NULL, so the constraints validate with no backfill. Sanctioned no-FK
+    columns (`core_attachments.(holder_kind, holder_id)`, `core_audit_logs.row_pk`)
+    left unconstrained.
+  - **`core_user_roles` grant uniqueness uses `NULLS NOT DISTINCT` (PG16)** so two
+    `(user, role, NULL)` global grants collide; `valid_from`/`valid_to` added now
+    so B3 delegation/OIC needs no migration.
+  - **Credential redaction pulled forward from B4 to B1** (the top pitfall):
+    `core_users.__audit_exclude__ = {password_hash, mfa_secret}` makes the audit
+    listeners write a `[redacted]` marker (field name kept, value withheld) on
+    INSERT and UPDATE — a secret can never be sealed into the immutable chain.
+    Executes the credential subset of the audit-payload SPI policy (master-plan
+    §4 #4); broader person-field SPI + query-log middleware land in B4.
+  - **Argon2id hasher now** (`core/security/password.py`, `argon2-cffi`;
+    params in tech-stack.md) — the break-glass promotion needs it; B2's login
+    reuses it. Break-glass **user creation** is B1; the break-glass **login path**
+    is B2.
+  - **RBAC seeds via the existing framework.** Permission + role catalogs are
+    idempotent `SeedDataset`s (public config, load in every env, in `REGISTRY`);
+    the role→permission grants are a bespoke resolver (`core/seeds/rbac.py`) that
+    inserts/restores/soft-deletes-revokes (tombstoned grants stay auditable). New
+    `bootstrap seed-rbac` + `promote-admin` subcommands; the latter promotes
+    `settings.bootstrap_admin` into a break-glass login + global `system_admin`
+    grant (temp password printed once, forced change).
+  - **Directory decoupled from CSS-IS** (separate system, inbound feed only) —
+    schema + synthetic dev fixtures (org tree + staff) now; real ingestion in B4.
+  - **Single-tenant auth** (no `tenant_id` on auth tables) — consistent with the
+    one-tenant on-prem posture; revisit before B2 if a second tenant is real.
 - **2026-07-23 (Increment 4 spine amendments — session 6)** — the last Phase-0
   increment; closed at the Phase 0 QA gate (tag `phase-0-complete`, first push).
   Built in independently-committable groups; pytest 132/132, lint 3/3. Key

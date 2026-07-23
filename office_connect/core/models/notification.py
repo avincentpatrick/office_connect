@@ -67,7 +67,9 @@ class NotificationOutbox(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     channel: Mapped[str] = mapped_column(NotificationChannel)
     status: Mapped[str] = mapped_column(NotificationStatus, server_default="queued")
     recipient_email: Mapped[str | None]
-    recipient_user_id: Mapped[int | None] = mapped_column(BigInteger)  # future FK
+    recipient_user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )
     subject: Mapped[str]
     body_text: Mapped[str | None] = mapped_column(Text)
     payload: Mapped[dict[str, Any]] = mapped_column(
@@ -115,4 +117,6 @@ class NotificationDelivery(PKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    created_by: Mapped[int | None] = mapped_column(BigInteger)  # future FK
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )

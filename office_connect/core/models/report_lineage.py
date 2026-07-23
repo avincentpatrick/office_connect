@@ -33,7 +33,9 @@ class ReportLineage(PKMixin, Base):
     period: Mapped[str | None]
     source_filter: Mapped[dict[str, Any]] = mapped_column(JSONB)
     config_version: Mapped[str | None]
-    generated_by: Mapped[int | None] = mapped_column(BigInteger)  # future FK
+    generated_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )
     generated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True))
     archived_key: Mapped[str | None]  # storage SHA-256 of the archived copy
     module: Mapped[str | None]
@@ -45,4 +47,6 @@ class ReportLineage(PKMixin, Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
-    created_by: Mapped[int | None] = mapped_column(BigInteger)  # future FK
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )

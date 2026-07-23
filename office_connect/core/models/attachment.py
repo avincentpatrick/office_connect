@@ -21,7 +21,7 @@ Key design points:
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Enum, Index, text
+from sqlalchemy import BigInteger, Enum, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -86,5 +86,7 @@ class Attachment(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     )
     legal_hold: Mapped[bool] = mapped_column(server_default=text("false"))
     disposed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
-    disposed_by: Mapped[int | None] = mapped_column(BigInteger)  # future FK
+    disposed_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )
     disposal_authority: Mapped[str | None]

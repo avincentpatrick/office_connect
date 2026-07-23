@@ -39,6 +39,13 @@ clamd==1.0.2
 # logging uses the stdlib only (core/logging.py), no extra dependency.
 sentry-sdk==2.20.0
 
+# --- Auth / identity (Stage B / Phase 2) ---
+# Argon2id password hashing — OWASP first-choice (memory-hard, GPU-resistant).
+# argon2-cffi ships self-contained manylinux wheels (no apt libs). Parameters are
+# recorded in docs/standards/tech-stack.md (standing rule 9); the stored PHC hash
+# self-describes its cost so raising it later re-hashes on next login.
+argon2-cffi==23.1.0
+
 # --- QA gates (pytest + architecture contracts) ---
 pytest==8.3.4
 pytest-asyncio==0.24.0
