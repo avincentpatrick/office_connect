@@ -15,6 +15,14 @@ module: **Local Travel Reimbursement**, built on the Phase 0–2 foundation floo
 *Next Session Prompt* say exactly where to resume. Never start work without
 them; confirm the prompt with the user.
 
+**▶ To resume (copy-paste handoff):** open [`PROGRESS.md`](PROGRESS.md) and copy
+the fenced ` ```text ` block under **▶ NEXT SESSION PROMPT** (very top of the
+file) — paste it as your first message to Claude. That block is the **single,
+always-current handoff**: it is rewritten at the end of every session (standing
+rule 3 / session-end checklist step 5), so it is the only thing you ever need to
+copy to start the next session. **Every session must end by refreshing it** —
+that is the guaranteed hand-off, not an optional courtesy.
+
 ## Doc map & precedence
 
 | Where | What |
