@@ -20,8 +20,12 @@ Activities output.
 - `activity_id` (nullable) on room bookings — one optional "what is this room
   for?" picker.
 - Bookings feed the **Calendar of Activities (CY)** generator (mandated
-  output #8) together with the activity registry and announcements.
-- Optional document ↔ booking soft-ref ("minutes of") with DMWIS.
+  output #8) **and the Stage-D Calendar of Activities surface** together with
+  the activity registry and announcements.
+- Optional document ↔ booking soft-ref ("minutes of") with DTWIS
+  (renamed from DMWIS — see `document-tracking.md`).
+- Booking approval-less flow still uses the core status vocabulary; any future
+  approver step rides the core workflow engine (Rule 10).
 
 ## 5. Open decisions
 

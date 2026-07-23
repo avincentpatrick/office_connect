@@ -87,6 +87,29 @@ Docs change **in the same session** as the thing they describe:
 
 `references/` is **never edited** — it is read-only source material.
 
+## 5a. Rule 10 — Shared service first (locked 2026-07-23)
+
+> Before any module adds a table, service, or engine, check the
+> **core-services registry** (`docs/master-plan.md` §1.1). If an equivalent
+> capability exists in core, consume it via its interface. Duplication
+> requires a **documented waiver** in the module doc's delta register.
+
+Origin: owner directive 2026-07-22 ("everything connected, one workflow, not
+duplicative"). Concrete consequences:
+
+- **One workflow engine** (`core_workflow_*`) drives every approval/routing
+  flow platform-wide — no module builds its own approval machinery.
+- One instance each of: attachments/scanning, frozen-snapshot signatures,
+  notifications, reference numbers, holiday/working-day calendar,
+  checklist/requirements engine, template→PDF generation, search, report
+  lineage, compliance-deadline calendar, external contacts, document-type/
+  signatory taxonomy.
+- Cross-module links go through spine keys (`core_activities`,
+  `core_pap_codes`, staff/org units) — nullable/soft, no cross-module writes,
+  no cross-module imports (`lint-imports` stays the enforcement).
+- Every declared link in the master-plan connection matrix (§1.3) gets a
+  cross-module integration test at SIT.
+
 ## 6. Phase QA-gate ritual
 
 A phase (or reimbursement sub-phase) exits only when **all** of these hold:

@@ -9,7 +9,12 @@
 The platform's front door: React app shell (top bar, `NAV_GROUPS` navigation,
 module cards) and the query bar that routes plain-language intents to modules
 **and reports** ("generate CSMR", "FOI report") via `NAV_GROUPS`
-`intent_keywords`.
+`intent_keywords`. **Stage D also delivers the Calendar of Activities surface**
+(owner feature 2026-07-22): a core screen reading `core_activities`, travel
+claims, statutory deadlines (`core_compliance_deadlines`), and — as later
+stages ship — room bookings, document deadlines, and SPMS dates; funded events
+show cash-advance liquidation countdowns. Plus the promotion of CSS-IS
+`ai_core` to the shared platform AI service.
 
 ## 3. Source references
 
@@ -27,13 +32,14 @@ module cards) and the query bar that routes plain-language intents to modules
 
 ## 5. Open decisions
 
-- **Sequencing (user decision):** the Reimbursement R-2 wizard lands *before*
-  Phase 3 in the current build order, so the shared shell/component library
-  either gets pulled forward into R-2 or Phase 3 moves ahead of R-2.
-  `ui-standards.md` keys its deferred sections to "first React surface"
-  either way.
+- **Sequencing — RESOLVED (owner, 2026-07-22):** the shared shell + design
+  tokens + component-library seed are **pulled forward into R-2**; the full
+  landing/query bar stays Stage D (Phase 3). `ui-standards.md` §7 deferred
+  sections fill at R-2.
 - Frontend implementation choices (Tailwind mapping, icon set, breakpoints) —
-  deferred per `ui-standards.md` §7.
+  deferred per `ui-standards.md` §7 (fill at R-2).
+- Calendar surface scope detail (filters, per-role views) — Stage D
+  requirements session.
 
 ## 6. Plan
 

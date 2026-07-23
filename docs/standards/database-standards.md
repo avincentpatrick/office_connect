@@ -36,12 +36,16 @@ reimb_claims      reimb_cash_advances    reimb_itinerary_legs
 
 | Prefix | Module |
 |---|---|
-| `core_` | Shared spine: tenants, users/roles, activities, audit, flags |
+| `core_` | Shared spine: tenants, users/roles, activities (+tags), audit, flags, workflow engine (`core_workflow_*`), attachments, contacts, holidays, compliance deadlines, PAP/object codes, report lineage |
 | `reimb_` | Local Travel Reimbursement |
 | `css_` | CSS-IS (client satisfaction survey) |
-| `dmwis_` | DMWIS (document management / workflow) |
+| `dtwis_` | **DTWIS — Document Tracking & Workflow IS** *(renamed from `dmwis_` by owner decision 2026-07-22, before any `dmwis_*` table existed; references keep the old name read-only — see `docs/modules/document-tracking.md` delta register)* |
 | `admin_` | Admin module (rooms, announcements) |
-| *(open)* | Reports — `rpt_` vs folding into `core_` is an open decision, see `docs/modules/reports.md` |
+| `qms_` | QMS: controlled documents, risk registry, management review, NC/CAPA *(added 2026-07-23)* |
+| `supply_` | Supply Management (GAM property/inventory) *(added 2026-07-23)* |
+| `plan_` | Planning & Budget: WFP/BED/BAR + PPMP/APP *(added 2026-07-23)* |
+| `perf_` | Performance & Deliverables: SPMS, accomplishments, COA findings *(added 2026-07-23)* |
+| *(open)* | Reports — default is folding lineage into `core_report_lineages` (master plan §4 #7); `rpt_` only if a real table need appears. Final registration at Stage H. |
 
 **Irregular plurals** — resolved here once, not per-migration:
 
@@ -130,6 +134,13 @@ Two layers, both mandatory:
 override, every config or flag change, every soft delete. The app DB role has
 **no UPDATE/DELETE** on the log itself (§8).
 
+> **Payload policy (flagged 2026-07-23, decision executes at Stage B —
+> master plan §4 #4):** hash-chained payloads can never be redacted, so for
+> tables carrying sensitive personal information the default policy is to log
+> entity IDs and changed-**field names**, not sensitive values; display values
+> resolve at read time. Rationale: RA 10173 vs immutable logs
+> (`docs/research/round1/dpa-retention-audit-compliance.md`).
+
 ## 8. Soft deletes (standing rule 6)
 
 - **Semantics:** `deleted_at IS NULL` = live row. Soft-deleting sets
@@ -157,6 +168,17 @@ override, every config or flag change, every soft delete. The app DB role has
   mutable tables, `SELECT/INSERT` only on append-only tables, and
   **no `DELETE`, no `TRUNCATE`, anywhere**. Migrations run as the privileged
   owner role (`oc_dev`). Hard deletes are physically impossible for the app.
+- **Soft delete ≠ records disposition (codified 2026-07-23):** soft delete is
+  a data-integrity mechanism only. Government records (claims, vouchers,
+  tracked documents and their attachments) follow NAP/GRDS retention law:
+  10-year retention for DV-supporting financial records counted from final
+  settlement, `legal_hold` blocks, and **no automated purge ever** — disposal
+  of public records without written NAP authority is a criminal offense
+  (RA 9470). Modules holding records carry `retention_class` /
+  `retention_starts_at` / `legal_hold` metadata and expose a
+  disposal-eligibility report; destruction happens outside the system after a
+  human NAP Form 3 process, and the DB rows remain (status change + audit
+  entry only). See master plan §3.1.
 
 ## 9. Time
 

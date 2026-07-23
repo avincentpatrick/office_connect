@@ -9,9 +9,14 @@ Nothing user-facing precedes it (`references/Phased_Rollout_Assessment.md` §3).
 |---|---|---|
 | Dev environment (Docker, ports, health) | 0 (pre-work) | ✅ done (session 1) |
 | Increment 1 — schema spine + conventions + tests | 0 | ✅ done (session 2) — 31 QA-gate tests green, adversarially reviewed |
-| Increment 2 — ops: deploy, backup/restore, Celery, migration-on-boot | 0 | not started |
-| Increment 3 — integrations: Drive/email drivers, bootstrap CLI, token contract | 0 | not started |
-| Auth / RBAC / staff directory ("one login") | 2 | not started |
+| Increment 2 — ops: deploy, backup/restore, Celery, explicit-step migrations, git remote | 0 / Stage A | not started |
+| Increment 3 — integrations: storage/email drivers, bootstrap CLI, token contract | 0 / Stage A | not started |
+| Increment 4 — spine amendments (master plan §2 Stage A) | 0 / Stage A | not started |
+| Auth / RBAC / staff directory ("one login") | 2 / Stage B | not started |
+
+> **2026-07-23:** sequencing and scope now governed by [`docs/master-plan.md`](../master-plan.md)
+> (Stage A = Phase 0 increments 2–4; Stage B = Phase 2). This doc keeps the
+> increment detail.
 
 ## 2. Source references
 
@@ -50,19 +55,50 @@ out-of-repo plan file is superseded by this section.)*
   Redis-cached (30 s); **fail-safe OFF**, never 500.
 - **pytest QA gates** — see §6.
 
-### Increment 2 — ops
+### Increment 2 — ops *(revised 2026-07-23 per research — master plan §5)*
 
 Deploy script with live-DB + version-bump + CHANGELOG guards; scheduled
-`pg_dump` backup **plus one proven restore before real data exists**; wire the
-Celery worker service + first beat task; migration-on-boot in the app lifespan.
-**Also: provision the private git remote (required before the Phase 0 push).**
+`pg_dump -Fc` backup with **3-2-1 placement** (off-VM copy + periodic offline
+copy) **plus one proven restore before real data exists** — the restore drill
+also runs `verify_chain()` over the restored audit log (free integrity check);
+wire the Celery worker service + first beat task; **migrations as an explicit
+deploy step** (`alembic upgrade head` run before app start; the previously
+planned migration-on-boot is demoted to a dev-only, env-gated convenience —
+multi-worker boot races and crash-loop DDL are a known production failure
+mode). **Also: provision the private git remote OFF the future production
+hardware** (the repo + Alembic history is a disaster-recovery artifact;
+required before the Phase 0 push).
 
 ### Increment 3 — integrations + bootstrap
 
-Google Drive storage driver behind a storage abstraction (S-5) + Shared-Drive
-verification; SMTP + Gmail API two-driver email abstraction + test-email path;
+Storage driver abstraction (S-5): Google Drive driver + Shared-Drive
+verification, with local-volume driver as the likely production choice
+(master plan §4 #3 — deployment-time decision); SMTP + Gmail API two-driver
+email abstraction + test-email path, wired behind the notification outbox;
 bootstrap CLI (first System Admin; refuses fixtures in prod) + synthetic
 fixtures; design-token contract served via `/api/v1/config` (UI standards §2).
+
+### Increment 4 — spine amendments *(new 2026-07-23 — master plan §2 Stage A)*
+
+- `core_activities` hardening + `core_activity_tags` (GAD/CCET/DRR/UHC
+  taxonomies, never boolean columns).
+- `core_pap_codes` + `core_object_codes` skeletons (per-FY PREXC tree,
+  effective-dated, UACS never-reuse semantics; travel = 5-02-01-010-00).
+- Holiday & work-suspension calendar (`core_holidays`) — the single
+  working-day engine for every deadline.
+- `core_compliance_deadlines` — the statutory calendar as data (master plan
+  §3.4 seed).
+- Core attachments service (upload pipeline, content-addressed store,
+  fail-closed downloads; ClamAV joins the compose stack).
+- Notification outbox tables + in-app notification center schema.
+- Report-lineage table (Blueprint Day-1 #17).
+- Seed framework: idempotent, environment-aware; named owner + cadence for
+  external datasets (PSGC quarterly, holiday proclamations annually,
+  GRDS/threshold revisions).
+- `docs/compliance/` (PIA template, processing register, breach runbook,
+  retention schedule) + `docs/operations/` (runbooks) scaffolds.
+- API-versioning + observability standards (structured JSON logs w/ request
+  IDs; self-hosted error tracker in compose).
 
 ## 4. Spine tables (pluralized per DB standards §2)
 
@@ -76,14 +112,27 @@ fixtures; design-token contract served via `/api/v1/config` (UI standards §2).
 
 ## 5. Phase 2 plan (outline — detailed at its build sessions)
 
-Shared auth (promote CSS-IS `auth.py` + `ratelimit.py`), RBAC, staff
-directory; add the deferred FKs (`*_by`, `division_id`, `section_id`) in one
-migration; query-log middleware.
-**Open decisions (resolve before Phase 2 starts):**
+Shared auth patterned on CSS-IS `auth.py`/`ratelimit.py` semantics but built
+per `docs/research/round1/auth-rbac-onprem.md`: Redis server-side sessions,
+Argon2id, NIST 800-63B-4 password policy (length 12+ + blocklist; **no
+composition rules / no forced rotation** — the reference's "letter+number"
+recorded as a deviation), throttle-not-lockout, custom-header CSRF,
+break-glass local admin, TOTP MFA for approver/admin roles (NPC Circular
+2023-06). RBAC: permission strings + role→permission tables +
+**org-unit-scoped grants**; delegation/OIC table (on-behalf-of); maker-checker
+DB checks (DV Boxes A/B/C pairwise distinct); read-only **auditor role** (COA
+Res. 2020-034) + printable chain-verification report. Staff directory:
+**greenfield core tables seeded via CSV import from a CSS-IS export** (no code
+dependency; recommended default — confirm at Stage B kickoff). Deferred FKs
+(`*_by`, `division_id`, `section_id`) in one migration; query-log middleware;
+audit-payload SPI policy decision executes here (master plan §4 #4).
+
+**Open decisions (resolve before Stage B starts):**
 - **`core_users` vs `core_staff`** — one identity table or auth-users vs
   staff-directory split; also settles the irregular plural ("staff").
-- **Directory slice vs greenfield** — take the staff-directory slice from
-  CSS-IS's data or build greenfield (`references/Reimbursement_First_Dependency_Analysis.md` §7).
+- **Directory seed detail** — greenfield + CSV import is the recommended
+  default (`references/Reimbursement_First_Dependency_Analysis.md` §7;
+  master plan §4 #1).
 
 ## 6. QA gates (Phase 0)
 
@@ -96,7 +145,10 @@ migration; query-log middleware.
 - UTC↔Manila round-trip; naive datetimes rejected
 - `/api/v1/config` fail-safe OFF, never 500
 - `lint-imports` green
-- *(Increment 2 adds: one proven backup restore; migration-on-boot)*
+- *(Increment 2 adds: one proven backup restore incl. `verify_chain()` on the
+  restored DB; explicit-step migration proven from a wiped volume)*
+- *(Increment 4 adds: holiday-calendar working-day math; compliance-deadline
+  seed loads; attachment pipeline round-trip incl. fail-closed download)*
 
 ## 7. Decisions log
 
@@ -105,6 +157,13 @@ migration; query-log middleware.
   session / push per phase; PK = BIGINT identity (no UUIDs); `*_by` columns
   plain BIGINT until Phase 2 FKs; audit = app-level session listeners
   (not triggers), hash payload includes app-set `created_at`.
+- **2026-07-23** — Master plan v1 adopted (`docs/master-plan.md`): Increment 2
+  revised (explicit-step migrations; 3-2-1 backups; off-box git remote),
+  Increment 4 added (spine amendments); production substrate corrected to
+  **Hyper-V Ubuntu VM + Docker Engine** (not Docker Desktop / WSL2 / native
+  Windows services — see master plan §3.2 and tech-stack.md); Rule 10
+  ("shared service first") adopted; core workflow engine will be built once at
+  reimbursement R-4 and shared platform-wide.
 - **2026-07-22 (post-review)** — floats stringified in audit payloads (jsonb
   numeric normalization would break the chain); relationships never use
   `delete-orphan`; ORM bulk UPDATE/DELETE blocked (`allow_unaudited` escape

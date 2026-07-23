@@ -2,55 +2,111 @@
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** 0 (Foundation floor) — **Increment 1 ✅ complete**; Increments 2–3 remain
-- **Last session:** #2 — 2026-07-22 — 9 dev rules codified into standards docs + Increment 1 built, adversarially reviewed, all QA gates green
-- **Blockers / waiting on user:** none (R-0 author decisions can be prepared in parallel — see `docs/modules/reimbursement.md` §3)
+- **Phase:** Stage A (= Phase 0) — **Increment 1 ✅**; Increments 2–4 remain.
+  **Master Plan v1 adopted** (`docs/master-plan.md`) — stages A–I + Wave 2,
+  4 new modules + DTWIS rename, Rule 10 (shared service first) locked.
+- **Last session:** #3 — 2026-07-23 — comprehensive master plan: 18-digest
+  deep research (2 rounds), owner scope additions, connectedness contract,
+  reference-corrections ledger, all docs restructured.
+- **Blockers / waiting on user:** none (R-0 author decisions and the Stage A
+  open questions can be prepared in parallel — master plan §4)
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — paste this to resume)*
 
 ```text
-Context: Office-Connect Phase 0 Increment 1 is complete (schema spine, audit
-chain, soft deletes, /api/v1/config — 31 QA-gate tests green, commit f76dd9b).
-Standards live in docs/standards/; read CLAUDE.md first.
-Task: Build Phase 0 Increment 2 (ops) per docs/modules/foundation.md §3:
+Context: Office-Connect Master Plan v1 is adopted (docs/master-plan.md);
+Phase 0 / Stage A Increment 1 is complete (31 QA-gate tests green). Read
+CLAUDE.md, then master-plan.md §2 Stage A, then docs/modules/foundation.md §3.
+Task: Build Stage A Increment 2 (ops) per the REVISED foundation.md §3:
 (1) deploy script with live-DB/version-bump/CHANGELOG guards, (2) scheduled
-pg_dump backup + ONE PROVEN RESTORE, (3) enable the Celery worker service +
-first beat backup task, (4) migration-on-boot in the app lifespan,
-(5) provision the private git remote (required before the Phase 0 push).
-Files: scripts/, docker-compose.yml (worker), office_connect/main.py
-(lifespan), office_connect/worker.py (new), docs/modules/foundation.md.
-Acceptance: docker compose up -d --build from a wiped volume comes up
-read-write with no manual migration step; a backup file is produced and
-restored successfully into a scratch DB; pytest still 31/31 green;
-lint-imports green.
-Open questions for the user: where should off-box backup copies go
-(second disk / network share / Drive)? Create the private git remote on
-which host (GitHub private / Gitea / other)?
+pg_dump -Fc backup with 3-2-1 placement + ONE PROVEN RESTORE (drill includes
+verify_chain() on the restored DB), (3) enable the Celery worker service +
+first beat backup task, (4) migrations as an EXPLICIT deploy step (dev-only
+env-gated boot migration allowed), (5) provision the private git remote on
+hardware that is NOT the future production server.
+Files: scripts/, docker-compose.yml (worker), office_connect/worker.py (new),
+office_connect/main.py, docs/modules/foundation.md.
+Acceptance: from a wiped volume, the documented deploy sequence (migrate step
+then compose up) comes up read-write; a backup file is produced and restored
+into a scratch DB with verify_chain() green; pytest still 31/31; lint-imports
+green.
+Open questions for the user: off-box backup destination (second disk /
+network share / Drive)? Private remote host (GitHub private / Gitea / other)?
 ```
 
 ---
 
-## Phase tracker *(rule 4 — commit per session, push per phase)*
+## Stage tracker *(rule 4 — commit per session, push per phase/stage gate)*
 
-| Phase | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
-|---|---|---|---|---|---|
-| 0 | Foundation floor (spine, audit, flags, ops, integrations) | in progress | 1–2 | pending | — |
-| 2 | Shared core: auth / RBAC / staff directory | not started | — | — | — |
-| R-0…R-9 | Reimbursement module | not started | — | — | — |
-| 3 | Landing shell / query bar | not started | — | — | — |
-| 4–7 | DMWIS | not started | — | — | — |
-| 1/8 | CSS-IS migration | not started | — | — | — |
-| 9 | Admin + Reports | not started | — | — | — |
-| 10 | Hardening / SIT | not started | — | — | — |
+Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
+
+| Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
+|---|---|---|---|---|---|---|
+| A | 0 (inc 1–4) | Foundation: spine ✅, ops, integrations, spine amendments | in progress | 1–3 | pending | — |
+| B | 2 | Identity & access: auth / RBAC / directory / delegation | not started | — | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
+| D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
+| E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
+| F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
+| G | 1/8 | CSS-IS convergence (PG migration + React + ARTA v2023) | not started | — | — | — |
+| H | 9 | Admin + Reports + Government Outputs | not started | — | — | — |
+| I | 10 | Hardening / SIT / pilot gate | not started | — | — | — |
+| W2-A | new | Planning & Budget (WFP/BED/BAR + PPMP/APP) | not started | — | — | — |
+| W2-B | new | Supply Management | not started | — | — | — |
+| W2-C | new | Performance & Deliverables (SPMS + COA findings) | not started | — | — | — |
 
 Status values: `not started → in progress → QA → complete (pushed)`.
-A phase's **Pushed** cell is filled only when its QA gate passed and the tag is
+A stage's **Pushed** cell is filled only when its QA gate passed and the tag is
 on the remote — that cell enforces the push-per-phase rule.
-Governance gate (DOH / Data Privacy Act) blocks loading **real** data, not the build.
+Governance gate (DOH / Data Privacy Act) blocks loading **real** data, not the
+build; the PIA-per-module gate applies before real data in ANY environment
+(master plan §3.1).
 
 ---
 
 ## Session log *(newest first)*
+
+### Session 3 — 2026-07-23 — Comprehensive Master Plan v1 ✅
+
+- **Phase(s):** planning (all stages) · **Commit:** `session(2026-07-23)` — local
+- **Done:**
+  - Two deep-research rounds (18 structured digests, archived in
+    `docs/research/` with index): round 1 = engineering/platform practices
+    (EO 77/COA rules, workflow engines, auth/NIST, modular monolith,
+    attachments, gov UI, on-prem ops, DPA/retention, gap critic); round 2 =
+    PH government standards for the new modules (CSC SPMS, DBM WFP/BED/BAR/FAR,
+    RA 12009 PPMP/APP, GAM supply/property, ISO 9001 §7.5/§9.3, UACS/PREXC,
+    ARTA CSM/FOI/NAP corrections, gap critic).
+  - **`docs/master-plan.md` v1**: connectedness contract + core-services
+    registry + connection matrix; stages A–I + Wave 2 with old-phase mapping;
+    compliance/ops/training tracks; consolidated statutory calendar; open
+    decisions register; reference-corrections ledger.
+  - **Owner scope additions**: Calendar of Activities (connected surface),
+    Controlled Document Management, Supply Management, WFP+PPMP, Performance &
+    Deliverables; **DMWIS renamed → DTWIS** (`dtwis_` prefix registered).
+  - New module docs: `qms.md`, `supply.md`, `planning-budget.md`,
+    `performance.md`; `dmwis.md` → `document-tracking.md`; research-driven
+    updates to reimbursement (delta register: EO 77 3-cluster DTE, COA
+    2023-004, GAM form numbers, CA hard-block…), foundation (Inc 2 revised:
+    explicit-step migrations, 3-2-1 backups; Inc 4 spine amendments added),
+    landing (R-2 shell decision resolved; Calendar surface), css-is (ARTA
+    v2023 scoring/deadline corrections), admin, reports.
+  - Standards: prefix registry extended (`dtwis_`, `qms_`, `supply_`,
+    `plan_`, `perf_`); **Rule 10 "shared service first"** added to
+    development-workflow.md; soft-delete ≠ records-disposition + audit-payload
+    SPI policy notes in database-standards.md; tech-stack production substrate
+    corrected to Hyper-V Ubuntu VM + Docker Engine.
+- **Decisions:** all 4 research addition packs adopted (compliance, ops/
+  quality, training/rollout, platform services); **one shared core workflow
+  engine** (built at R-4, supersedes module-internal approach); React shell +
+  component library land with R-2; Wave-2 order A→B→C (swappable); Risk
+  Registry + Management Review grouped into QMS module; remaining open
+  decisions in master plan §4.
+- **Docs updated:** master-plan.md (new), docs/research/ (new, 19 files),
+  4 new + 7 updated module docs, 3 standards docs, docs/README.md, CLAUDE.md,
+  CHANGELOG.md, this file.
+- **Next Session Prompt (archived):** Stage A Increment 2 (ops, revised) —
+  full text in the top block as of this session.
 
 ### Session 2 — 2026-07-22 — Standards codified + Phase 0 Increment 1 ✅
 

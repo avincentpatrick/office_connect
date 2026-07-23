@@ -77,6 +77,26 @@ exact versions and libraries **the session the frontend scaffold lands**.
 
 ## 7. Production substrate (post-development)
 
-On-prem **Windows Server** (see `references/Hosting_Target_Clarification.md`):
-IIS/nginx/Caddy for TLS, PostgreSQL as a Windows service, Memurai for Redis,
-NSSM-wrapped services, scheduled `pg_dump` backups. Docker is dev-only.
+On-prem **Windows Server** (see `references/Hosting_Target_Clarification.md`).
+
+**Revised 2026-07-23 (research — `docs/research/round1/onprem-windows-server-ops.md`;
+master plan §3.2):** Windows Server acts as the **Hyper-V host only**; the stack
+runs in an **Ubuntu LTS VM with Docker Engine + Compose** (same containers as
+dev). The earlier sketch (PostgreSQL as a Windows service, Memurai, NSSM
+wrappers) is superseded — rationale:
+
+- Linux containers cannot run natively on Windows Server; LCOW is removed from
+  Docker 23+; WSL2 has no production-support statement and fragile boot
+  autostart.
+- **Docker Desktop requires a paid subscription for government entities** —
+  Docker Engine in a Linux VM is Apache-2.0.
+- Memurai needs a commercial license for production; Redis in the VM does not.
+- Unattended-boot chain uses only built-ins: Hyper-V Automatic Start Action →
+  systemd → `restart: unless-stopped` (power-cycle-tested before go-live).
+
+Only 443 is published, via Caddy/nginx with an internal cert (AD CS via GPO
+preferred; Caddy internal CA fallback). Postgres/Redis stay on the
+compose-internal network. Backups: nightly `pg_dump -Fc` + 3-2-1 placement,
+graduating to pgBackRest + WAL archiving before real claims if a sub-24 h RPO
+is demanded. Exact VM/OS/engine versions recorded here at deployment
+provisioning (rule 9).

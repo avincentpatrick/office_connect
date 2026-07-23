@@ -20,15 +20,17 @@ them; confirm the prompt with the user.
 | Where | What |
 |---|---|
 | `references/` | Given source material — **READ-ONLY, never edit**. Uses *singular* table names (historical). |
+| `docs/master-plan.md` | **Authoritative build plan v1** — stages A–I + Wave 2, connectedness contract, core-services registry, corrections ledger. |
 | `docs/standards/` | Binding conventions (DB, UI, workflow, tech stack). |
 | `docs/modules/` | Per-module plan + status + delta register. |
-| `PROGRESS.md` | Current status, phase tracker, session log, next prompt. |
+| `docs/research/` | 18 deep-research digests behind the plan (cited by delta registers). |
+| `PROGRESS.md` | Current status, stage tracker, session log, next prompt. |
 | `CHANGELOG.md` | User-visible changes; `[Unreleased]` → version per phase. |
 
-Precedence on conflict: **standing rules → docs/standards/ → references/
-module specs → the `.docx` execution plan** (scope/sequence only).
+Precedence on conflict: **standing rules → docs/standards/ → master-plan.md →
+references/ module specs → the `.docx` execution plan** (scope/sequence only).
 
-## The 9 standing rules (locked 2026-07-22)
+## The 10 standing rules (1–9 locked 2026-07-22; 10 locked 2026-07-23)
 
 1. **Uniform UI** — every element from the shared component inventory & layout templates → `docs/standards/ui-standards.md`
 2. **Document every session** — all work lands in the relevant `.md` + progress tracker at session end → `development-workflow.md` §2
@@ -39,11 +41,15 @@ module specs → the `.docx` execution plan** (scope/sequence only).
 7. **DB naming standards** — prefixed plural tables, `<singular>_id` FKs → `database-standards.md` §2–§4
 8. **Per-module docs** — every main module has `docs/modules/<module>.md`
 9. **Documented tech stack** — every dependency/tool recorded → `tech-stack.md`
+10. **Shared service first** — one core workflow engine for every approval flow;
+    check the core-services registry before adding any table/service; duplication
+    needs a documented waiver → `development-workflow.md` §5a + `master-plan.md` §1
 
 ## DB quick card
 
 - Tables: `<prefix>_<plural>` — `core_users`, `reimb_claims`. Prefixes:
-  `core_ / reimb_ / css_ / dmwis_ / admin_`.
+  `core_ / reimb_ / css_ / dtwis_ / admin_ / qms_ / supply_ / plan_ / perf_`
+  (`dtwis_` renamed from `dmwis_` 2026-07-22).
 - PK `id` BIGINT identity · FK `<singular>_id` (`role_id → core_roles.id`).
 - Business tables: `created_at/created_by/updated_at/updated_by` +
   `deleted_at/deleted_by`. Lookups: + `is_active`. Append-only logs:
