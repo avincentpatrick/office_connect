@@ -10,10 +10,13 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **Stage A (= Phase 0) COMPLETE** — Increments 1 ✅, 2 ✅, 3 ✅, 4 ✅;
-  Phase 0 QA gate passed, tagged **`phase-0-complete`**, **first push to
-  GitHub done**. **Next: Stage B (Phase 2) — Identity & Access.** Master Plan v1
-  in force (`docs/master-plan.md`).
+- **Phase:** **Stage A (= Phase 0) build COMPLETE** — Increments 1 ✅, 2 ✅, 3 ✅,
+  4 ✅; all Phase 0 QA-gate checks pass; committed + tagged **`phase-0-complete`**
+  locally. **⚠ The first push is BLOCKED** — the machine's GitHub credentials
+  (`icvpitahc`) lack write access to `avincentpatrick/office_connect` (HTTP 403).
+  The push (`git push origin master --tags`) is ready to fire once the user grants
+  that account write access (or switches the credentials/remote). **Next: Stage B
+  (Phase 2) — Identity & Access.** Master Plan v1 in force (`docs/master-plan.md`).
 - **Last session:** #6 — 2026-07-23 — Increment 4 (spine amendments) + Phase 0
   gate: the shared day-1 tables + services — activity taxonomies, UACS/PREXC
   codes, holiday + working-day engine, statutory compliance calendar (22 rows),
@@ -31,9 +34,12 @@ expand it into the full task and confirm with you before starting.
   now, tracker as a profile** (fail-safe `SENTRY_DSN`); auth-checked attachment
   download router + per-user notification prefs **defer to Stage B** (no auth
   yet — built as service seams). See `docs/modules/foundation.md` §7.
-- **Blockers / waiting on user:** none. **Phase 0 pushed** — `origin`
-  (`github.com/avincentpatrick/office_connect`) now has `master` + the
-  `phase-0-complete` tag (first push).
+- **Blockers / waiting on user:** **the first push is blocked on GitHub write
+  access.** `origin` = `github.com/avincentpatrick/office_connect` but this
+  machine authenticates as `icvpitahc` (403 denied). Resolve by adding `icvpitahc`
+  as a collaborator with write access, switching the stored credential to the
+  `avincentpatrick` account, or repointing `origin`. Then run
+  `git push origin master --tags`. Everything else is done locally.
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
@@ -94,7 +100,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
-| A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
+| A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | QA passed; push blocked | 1–6 | ✅ passed | tag `phase-0-complete` local; **push pending GitHub write access** |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | not started | — | — | — |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
@@ -120,8 +126,9 @@ build; the PIA-per-module gate applies before real data in ANY environment
 
 ### Session 6 — 2026-07-23 — Stage A Increment 4 (spine amendments) + Phase 0 gate ✅
 
-- **Phase(s):** 0 / Stage A (closes Phase 0) · **Commit:** `session(2026-07-23)` —
-  **pushed** (tag `phase-0-complete`, first push to origin)
+- **Phase(s):** 0 / Stage A (closes Phase 0) · **Commit:** `session(2026-07-23)`
+  (`74a9a7a`) + follow-up docs commit; tag `phase-0-complete` created locally —
+  **push BLOCKED** (GitHub write access; see Current Status / Blockers)
 - **Done (migrations 0003–0008, built in independently-committable groups):**
   - **Activity taxonomies** — `core_activity_tags` (configurable GAD/CCET/DRR/UHC
     vocabulary, never boolean cols) + `core_activity_tag_assignments` (multi-tag
@@ -174,7 +181,10 @@ build; the PIA-per-module gate applies before real data in ANY environment
   seed-framework cadences; observability logs-now/tracker-profile).
 - **Phase 0 QA gate:** manual test guide added (foundation.md §8); CHANGELOG
   promoted to **0.1.0**; `APP_VERSION` bumped `0.1.0.dev1 → 0.1.0`; tagged
-  **`phase-0-complete`**; **first push** of `master` + tags to `origin`.
+  **`phase-0-complete`** locally. **First push did NOT complete** — `origin`
+  (`avincentpatrick/office_connect`) rejected the push because this machine
+  authenticates as `icvpitahc` (403, no write access). Push is staged and ready;
+  fires once GitHub access is granted.
 - **Docs updated:** foundation.md (§1/§4/§6/§7/§8), tech-stack.md (deps/services/
   CLI/external), database-standards.md (§8 effective-dated + tenant-override),
   api-standards.md (new), docs/compliance/ (new, 5 files), docs/operations/
