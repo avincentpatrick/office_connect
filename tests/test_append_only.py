@@ -43,6 +43,16 @@ DENIED_STATEMENTS = [
     # Stage C: no DELETE anywhere for oc_app (business workflow tables too).
     "DELETE FROM core_workflow_instances WHERE id = 1",
     "DELETE FROM core_workflow_definitions WHERE id = 1",
+    # Stage C R-1: reimbursement append-only logs are UPDATE/DELETE-denied.
+    "UPDATE reimb_status_histories SET to_status = 'x' WHERE id = 1",
+    "DELETE FROM reimb_status_histories WHERE id = 1",
+    "UPDATE reimb_return_events SET free_comment = 'x' WHERE id = 1",
+    "DELETE FROM reimb_return_events WHERE id = 1",
+    "UPDATE reimb_external_events SET status = 'x' WHERE id = 1",
+    "DELETE FROM reimb_external_events WHERE id = 1",
+    # Stage C R-1: no DELETE on the business reimb tables either.
+    "DELETE FROM reimb_claims WHERE id = 1",
+    "DELETE FROM reimb_cash_advances WHERE id = 1",
 ]
 
 

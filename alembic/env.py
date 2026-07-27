@@ -14,6 +14,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
 import office_connect.core.models  # noqa: F401 — registers every spine table
+import office_connect.modules.reimbursement.models  # noqa: F401 — registers reimb_* tables
 from office_connect.core.base import Base
 
 config = context.config

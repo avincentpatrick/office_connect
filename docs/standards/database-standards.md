@@ -249,6 +249,11 @@ override, every config or flag change, every soft delete. The app DB role has
   but a number is **never reused** — not even when its row is soft-deleted.
 - Unique via partial index `WHERE deleted_at IS NULL` **plus** the no-reuse
   guarantee from the generator.
+- **Implemented Stage C R-1 as core-service #5** (`office_connect/core/reference_numbers.py`
+  `::allocate_reference_number(session, scope, year)` over `core_reference_sequences`):
+  a `FOR UPDATE`-locked `(scope, year)` counter that only ever advances (so numbers are
+  never reused), resets yearly, and commits in the caller's transaction (the number and
+  the row it labels commit atomically). All modules consume it; reimbursement is first.
 
 ## 13. Migration rules
 

@@ -12,6 +12,20 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-1 — Local Travel Reimbursement schema + config pack** (`reimb_*`,
+  2026-07-27): the reimbursement data model on top of the workflow engine — 13 `reimb_*`
+  tables (migration `0013`): the claim header (`reimb_claims`, with `workflow_instance_id`
+  FKing INTO the shared engine) + itinerary legs, cash advances, the effective-dated EO 77
+  3-cluster DTE rate tables (`reimb_dte_clusters` + a PSGC `reimb_region_clusters` map,
+  replacing the old 2-tier per diem), the config pack (`reimb_configs`, with legal sources),
+  the documentary-requirements catalog + per-claim items, the return-reason taxonomy +
+  append-only return/status/external-event logs, and the core-attachments join. The
+  **cash-advance hard-block** (PD 1445 §89 — at most one unliquidated CA per claimant) is a
+  DB constraint. Ships the **core reference-number service** (`RB-`/`LQ-YYYY-NNNN`, yearly
+  reset, never reused) that every module will use. Regulatory reference data (EO 77 clusters,
+  PSGC region map, COA-2023-004 checklist, return reasons, config) is seeded. Computation,
+  the wizard, and the approval-definition wiring come in R-2/R-4-app. Verified: **pytest 340
+  (+20), lint-imports 3/3**, migration `0013` idempotent + reversible. No new dependency.
 - **Stage C — the shared core workflow engine** (`core_workflow_*`, 2026-07-27): the
   ONE approval/routing engine every module will consume (Rule 10 + master-plan §1.1 #1),
   built as a pure core service ahead of its first consumer (reimbursement R-4). A workflow

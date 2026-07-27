@@ -28,6 +28,13 @@ BUSINESS_TABLES = {
     "core_workflow_instances",
     "core_workflow_steps",
     "core_workflow_delegations",
+    # Stage C — reference numbers (#5) + reimbursement (R-1)
+    "core_reference_sequences",
+    "reimb_claims",
+    "reimb_itinerary_legs",
+    "reimb_cash_advances",
+    "reimb_checklist_items",
+    "reimb_attachments",
 }
 LOOKUP_TABLES = {
     "core_feature_flags",
@@ -40,6 +47,12 @@ LOOKUP_TABLES = {
     "core_org_units",
     "core_roles",
     "core_permissions",
+    # Stage C — reimbursement (R-1) catalogs / config
+    "reimb_configs",
+    "reimb_dte_clusters",
+    "reimb_region_clusters",
+    "reimb_checklist_catalogs",
+    "reimb_return_reason_catalogs",
 }
 APPEND_ONLY_TABLES = {
     "core_audit_logs",
@@ -49,6 +62,10 @@ APPEND_ONLY_TABLES = {
     "core_login_attempts",
     # Stage C — append-only, audited decision log
     "core_workflow_events",
+    # Stage C — reimbursement (R-1) append-only logs
+    "reimb_return_events",
+    "reimb_status_histories",
+    "reimb_external_events",
 }
 AUDIT_COLS = {"created_at", "created_by", "updated_at", "updated_by"}
 SOFT_DELETE_COLS = {"deleted_at", "deleted_by"}

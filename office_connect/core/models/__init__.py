@@ -20,6 +20,7 @@ from office_connect.core.models.org_unit import OrgUnit
 from office_connect.core.models.pap_code import ObjectCode, PapCode
 from office_connect.core.models.permission import Permission
 from office_connect.core.models.query_log import QueryLog
+from office_connect.core.models.reference_sequence import ReferenceSequence
 from office_connect.core.models.report_lineage import ReportLineage
 from office_connect.core.models.role import Role
 from office_connect.core.models.role_permission import RolePermission
@@ -56,6 +57,7 @@ __all__ = [
     "PapCode",
     "Permission",
     "QueryLog",
+    "ReferenceSequence",
     "ReportLineage",
     "Role",
     "RolePermission",
