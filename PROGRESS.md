@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C: Reimbursement vertical + the shared core workflow engine + the first React/Vite/Tailwind shell (the first user-facing module on the Stage A/B foundation floor).** *(If the phase-2 push/tag did not land last session — see Current Status "push pending" — confirm the git credential and push `phase-2-complete` first.)*
+> **Resume Office-Connect — Stage C: Reimbursement vertical + the shared core workflow engine + the first React/Vite/Tailwind shell (the first user-facing module on the Stage A/B foundation floor).**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -14,11 +14,9 @@ expand it into the full task and confirm with you before starting.
   B4 ✅**; **phase-2 QA gate PASSED** (pytest 286/286, lint-imports 3/3, migration
   chain `0001→0011` idempotent + reversible). Phase 0 / Stage A remains complete +
   pushed (tag `phase-0-complete`). **Migration head now `0011`** (B4's one migration:
-  `core_notification_preferences` + the `suppressed` status). **⚠ PUSH PENDING** —
-  per the kickoff decision (D4, "prepare then pause") the B4 work + gate is committed
-  **locally**; the **first Stage B push** (B1–B4 to `origin/master` + tag
-  `phase-2-complete`) awaits explicit user go-ahead + a git-credential confirm
-  (`avincentpatrick`; the Phase-0 push needed a re-auth). **Next: Stage C —
+  `core_notification_preferences` + the `suppressed` status). **PUSHED** — the first
+  Stage B push landed: `origin/master` = `b3d150c` (B1–B4) + annotated tag
+  `phase-2-complete` (credential `avincentpatrick` confirmed). **Next: Stage C —
   Reimbursement vertical + core workflow engine + first React shell.** Master Plan
   v1 in force.
 - **Last session:** #10 — 2026-07-27 — **Stage B Increment 4 (wire seams + directory
@@ -46,9 +44,7 @@ expand it into the full task and confirm with you before starting.
   then **pause** before `git push`/tag (D4); CSS-IS ingestion = build the mechanism,
   run on synthetic fixtures (real feed not in workspace); attachments = coarse RBAC +
   a Stage-C holder-scoping seam. See `docs/modules/foundation.md` §7 (B4).
-- **Blockers / waiting on user:** **the phase-2 push/tag** (D4 pause) — awaiting your
-  go-ahead to `git push origin master && git tag phase-2-complete && git push origin
-  phase-2-complete` (credential must resolve to `avincentpatrick`). *(Dev note: B4
+- **Blockers / waiting on user:** none — Stage B is complete + pushed. *(Dev note: B4
   added `python-multipart` → the app/worker image was rebuilt; migration head is now
   `0011`.)*
 
@@ -113,7 +109,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
-| B | 2 | Identity & access: auth / RBAC / directory / delegation | B1–B4 ✅ · gate passed (push pending) | 7–10 | ✅ passed | — *(push pending — D4)* |
+| B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
@@ -139,8 +135,8 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ### Session 10 — 2026-07-27 — Stage B Increment 4 (wire seams + directory + compliance) + phase-2 gate
 
 - **Phase(s):** 2 / Stage B (B4) — **closes Stage B** · **Commit:** `session(2026-07-27)`
-  — **local only, PUSH PENDING** (D4: prepare then pause; the first Stage B push +
-  tag `phase-2-complete` awaits explicit user go-ahead + a credential confirm).
+  (`b3d150c`) — **pushed** to `origin/master` + annotated tag `phase-2-complete`
+  (Stage B's first push; credential `avincentpatrick`).
 - **Kickoff decisions (user-confirmed):** notification prefs = dedicated
   `core_notification_preferences` table (migration `0011`) + `suppressed` status,
   security/transactional bypass; person-field SPI = **direct identifiers only**
@@ -197,8 +193,8 @@ build; the PIA-per-module gate applies before real data in ANY environment
   new §8), tech-stack.md (`python-multipart`), CHANGELOG.md (promoted to `0.2.0`),
   `office_connect/__init__.py` (`APP_VERSION 0.2.0`), docs/compliance/ (PIA + register),
   this file.
-- **Next:** confirm + land the phase-2 push/tag (D4), then Stage C — Reimbursement
-  vertical + core workflow engine + first React shell (see the Next Session Prompt).
+- **Next:** Stage C — Reimbursement vertical + core workflow engine + first React
+  shell (see the Next Session Prompt).
 
 ### Session 9 — 2026-07-23 — Stage B Increment 3 (RBAC enforcement)
 
