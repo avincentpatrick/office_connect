@@ -221,6 +221,14 @@ override, every config or flag change, every soft delete. The app DB role has
 - `numeric(12, 2)`, Philippine Peso.
 - **All arithmetic server-side** — the UI displays, never computes.
 - Display format: `₱2,200.00`.
+- **Rounding: `ROUND_HALF_UP` to the centavo**, only via
+  `office_connect/core/money.py` (`to_money()`) — the mode an accountant
+  re-performing the computation by hand expects (banker's rounding would
+  produce audit mismatches). Added 2026-07-27 (R-2 engine). Where a total is
+  built from percentage components, **quantize each component, then sum** —
+  printed component rows must re-add exactly to their total.
+- **Money inside JSONB is a 2-dp string** (`"1234.50"`, `money_str()`), never a
+  JSON number — JSON numbers round-trip through binary floats.
 
 ## 11. JSONB
 

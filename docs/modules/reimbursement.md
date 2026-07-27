@@ -33,6 +33,8 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | Ref numbers via a per-module strategy (spec §16) | Built as the **core reference-number service #5** (`core_reference_sequences` + `core/reference_numbers.py::allocate_reference_number`, `XX-YYYY-NNNN`, yearly reset, never reused) — all modules consume it | Rule 10 — it was unbuilt; reimb is first consumer |
 | §4 config pack as constants | `reimb_configs` (effective-dated key rows with legal `source`) + `reimb_dte_clusters` + `reimb_region_clusters`, all seeded (`modules/reimbursement/seeds.py`) | effective-dated + tenant-overridable |
 | (spec silent) | **Physical-document custody states** per attachment (scanned → original to Accounting → forwarded to COA); e-signature decision per artifact with the resident COA auditor (default: printed + wet-ink remains the record) | paper post-audit reality — master plan §3.1 |
+| §8 calculator: per-leg pct; 50-km = strip lodging only (justification unlocks) | **R-2 engine (2026-07-27): per-DAY computation** over the trip span (arrival/full/return/same_day), each day attributed to its **controlling leg** (last of the date by `(seq, id)` — other same-date legs get 0%, so double-claiming is structurally impossible; legless days carry the region forward). Breakdown persisted in `reimb_claims.totals["days"]` JSONB (sanctioned computed-snapshot form, DB standards §11; promote to a day table if R-5 App-45 printing demands rows). **50-km**: within 50 km **without overnight → fare only, 0% DTE** via two attested claim booleans `is_within_50km` + `overnight_stay` (migration `0014`) — supersedes the spec's lodging-only strip. Return-day rate follows the controlling leg's region when set, else the claim destination | research digest (per-day breakdown, commuter = fare only) + COA disallowance patterns |
+| (spec silent: rounding, same-day trips, gov-vehicle fare edge) | **ROUND_HALF_UP** to the centavo via new `core/money.py` (quantize each component after its pct, then sum — printed day rows always re-add exactly); **same-day round trip = 50%** (no night → no lodging component; pending accountant confirmation, §3); a gov-vehicle leg carrying a fare **hard-fails 422** `reimb_gov_vehicle_fare` (fail-closed, never a silent drop); `per_diem_pct` stores the **day-type gross** (100/50/0) — host strips reduce `per_diem_amount`, never the pct; money inside JSONB = 2-dp **strings** | money standards §10 + audit re-performance |
 
 *(Grows as build proceeds — every divergence from the spec lands here.)*
 
@@ -48,6 +50,8 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
       (shared with Stage B — see `foundation.md` §5)
 - [ ] ~~HUC list~~ **reframed**: seed `reimb_dte_clusters` (EO 77 Annex A
       3 clusters) + PSGC region→cluster map; confirm against the EO text at R-0
+- [ ] **Same-day round trip = 50%** (meals + incidentals, no lodging component —
+      R-2-engine interpretation 2026-07-27) — confirm with the accountant
 
 ## 4. R-phase status
 
@@ -55,13 +59,30 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 |---|---|---|---|---|
 | R-0 | Requirements / author decisions | resolved in the delta register + kickoff (research-backed defaults adopted) | — | 12 |
 | R-1 | Schema + config — `reimb_*` tables (13) + `core_reference_sequences` (#5), migration `0013`, EO 77 3-cluster + PSGC seed, config pack, CA hard-block DB constraint, catalogs. **Computation logic is R-2; approval runtime is the engine.** Fixtures trimmed to the config/catalog seeds (full synthetic trip set → R-2). | **done** (session 12) | pytest 340 (+20), lint 3/3, migration `0013` reversible | 12 |
-| R-2 | Claim wizard — **also delivers the first React surface: app shell + design tokens + component-library seed (TaskList, StatusTag, ErrorSummary, wizard)** per ui-standards §7 fill-trigger (owner decision 2026-07-22) | not started | — | — |
+| R-2-engine | **Per-diem computation engine** — pure core `services/per_diem.py` + `compute_claim_totals` persist wrapper (writes per-leg `per_diem_pct/per_diem_amount/leg_total` + the `totals` JSONB v1 snapshot); 50-km attestation columns (migration `0014`); `core/money.py` (ROUND_HALF_UP); representative trip factories (R-1 fixture deferral discharged) | **done** (session 13) | pytest 377 (+37), lint 3/3, `0014` reversible; **₱5,500 anchor + cluster switch + 50-km gate green** | 13 |
+| R-2-wizard | Claim wizard — **also delivers the first React surface: app shell + design tokens + component-library seed (TaskList, StatusTag, ErrorSummary, wizard)** per ui-standards §7 fill-trigger (owner decision 2026-07-22) | not started | — | — |
 | R-3 | Checklist engine + uploads (checklist grammar built as a **core service** — Rule 10) | not started | — | — |
 | R-4 | Approval chain + work management — **ships the shared core workflow engine** (first consumer). **Engine core shipped 2026-07-27** (session 11, `core_workflow_*`, migration `0012`); R-4-app remaining = author the reimbursement definition (states = spec §6 machine; certify_A/B/C via `step_kind`→gate config), wire `reimb_claims.workflow_instance_id`, the My-Work inbox, and the escalation-notification via `register_sla_enqueuer` | engine core ✅ / R-4-app not started | engine core green | 11 |
 | R-5…R-9 | Per spec §14 (templates/signatures → liquidation → external tracking → insights → hardening/pilot) | not started | — | — |
 
 ## 5. Decisions log
 
+- **2026-07-27 (session 13 — Stage C R-2-engine: per-diem computation)** — built the
+  computation engine as **pure core + async wrapper** (`services/per_diem.py` no-I/O,
+  `services/compute.py` loads/persists in the caller's session, flushes, caller commits;
+  errors are fail-closed `APIError` factories in `services/errors.py` — the module's first
+  service code). Decisions: **per-DAY unit of computation** attributed to the day's
+  controlling leg (no day table — breakdown lives in `totals["days"]` JSONB, promotion path
+  R-5); **50-km = fare-only without overnight** via two attested claim booleans (migration
+  `0014`) superseding spec §8's lodging-only strip; **same-day trip = 50%** (accountant
+  confirmation pending, §3); **components quantize-then-sum** with the new platform-wide
+  `core/money.py` (`ROUND_HALF_UP`, money-in-JSONB as 2-dp strings — database-standards §10
+  updated); **gov-vehicle leg with a fare hard-fails** (`reimb_gov_vehicle_fare`); rates /
+  region map / configs all resolve **as-of each day** (mid-trip rate change pays per day);
+  settlement `advance − grand` → `to_refund` / `to_reimburse` (spec §6.2), no-CA claims get
+  `to_reimburse = grand`. `totals` v1 schema documented in the delta register; trip
+  factories (`tests/reimbursement_trip_factories.py`) discharge the R-1 fixture deferral.
+  Verified: pytest 377 (+37), lint 3/3, `0013↔0014` reversible, **₱5,500 anchor green**.
 - **2026-07-27 (session 12 — Stage C R-1: model + config pack)** — built the `reimb_*`
   schema (13 tables, migration `0013`, autogenerated then hand-tuned) + the **core
   reference-number service #5** (`core_reference_sequences`; unbuilt before, reimb is first

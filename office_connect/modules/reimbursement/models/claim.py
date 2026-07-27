@@ -63,6 +63,13 @@ class ReimbClaim(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     destination_region_code: Mapped[str | None]
     date_depart: Mapped[date | None] = mapped_column(Date)
     date_return: Mapped[date | None] = mapped_column(Date)
+    # EO 77 50-km attestations (claimant-asserted — core_staff has no official-station
+    # field to derive distance from). Within 50 km WITHOUT an overnight stay, the
+    # engine pays transport fare only: 0% DTE (research digest supersedes spec §8's
+    # lodging-only strip; see the module delta register). Radius value stays config
+    # (`per_diem.radius_km`).
+    is_within_50km: Mapped[bool] = mapped_column(server_default=text("false"))
+    overnight_stay: Mapped[bool] = mapped_column(server_default=text("false"))
     fund_source: Mapped[str | None] = mapped_column(FundSource)
     is_jo_cos: Mapped[bool] = mapped_column(server_default=text("false"))
     cash_advance_id: Mapped[int | None] = mapped_column(

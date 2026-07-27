@@ -12,6 +12,21 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-2-engine — the per-diem computation engine** (2026-07-27): a claim's
+  money is now computed **server-side** from its itinerary + the seeded EO 77 rules — a
+  per-day breakdown (100% arrival/full days, 50% departure/return day and same-day trips,
+  host-provided lodging/meals strips, government-vehicle fare suppression, and the 50-km
+  rule: within 50 km without an overnight stay pays transport fare only) rated per day at
+  that day's destination cluster and effective-dated rate. Writes each leg's
+  `per_diem_pct/per_diem_amount/leg_total` and the claim's `totals` snapshot
+  (`{per_diem, transport, other, grand, advance, to_reimburse, to_refund, days[]}`), with
+  cash-advance settlement (refund due vs "Reimbursement Due"). Two new claimant
+  attestations on the claim (`is_within_50km`, `overnight_stay`, migration `0014`).
+  Establishes the **platform money convention** (`core/money.py`): `ROUND_HALF_UP` to the
+  centavo, quantize-components-then-sum, money-in-JSONB as 2-dp strings
+  (database-standards §10). The spec §8 worked example (**₱5,500**, 3-day Manila trip) is
+  the pinned QA anchor. Verified: **pytest 377 (+37), lint-imports 3/3**, migration
+  `0013↔0014` reversible. No new dependency.
 - **Stage C R-1 — Local Travel Reimbursement schema + config pack** (`reimb_*`,
   2026-07-27): the reimbursement data model on top of the workflow engine — 13 `reimb_*`
   tables (migration `0013`): the claim header (`reimb_claims`, with `workflow_instance_id`

@@ -1,12 +1,17 @@
-"""Shared builders for the reimbursement (R-1) tests."""
+"""Shared builders for the reimbursement (R-1/R-2) tests."""
 
 from __future__ import annotations
 
 import secrets
+from datetime import date
 from decimal import Decimal
 
 from office_connect.core.models import Staff
-from office_connect.modules.reimbursement.models import ReimbCashAdvance, ReimbClaim
+from office_connect.modules.reimbursement.models import (
+    ReimbCashAdvance,
+    ReimbClaim,
+    ReimbItineraryLeg,
+)
 
 
 async def make_staff(session, *, employment_status: str = "permanent", **kw) -> Staff:
@@ -43,3 +48,19 @@ async def make_claim(
     session.add(claim)
     await session.flush()
     return claim
+
+
+async def make_leg(
+    session, *, claim_id: int, seq: int = 1, leg_date: date | None = None,
+    fare: str | None = None, **kw,
+) -> ReimbItineraryLeg:
+    leg = ReimbItineraryLeg(
+        claim_id=claim_id,
+        seq=seq,
+        leg_date=leg_date,
+        fare=Decimal(fare) if fare is not None else None,
+        **kw,
+    )
+    session.add(leg)
+    await session.flush()
+    return leg
