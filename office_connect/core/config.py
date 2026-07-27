@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_json: bool = True
     sentry_dsn: str | None = None
+    # Query-log middleware (Increment 4): one append-only core_query_logs row per
+    # /api/v1 request (ids/param-names/status only — never bodies/values/SPI), the
+    # COA read-access posture. Kill-switch: set false for zero per-request overhead.
+    query_log_enabled: bool = True
 
     # Public origin the app is served from (Day-1 #10 — uvicorn runs with
     # --proxy-headers so links/redirects are correct behind a reverse proxy).

@@ -25,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from office_connect.core.attachments.scan_queue import register_enqueuer
 from office_connect.core.attachments.service import process_attachment
 from office_connect.core.config import get_settings
 from office_connect.core.models import Attachment
@@ -91,3 +92,12 @@ def scan_attachment(self, attachment_id: int) -> dict[str, Any]:
 @celery_app.task(name="ops.scan_pending_attachments", bind=True, acks_late=True)
 def scan_pending_attachments(self, limit: int = 100) -> dict[str, Any]:
     return asyncio.run(_with_app_session(lambda s: _scan_pending(s, limit)))
+
+
+# ops → core injection (import-linter-legal): the upload router enqueues a
+# per-upload scan after commit via this callable. Mirrors notification_tasks.py.
+register_enqueuer(
+    lambda attachment_id: celery_app.send_task(
+        "ops.scan_attachment", args=[attachment_id]
+    )
+)

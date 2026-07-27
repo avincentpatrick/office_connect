@@ -25,6 +25,9 @@ Subcommands:
                       org-unit tree + staff directory — CSS-IS is a separate
                       system, no coupling). **Hard-refused when APP_ENV=production**
                       (never fabricate data in prod).
+- ``ingest-directory`` — ingest a CSS-IS-shaped directory CSV feed (``--org-units``
+                      / ``--staff`` paths) via the shared ``core.directory`` ingest
+                      service; ``--full`` prunes staff absent from the feed.
 - ``send-test-email`` — send a test email through the selected driver (or log in
                       dev) to prove the notification seam is wired.
 
@@ -50,12 +53,11 @@ from sqlalchemy.pool import NullPool
 import office_connect.core.audit  # noqa: F401
 import office_connect.core.soft_delete  # noqa: F401
 from office_connect.core.config import Settings, get_settings
+from office_connect.core.directory import ingest_directory
 from office_connect.core.models import (
     Activity,
     FeatureFlag,
-    OrgUnit,
     Role,
-    Staff,
     TenantConfig,
     User,
     UserRole,
@@ -197,51 +199,11 @@ async def _load_fixtures(session: AsyncSession) -> dict[str, Any]:
             session.add(Activity(**spec))
             activities_created.append(spec["title"])
 
-    # Org-unit tree (parents first so children can resolve parent ids).
-    org_by_code: dict[str, OrgUnit] = {
-        ou.code: ou for ou in (await session.execute(select(OrgUnit))).scalars().all()
-    }
-    org_created: list[str] = []
-    for spec in _FIXTURE_ORG_UNITS:
-        if spec["code"] in org_by_code:
-            continue
-        parent = org_by_code.get(spec["parent_code"]) if spec["parent_code"] else None
-        org = OrgUnit(
-            code=spec["code"],
-            name=spec["name"],
-            kind=spec["kind"],
-            parent_org_unit_id=parent.id if parent else None,
-            sort_order=spec["sort_order"],
-        )
-        session.add(org)
-        await session.flush()  # assign id for downstream children/staff
-        org_by_code[org.code] = org
-        org_created.append(org.code)
-
-    # Staff directory (resolves division/section codes to org-unit ids).
-    existing_emp = set(
-        (await session.execute(select(Staff.employee_no))).scalars().all()
+    # Org tree + staff go through the SAME ingest service the real CSS-IS feed
+    # uses (one code path) — the fixture dicts already match the feed schema.
+    ingest = await ingest_directory(
+        session, org_units=_FIXTURE_ORG_UNITS, staff=_FIXTURE_STAFF
     )
-    staff_created: list[str] = []
-    for spec in _FIXTURE_STAFF:
-        if spec["employee_no"] in existing_emp:
-            continue
-        div = org_by_code.get(spec["division_code"]) if spec["division_code"] else None
-        sec = org_by_code.get(spec["section_code"]) if spec["section_code"] else None
-        session.add(
-            Staff(
-                employee_no=spec["employee_no"],
-                given_name=spec["given_name"],
-                surname=spec["surname"],
-                full_name=spec["full_name"],
-                email=spec["email"],
-                position_title=spec["position_title"],
-                employment_status=spec["employment_status"],
-                division_id=div.id if div else None,
-                section_id=sec.id if sec else None,
-            )
-        )
-        staff_created.append(spec["employee_no"])
 
     await session.commit()
     total_activities = (
@@ -250,8 +212,8 @@ async def _load_fixtures(session: AsyncSession) -> dict[str, Any]:
     return {
         "activities_created": activities_created,
         "activities_total": total_activities,
-        "org_units_created": org_created,
-        "staff_created": staff_created,
+        "org_units_created": ingest.org_units_created,
+        "staff_created": ingest.staff_created,
     }
 
 
@@ -341,6 +303,43 @@ async def _load_reference(
     return {"app_env": app_env, "datasets": results}
 
 
+# --------------------------------------------------------- ingest-directory
+def _read_directory_csv(path: str | None) -> list[dict[str, Any]]:
+    """Parse a directory CSV file into row mappings (transport-only; the core
+    ingest service is format-agnostic). Tolerates a UTF-8 BOM."""
+    import csv
+
+    if not path:
+        return []
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        return [dict(row) for row in csv.DictReader(fh)]
+
+
+async def _ingest_directory_cli(
+    session: AsyncSession,
+    org_units_path: str | None,
+    staff_path: str | None,
+    prune: bool,
+) -> dict[str, Any]:
+    """Ingest a CSS-IS-shaped directory CSV feed (org units + staff)."""
+    result = await ingest_directory(
+        session,
+        org_units=_read_directory_csv(org_units_path),
+        staff=_read_directory_csv(staff_path),
+        deactivate_absent=prune,
+    )
+    await session.commit()
+    return {
+        "org_units_created": result.org_units_created,
+        "org_units_updated": result.org_units_updated,
+        "org_units_restored": result.org_units_restored,
+        "staff_created": result.staff_created,
+        "staff_updated": result.staff_updated,
+        "staff_restored": result.staff_restored,
+        "staff_deactivated": result.staff_deactivated,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="office_connect.ops.bootstrap",
@@ -370,6 +369,17 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser(
         "promote-admin",
         help="promote the recorded bootstrap admin into a break-glass login",
+    )
+    ingest = sub.add_parser(
+        "ingest-directory",
+        help="ingest a CSS-IS-shaped directory CSV feed (org units + staff)",
+    )
+    ingest.add_argument("--org-units", help="path to org_units.csv")
+    ingest.add_argument("--staff", help="path to staff.csv")
+    ingest.add_argument(
+        "--full",
+        action="store_true",
+        help="prune: soft-delete live staff absent from the feed (default: off)",
     )
     mail = sub.add_parser(
         "send-test-email", help="send a test email via the selected driver"
@@ -406,6 +416,15 @@ def main(argv: list[str] | None = None) -> int:
         result = asyncio.run(_with_app_session(settings, _seed_rbac))
     elif args.command == "promote-admin":
         result = asyncio.run(_with_app_session(settings, _promote_admin))
+    elif args.command == "ingest-directory":
+        result = asyncio.run(
+            _with_app_session(
+                settings,
+                lambda s: _ingest_directory_cli(
+                    s, args.org_units, args.staff, args.full
+                ),
+            )
+        )
     else:  # send-test-email
         result = send_test_email(args.to, settings=settings)
 

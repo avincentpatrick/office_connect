@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage B Increment 4 (B4): wire seams + directory + compliance — authed attachments HTTP router, notification recipient/prefs resolution, CSS-IS inbound directory ingestion + admin user provisioning, query-log middleware, full person-field SPI policy, Stage-B PIA, then the phase-2 QA gate (tag `phase-2-complete`, Stage B's first push).**
+> **Resume Office-Connect — Stage C: Reimbursement vertical + the shared core workflow engine + the first React/Vite/Tailwind shell (the first user-facing module on the Stage A/B foundation floor).** *(If the phase-2 push/tag did not land last session — see Current Status "push pending" — confirm the git credential and push `phase-2-complete` first.)*
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,103 +10,98 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **Stage B (Phase 2) IN PROGRESS** — Increments **B1 ✅ + B2 ✅ + B3 ✅**.
-  Phase 0 / Stage A remains complete + pushed (tag `phase-0-complete`,
-  `origin/master` = `5eb19a4`). **Migration head still `0010`** (B3 added no
-  migration; local, not pushed — Stage B pushes only at its QA gate, tag
-  `phase-2-complete`, after B4). **Next: Increment B4 — wire seams + directory +
-  compliance + phase-2 QA gate.** Master Plan v1 in force.
-- **Last session:** #9 — 2026-07-23 — **Stage B Increment 3 (RBAC enforcement)**.
-  Authorization on the B2 runtime, **no migration**. `require_permission(perm,
-  scope=)` rewired behind its frozen signature to a **Redis-cached** effective set
-  (db 4, key `authz:perm:{uid}:v{permissions_version}`) — a cache hit takes **no DB
-  hit**; invalidation is version-keyed. New `core/auth/permission_cache.py`,
-  `core/org_units.py` (ancestry CTE + `authorize_scoped`), `core/maker_checker.py`,
-  `core/rbac.py` (grant/revoke service), `core/api/rbac.py` + `core/api/audit.py`
-  + schemas. **Grant/revoke lands on the next request** — the service bumps
-  `core_users.permissions_version` and HSETs it onto the target's live sessions
-  (`SessionStore.set_permissions_version`, Lua-guarded), then emits
-  `rbac.role.granted/revoked` chain events (`append_auth_event` gained optional
-  `table_name`/`row_pk`). **Org-scoped** grants resolve via the `parent_org_unit_id`
-  ancestry walk. **Delegation/OIC** = `valid_from/to` with the cache TTL capped at
-  the next window edge. **Maker-checker** reusable helper (`409 segregation_of_duties`).
-  **Read-only auditor** report: `GET /api/v1/audit/verify` (printable HTML + JSON
-  PASS/FAIL) + `/audit/records/{table}/{pk}` timeline. **Verified: pytest 238/238
-  (+25), lint-imports 3/3.**
-- **Decisions this session (user-confirmed at kickoff):** delegation via
-  `valid_from/to` only (no table — resolves the master-plan §2 vs foundation §5
-  conflict); maker-checker = reusable helper now, DB constraint deferred to Stage C;
-  auditor report = printable HTML + JSON; permission cache = version-keyed +
-  boundary-aware TTL + in-place live-session bump, no pub/sub. Engineering call:
-  unscoped `require_permission` semantics kept unchanged (any active grant confers);
-  the global-only tightening defers to Stage C. See `docs/modules/foundation.md`
-  §7 (B3).
-- **Blockers / waiting on user:** none. *(Dev note: B3 added no new dependency and
-  no migration; nothing to rebuild. `argon2-cffi` + `pyotp` remain baked into the
-  app/worker image from B2.)*
+- **Phase:** **Stage B (Phase 2) COMPLETE** — Increments **B1 ✅ + B2 ✅ + B3 ✅ +
+  B4 ✅**; **phase-2 QA gate PASSED** (pytest 286/286, lint-imports 3/3, migration
+  chain `0001→0011` idempotent + reversible). Phase 0 / Stage A remains complete +
+  pushed (tag `phase-0-complete`). **Migration head now `0011`** (B4's one migration:
+  `core_notification_preferences` + the `suppressed` status). **⚠ PUSH PENDING** —
+  per the kickoff decision (D4, "prepare then pause") the B4 work + gate is committed
+  **locally**; the **first Stage B push** (B1–B4 to `origin/master` + tag
+  `phase-2-complete`) awaits explicit user go-ahead + a git-credential confirm
+  (`avincentpatrick`; the Phase-0 push needed a re-auth). **Next: Stage C —
+  Reimbursement vertical + core workflow engine + first React shell.** Master Plan
+  v1 in force.
+- **Last session:** #10 — 2026-07-27 — **Stage B Increment 4 (wire seams + directory
+  + compliance + phase-2 gate)**. Closed the three deferred shared-service seams +
+  the two Stage-B compliance gates. **Authed attachments router** (`/api/v1/attachments`,
+  `attachment.*` gates, per-upload scan enqueue after commit + holder-auth seam,
+  streaming EXIF-stripped download). **Notification recipient/prefs** —
+  `recipient_user_id → email` resolution + `core_notification_preferences` opt-out
+  (security-class bypass; `suppressed` status). **CSS-IS directory ingestion** — pure
+  atomic idempotent CSV upsert (`core/directory/ingest.py`) via `POST
+  /directory/import` + `bootstrap ingest-directory`, now the single path
+  `load-fixtures` uses. **Admin provisioning** (`/api/v1/users`) — create-from-staff
+  (temp password, no self-registration) + deactivate (revokes all sessions) /
+  reactivate, all audited. **Query-log middleware** — one `core_query_logs` row per
+  `/api/v1` request (ids/param-names only, no SPI). **Person-field SPI redaction** —
+  `core_staff` names/email + notification recipient/body/payload withheld from the
+  chain. **Stage-B PIA** + processing-register row. Adds `python-multipart`.
+  **Verified: pytest 286/286 (+48), lint-imports 3/3, migration `0011`.**
+- **Decisions this session (user-confirmed at kickoff):** notification prefs = a
+  dedicated `core_notification_preferences` table (migration `0011`) + `suppressed`
+  status, security/transactional bypass; person-field SPI = direct identifiers only
+  (`core_staff` names/email + notification values; **keep** `core_users.email`,
+  `employee_no`, position/plantilla/status); query-log scope = all `/api/v1` requests
+  (reads + writes, incl. anonymous) minus `/config` + OPTIONS; phase-2 push = prepare
+  then **pause** before `git push`/tag (D4); CSS-IS ingestion = build the mechanism,
+  run on synthetic fixtures (real feed not in workspace); attachments = coarse RBAC +
+  a Stage-C holder-scoping seam. See `docs/modules/foundation.md` §7 (B4).
+- **Blockers / waiting on user:** **the phase-2 push/tag** (D4 pause) — awaiting your
+  go-ahead to `git push origin master && git tag phase-2-complete && git push origin
+  phase-2-complete` (credential must resolve to `avincentpatrick`). *(Dev note: B4
+  added `python-multipart` → the app/worker image was rebuilt; migration head is now
+  `0011`.)*
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Stage B Increments B1 + B2 + B3 are COMPLETE. Identity schema at head 0010
-(no B2/B3 migration). Authentication is live (cookie Redis sessions db 4, Argon2id,
-NIST policy, throttle, two-step TOTP MFA, break-glass, custom-header CSRF, error
-envelope; AuthPrincipalMiddleware → request.state.user; get_session injects actor_id).
-AUTHORIZATION is now live (B3): require_permission(perm, scope=OrgUnitScope.GLOBAL|
-REQUESTER) in core/auth/dependencies.py reads a Redis-cached effective-permission set
-(core/auth/permission_cache.py, db 4, key authz:perm:{uid}:v{permissions_version};
-cache hit = no DB hit). Grant/revoke (core/rbac.py + /api/v1/rbac/*) bump
-permissions_version + SessionStore.set_permissions_version so a change lands next
-request; org scope via core/org_units.py (ancestry CTE + authorize_scoped); delegation
-via valid_from/to (cache TTL capped at the next window edge); maker-checker helper
-(core/maker_checker.py, 409 segregation_of_duties); read-only auditor report
-(/api/v1/audit/verify printable HTML+JSON, /api/v1/audit/records/{table}/{pk}).
-rbac.role.granted/revoked ride the hash chain (append_auth_event gained table_name/
-row_pk). Code authorizes on permission STRINGS only. pytest 238/238, lint-imports 3/3.
-Nothing pushed (Stage B pushes only at its QA gate). Read CLAUDE.md, then
-docs/modules/foundation.md §5 "Stage B increment plan" (B4 line) + §7 (B1/B2/B3
-decisions), master-plan.md §2 Stage B + §3.1 (COA/NPC gates), api-standards.md
-§6+§7, and docs/research/round1/auth-rbac-onprem.md (directory/provisioning/LDAP).
-Task: Build Increment B4 — wire the deferred seams + directory + compliance, then
-the phase-2 QA gate. Per foundation §5 + master-plan §2 Stage B:
-  (1) Authed attachments HTTP router: give core/attachments/service.py's upload/
-      download (currently an injected authorize hook — see the Inc-4 decision in
-      foundation §7) real /api/v1 routes gated by require_permission; wire the
-      scan+re-encode Celery path end-to-end through HTTP.
-  (2) Notification recipient/prefs resolution: resolve core_notifications recipients
-      + per-user delivery prefs (the Inc-4 outbox left recipient resolution as a
-      seam); respect channel + opt-outs.
-  (3) CSS-IS inbound directory ingestion + admin user provisioning: ingest the
-      inbound staff/org feed into core_staff/core_org_units (directory decoupled
-      from CSS-IS, feed-only — foundation §7 B1); admin provisioning endpoints
-      (create/deactivate core_users, no self-registration) gated by user.* perms.
-  (4) Query-log middleware: populate core_query_logs (append-only) per the audit-
-      usability posture; ensure no SPI values enter it.
-  (5) Full person-field SPI policy: extend the B1 credential redaction to the
-      broader person-field SPI set in the audit payload (master-plan §4 audit-
-      payload policy — log IDs + field names, resolve at read; no SPI VALUES in the
-      immutable chain).
-  (6) Stage-B PIA (Privacy Impact Assessment) doc — the per-module governance gate
-      before any real data (master-plan §3.1); then run the phase-2 QA gate and,
-      on pass, push + tag phase-2-complete (Stage B's first push — provision/confirm
-      the git remote first).
-Files: office_connect/core/api/ (attachments + admin-provisioning + directory-ingest
-routers), core/attachments/ + core/notifications/ (wire the seams), a query-log
-middleware, core/audit.py or a payload-policy module (SPI value redaction), likely
-ops/ for the CSS-IS ingest job, tests/, docs/ (api-standards, foundation, a Stage-B
-PIA under docs/compliance/, CHANGELOG). Flag if any wiring needs a migration
-(the query-log/notification tables exist; person-SPI redaction is app-layer).
-Acceptance: an authed user can upload/download an attachment through HTTP subject to
-require_permission (unauthorized denied); notifications resolve real recipients +
-honor prefs; the CSS-IS feed populates the directory + admin can provision/deactivate
-a login; query-log rows are written with no SPI values; the audit chain carries no
-person-SPI VALUES (only ids/field names) and still verifies; the Stage-B PIA is
-written; pytest green; lint-imports 3/3; phase-2 QA gate passes → tag phase-2-complete.
-Open questions for the user (confirm at kickoff): (a) does B4 fully wire CSS-IS
-ingestion now or stub it against synthetic fixtures until the real feed exists;
-(b) scope of the person-field SPI set to redact in this increment vs deferring
-low-risk fields; (c) whether the git remote is provisioned so the phase-2 push/tag
-can actually land at the gate (B2/B3 are local-only).
+Context: Stage A (Phase 0) + Stage B (Phase 2) are COMPLETE and the foundation floor
+is finished. Available to build on: identity split (core_staff directory + core_users
+logins) + admin provisioning (/api/v1/users, no self-registration); auth (cookie Redis
+sessions db 4, Argon2id, NIST policy, throttle, two-step TOTP MFA, break-glass, CSRF);
+RBAC on permission STRINGS — require_permission(perm, scope=GLOBAL|REQUESTER) with
+org-unit scoping (core/org_units.py ancestry) + delegation windows + the reusable
+maker-checker helper (core/maker_checker.py, 409 segregation_of_duties; DB-level
+constraint deferred to here); hash-chained audit + read-only auditor report + query
+log + person-field SPI redaction; the shared services — attachments (core/attachments,
+HTTP router at /api/v1/attachments with a holder-scoping seam register_holder_authorizer
+keyed on holder_kind), notifications (send_notification + prefs + recipient resolution),
+directory ingest, storage/email drivers, notification outbox; reference data (UACS/PAP
++ object codes, activity tags, holidays + the pure workdays engine, compliance
+deadlines), the seed framework, and the design-token contract served at /api/v1/config
+(tokens present even under the DB fail-safe). reimb.claim.create/read/submit/approve
+permission strings are already seeded (placeholder, unwired). Migration head 0011.
+pytest 286/286, lint-imports 3/3. Phase-2 pushed at tag phase-2-complete.
+Read CLAUDE.md, then docs/modules/reimbursement.md (full plan + delta register: EO 77
+3-cluster DTE, COA 2023-004, GAM form numbers, CA hard-block), master-plan.md §1
+(core-services registry + connectedness contract — the ONE shared core workflow engine
+is built here at R-4 and supersedes any module-internal approach; Rule 10) + §2 Stage C
+(R-0…R-9) + §3 (statutory calendar), docs/standards/ui-standards.md (component inventory
++ layout templates + GOV.UK task-list + tokens) and workflow/database standards, and
+the cited docs/research digests.
+Task: Begin Stage C — the Local Travel Reimbursement vertical, the shared core workflow
+engine, and the FIRST React/Vite/Tailwind shell + component library (the first
+user-facing module). This is a multi-increment stage (R-0…R-9): confirm the increment
+sequencing at kickoff. Likely first increments: (R-0) the React/Vite/Tailwind shell +
+component library wired to /api/v1/config tokens + the auth/session flow; (R-4 core)
+the shared workflow engine (states, transitions, approval routing via RBAC org-scope +
+maker-checker) as a core service other modules consume — NOT module-internal; then the
+reimbursement claim schema + forms + DV/attachment/workflow wiring on top. Consume the
+existing shared services (Rule 10 — check the registry before adding a table/service);
+wire the attachments holder authorizer for reimb_claim; emit notification events (don't
+build delivery). Everything auditable + soft-deleted + connected (master-plan §1
+"everything is connected"). Money server-computed, UI displays.
+Acceptance (per-increment, confirm at kickoff): the React shell runs against the live
+API with the token/component/layout system (Rule 1); the shared workflow engine drives
+a claim through submit → review → approve with maker-checker + org-scoped routing and a
+full audit trail; a reimbursement claim can be created/submitted/approved end-to-end
+with attachments + notifications; pytest green; lint-imports 3/3 (modules import core,
+never each other); per-increment docs + PROGRESS + CHANGELOG updated; commit per session.
+Open questions for the user (confirm at kickoff): (a) the R-0…R-9 increment sequencing
++ where the React shell lands vs the workflow engine first; (b) frontend tooling/pins
+(React 18 + Vite + Tailwind + the component-library choice) since this is the first FE
+code; (c) scope of the first vertical slice (which reimbursement path/forms to wire
+first — the EO 77 3-cluster DTE local-travel path).
 ```
 
 ---
@@ -118,7 +113,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
-| B | 2 | Identity & access: auth / RBAC / directory / delegation | in progress (B1 ✅ · B2 ✅ · B3 ✅) | 7–9 | — | — |
+| B | 2 | Identity & access: auth / RBAC / directory / delegation | B1–B4 ✅ · gate passed (push pending) | 7–10 | ✅ passed | — *(push pending — D4)* |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
@@ -140,6 +135,70 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 10 — 2026-07-27 — Stage B Increment 4 (wire seams + directory + compliance) + phase-2 gate
+
+- **Phase(s):** 2 / Stage B (B4) — **closes Stage B** · **Commit:** `session(2026-07-27)`
+  — **local only, PUSH PENDING** (D4: prepare then pause; the first Stage B push +
+  tag `phase-2-complete` awaits explicit user go-ahead + a credential confirm).
+- **Kickoff decisions (user-confirmed):** notification prefs = dedicated
+  `core_notification_preferences` table (migration `0011`) + `suppressed` status,
+  security/transactional bypass; person-field SPI = **direct identifiers only**
+  (`core_staff` names/email + notification recipient/body/payload; **keep**
+  `core_users.email` + `employee_no`/position/plantilla/status); query-log scope = all
+  `/api/v1` (reads + writes, incl. anonymous) minus `/config` + OPTIONS; phase-2 push =
+  **prepare then pause** (D4); CSS-IS ingestion = build the mechanism, run on synthetic
+  fixtures; attachments = coarse RBAC + a Stage-C holder-scoping seam.
+- **Done (one migration `0011`; the rest app-layer):**
+  - **Attachments HTTP router** (`core/api/attachments.py`) — `POST /attachments`
+    (multipart, size-capped chunked read → 413, magic-byte validated → 422, `pending`),
+    `GET /{id}` metadata, `GET /{id}/content` (streaming, EXIF-stripped derivative,
+    `nosniff`), `DELETE /{id}` (soft delete), `GET /disposal-report`; `attachment.*`
+    gates seeded (staff upload/read/download · approver read/download · auditor
+    read+dispose). **Per-upload scan enqueue** (`core/attachments/scan_queue.py`,
+    after-commit drain; ops registers the Celery `send_task` — core stays pure; beat
+    sweeper backstops). **Holder-auth seam** (`core/attachments/authz.py`,
+    `register_holder_authorizer`, empty in B4). `DownloadNotReady→409`.
+  - **Notification recipient/prefs** — `core/notifications/recipients.py`
+    (`resolve_recipient`: `user_id→core_users.email`, staff-email fallback; opt-out via
+    `core_notification_preferences`; security/transactional bypass; unresolvable →
+    `suppressed`), called inside `persist_notification` (signature unchanged); `dispatch`
+    treats `suppressed` as terminal. New model + migration `0011` (+ `suppressed` enum).
+  - **CSS-IS directory ingestion** — pure `core/directory/ingest.py` (atomic upfront
+    validation, Kahn topological org insert, tombstone restore, leave-alone absence
+    policy + guarded prune shipped OFF); `POST /api/v1/directory/import` + read
+    endpoints (`core/api/directory.py`); `bootstrap ingest-directory` CLI; `load-fixtures`
+    refactored onto the same service (one code path).
+  - **Admin provisioning** — `core/api/users.py`: `POST /users` (create-from-staff,
+    temp password + forced change, no self-registration), `GET` list/`{id}`,
+    `POST /{id}/deactivate` (`SessionStore.destroy_all_for_user` + `user.deactivated`
+    event; self + break-glass `409`-protected), `POST /{id}/reactivate`.
+  - **Query-log middleware** — `core/api/query_log_middleware.py` (innermost; own pooled
+    `SessionLocal`; ids/param-names/status only, never bodies/values; `query_log_enabled`
+    flag; log-and-continue on failure) wired in `main.py`.
+  - **Person-field SPI redaction** — `__audit_exclude__` on `core_staff`
+    (names + email) and `NotificationOutbox` (`recipient_email`/`body_text`/`payload`);
+    `core_users.email` kept (login handle). No endpoint change (auditor timeline shows
+    `[redacted]` by design).
+  - **Stage-B PIA** (`docs/compliance/pia-stage-b-identity.md`) + processing-register
+    row (NPC Advisory 2017-03). **Dep** `python-multipart==0.0.20` (image rebuilt).
+- **Verified:** **pytest 286/286** (+48 across attachments-API/notification-recipients/
+  directory-ingest/provisioning/query-log/spi-redaction + a bootstrap CSV-parse test),
+  **lint-imports 3/3** (core never imports ops/worker/modules — the ops→core scan
+  enqueuer injection is the only cross-boundary edge, and it lives in ops), migration
+  chain `0001→0011` reaches head, idempotent + reversible (downgrade 0011→0010 →
+  re-upgrade clean; `ADD VALUE IF NOT EXISTS 'suppressed'` is add-only). ASGI client
+  tests exercise the full live stack (login + MFA + CSRF, real Postgres + Redis db 4):
+  upload→scan→download with EXIF stripped, 403/422/413/409 mappings, opt-out
+  suppression, deactivate revoking sessions, query-log rows with no values, and the
+  redacted-yet-verifying audit chain.
+- **Decisions:** see `docs/modules/foundation.md` §7 (Stage B Increment 4).
+- **Docs updated:** foundation.md (§5 B4 done + §7 B4 record), api-standards.md (§5 +
+  new §8), tech-stack.md (`python-multipart`), CHANGELOG.md (promoted to `0.2.0`),
+  `office_connect/__init__.py` (`APP_VERSION 0.2.0`), docs/compliance/ (PIA + register),
+  this file.
+- **Next:** confirm + land the phase-2 push/tag (D4), then Stage C — Reimbursement
+  vertical + core workflow engine + first React shell (see the Next Session Prompt).
 
 ### Session 9 — 2026-07-23 — Stage B Increment 3 (RBAC enforcement)
 

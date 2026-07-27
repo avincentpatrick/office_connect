@@ -176,10 +176,17 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
   ancestry CTE); delegation/OIC via `core_user_roles.valid_from/to`; reusable
   maker-checker helper; grant/revoke admin API + read-only auditor report. No
   migration. **pytest 238, lint 3/3.** See §7 (Stage B Increment 3).
-- **B4 — wire seams + directory + compliance:** authed attachments router,
-  notification recipient/prefs resolution, CSS-IS inbound directory ingestion +
-  admin provisioning, query-log middleware, full person-field SPI policy, Stage-B
-  PIA, then the **phase-2 QA gate** (tag `phase-2-complete`).
+- **B4 — wire seams + directory + compliance ✅** — authed attachments router
+  (`/api/v1/attachments`, `attachment.*` gates, per-upload scan enqueue, holder-auth
+  seam), notification recipient/preference resolution (`core_notification_preferences`
+  opt-out + security-class bypass; migration `0011`), CSS-IS directory ingestion
+  (pure `core.directory.ingest` + `POST /directory/import` + `bootstrap
+  ingest-directory`) + admin user provisioning (`/api/v1/users`, no self-registration,
+  deactivate revokes sessions), query-log middleware (`core_query_logs`, all `/api/v1`,
+  ids/param-names only), full person-field SPI redaction (`core_staff` + notification
+  values), Stage-B PIA. Adds `python-multipart`. **pytest 286, lint 3/3, migration
+  `0011`.** See §7 (Stage B Increment 4). Phase-2 QA gate passed → tag
+  `phase-2-complete`.
 
 ## 6. QA gates (Phase 0)
 
@@ -225,6 +232,60 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
   immutable; JSON logs carry the request id.)*
 
 ## 7. Decisions log
+
+- **2026-07-27 (Stage B Increment 4 — wire seams + directory + compliance)** — closed
+  the deferred shared-service seams + the Stage-B compliance gates, then the phase-2 QA
+  gate. **One migration** (`0011`); the rest is app-layer. pytest 286 (+48), lint 3/3.
+  Key decisions (user-confirmed at kickoff):
+  - **Notification preferences = a dedicated `core_notification_preferences` table**
+    (migration `0011`) — per-user × channel × optional-module opt-out (`enabled`,
+    opt-out model, `NULLS NOT DISTINCT` so the module-default row is unique), plus a
+    `suppressed` outbox status. **Security/transactional** notifications
+    (`meta['notification_class']`) bypass opt-outs — a user can never silence a
+    password-reset/MFA mail. Recipient resolution (`user_id → core_users.email`,
+    staff-email fallback) lives in `core/notifications/recipients.py`, called inside
+    `persist_notification`, so `send_notification`'s signature is unchanged; the
+    dispatch guard treats `suppressed` as terminal (chosen over changing the return
+    type — minimal blast radius).
+  - **Person-field SPI = direct identifiers only.** `core_staff` name fields +
+    directory `email`, and `core_notifications` `recipient_email`/`body_text`/`payload`
+    get `__audit_exclude__`. **Kept** (recorded normally): `employee_no`,
+    `position_title`, `plantilla_item_no`, `employment_status`, and **`core_users.email`**
+    (login handle; not an RA-10173 SPI category, and a B1 test asserts it present). The
+    auditor timeline shows `[redacted]` for excluded fields by design — the live row is
+    the source of truth; no endpoint change. `verify_chain` stays intact (redaction is
+    deterministic at write).
+  - **Query-log scope = all `/api/v1` requests** (reads + writes, authed + anonymous),
+    excluding only `/config` + `OPTIONS` — the COA read-access posture. Innermost
+    middleware (sees the resolved route + final status), its own pooled `SessionLocal`
+    (not the per-request `app_session_scope`), log-and-continue on failure, gated by
+    `query_log_enabled`. `detail` carries method/path/path-params/query-**keys**/status/
+    duration — never bodies or query **values**, so no SPI enters the log.
+  - **CSS-IS ingestion = build the mechanism, run on synthetic fixtures.** The real
+    CSS-IS repo isn't in the workspace and has no feed spec (directory decoupled since
+    B1), so B4 defines a CSV contract + a pure, atomically-validated, idempotent core
+    upsert (topological org insert, tombstone restore) and runs it against the existing
+    fixtures via a refactored `load-fixtures` (one code path). **Absence policy =
+    leave-alone by default**; prune (`--full`) is built but shipped OFF (empty-feed
+    guarded) so a truncated feed never wipes the directory. **No source-tracking column**
+    (`employee_no` is the external key). No migration for ingestion.
+  - **Attachments authorization = coarse permission gate now + a holder-scoping seam.**
+    New `attachment.upload/read/download/delete/dispose.read` strings (`staff` gets
+    upload/read/download, `approver` read/download, `auditor` read + dispose-report but
+    **not** raw content). The `download_attachment` authorize hook is built from a
+    `register_holder_authorizer(holder_kind, …)` registry (empty in B4) so Stage-C reimb
+    wiring needs no router change. Per-upload scan enqueue mirrors the notifications
+    enqueuer (ops → core injection, after-commit drain); the beat sweeper backstops.
+    `DownloadNotReady → 409`, oversize → `413` (router pre-guard), `RejectedUpload → 422`.
+  - **Provisioning = temp-password create + deactivate-revokes-sessions.** `POST /users`
+    mints a login from a staff record (temp password, `must_change_password`, not
+    break-glass; no self-registration endpoint at all); deactivate flips `is_active` +
+    `SessionStore.destroy_all_for_user` + a `user.deactivated` chain event (self + break-
+    glass protected, `409`); role grants + password reset reuse the RBAC/auth endpoints
+    (no duplication). Directory reads (`/directory/staff`, `/directory/org-units`) back
+    the provisioning UI's pickers.
+  - **New dependency `python-multipart`** (FastAPI form/file parsing for the upload +
+    CSV-import routers) — recorded in `tech-stack.md` (standing rule 9).
 
 - **2026-07-23 (Stage B Increment 3 — RBAC enforcement)** — authorization on the
   B2 auth runtime. **No migration** (identity schema complete since B1). pytest

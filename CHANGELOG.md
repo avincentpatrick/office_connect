@@ -11,7 +11,37 @@ makes the push-per-phase rule auditable.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-27 — Phase 2 (Stage B) complete
+
 ### Added
+- **Stage B (Phase 2) Increment 4 — wire seams + directory + compliance**
+  (2026-07-27): closed the deferred shared-service seams and the Stage-B compliance
+  gates. **Authed attachments HTTP router** (`/api/v1/attachments`) — upload
+  (magic-byte validated, size-capped, `pending`), streaming auth-checked download
+  (serves the EXIF-stripped derivative), metadata, soft-delete, disposal report —
+  each gated by an `attachment.*` permission string, with a **per-upload malware-scan
+  enqueue after commit** (the beat sweeper remains the backstop) and a holder-scoping
+  authorize seam ready for Stage C. **Notification recipient/preference resolution** —
+  a `recipient_user_id` now resolves to the login's email (staff-email fallback), and
+  a new `core_notification_preferences` opt-out table suppresses opted-out
+  channel/module deliveries (persisted as `suppressed`, never dispatched) while
+  **security/transactional** notifications always send. **CSS-IS directory
+  ingestion** — a pure, idempotent, atomically-validated upsert of a CSV org/staff
+  feed into `core_org_units`/`core_staff` (topological tree insert, tombstone restore,
+  leave-alone by default), exposed as `POST /api/v1/directory/import` and a
+  `bootstrap ingest-directory` CLI, now the single code path `load-fixtures` uses.
+  **Admin user provisioning** (`/api/v1/users`) — create a login from a staff record
+  (temporary password, forced change; **no self-registration**), deactivate (revokes
+  every Redis session immediately) / reactivate, all hash-chained; role grants and
+  password reset reuse the existing RBAC/auth endpoints. **Query-log middleware** —
+  one append-only `core_query_logs` row per `/api/v1` request (ids + param names +
+  status only, never bodies/values/SPI), the COA read-access posture. **Full
+  person-field SPI redaction** — `core_staff` name/email and notification
+  recipient/body/payload VALUES are withheld from the immutable audit chain (field
+  names kept; the live row is the source of truth), extending the B1 credential
+  subset. **Stage-B PIA** + processing-register row (NPC Advisory 2017-03). Adds
+  `python-multipart`. Verified: **pytest 286 (+48), lint-imports 3/3**, migration
+  `0011` (notification preferences + `suppressed` status; idempotent + reversible).
 - **Stage B (Phase 2) Increment 3 — RBAC enforcement** (2026-07-23): real
   authorization on the B2 auth runtime (**no migration**). **Permission-gated
   routes** — every protected endpoint declares a permission *string* (never a role

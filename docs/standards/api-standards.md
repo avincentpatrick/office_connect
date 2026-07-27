@@ -73,9 +73,8 @@ prose:
 ## §5. Deferred to later stages
 
 - **AuthN** landed Stage B / Increment 2 — see §6. **AuthZ** landed Stage B /
-  Increment 3 — see §7. Protected surfaces still without HTTP routes (e.g. the
-  attachments upload/download router) keep their injected authorization hook
-  until they get routes (B4+).
+  Increment 3 — see §7. The **attachments / provisioning / directory** routers landed
+  Stage B / Increment 4 — see §8.
 - **Rate limiting, pagination envelope, WebSocket channels** (Stage D+) as the
   first real read/write endpoints land.
 
@@ -157,3 +156,36 @@ async def list_roles(_: Principal = Depends(require_permission("rbac.role.read")
 - **New error slugs** (envelope §3): `forbidden` (403 — lacks the permission),
   `segregation_of_duties` (409 — maker-checker violation), plus `unavailable`
   (503) if the permission cache / session store is missing (lifespan not run).
+
+## §8. Attachments, provisioning, directory & the query log (Stage B / Increment 4)
+
+- **Attachments** (`/api/v1/attachments`, `attachment.*` gates): `POST` (multipart
+  `file`; validated + size-capped + stored `pending`, then a malware scan is enqueued
+  after commit), `GET /{id}` (metadata), `GET /{id}/content` (streaming, auth-checked,
+  serves the EXIF-stripped derivative), `DELETE /{id}` (soft delete), `GET
+  /disposal-report`. **No static mounts** — downloads are always streamed through the
+  permission gate. File downloads stream bytes with `Content-Type` + `Content-Disposition`
+  + `X-Content-Type-Options: nosniff`. New slugs: `attachment_rejected` (422),
+  `payload_too_large` (413), `attachment_not_ready` (409). The per-row `authorize`
+  hook is a **holder-scoping seam** (`register_holder_authorizer`) — coarse RBAC is
+  the only gate until a holder module wires it (Stage C).
+- **Provisioning** (`/api/v1/users`, `user.*`): `POST` creates a login from a staff
+  record (temp password + forced change; **no self-registration endpoint exists**),
+  `GET` list/`{id}`, `POST /{id}/deactivate` (flips `is_active` **and** revokes every
+  Redis session immediately; self + break-glass are `409`-protected), `POST
+  /{id}/reactivate`. Every event is hash-chained (`user.created` / `user.deactivated`
+  / `user.reactivated`); role grants reuse `/rbac/*`, password reset reuses
+  `/auth/users/{id}/reset-password`.
+- **Directory** (`/api/v1/directory`): `POST /import` (`staff.import`, multipart CSV
+  org-units + staff → the pure, atomically-validated `core.directory.ingest` upsert),
+  `GET /staff` + `/staff/{id}` (`staff.read`), `GET /org-units` (`orgunit.read`).
+- **Query log** (append-only `core_query_logs`): a middleware records **one row per
+  `/api/v1` request** (reads + writes, authed + anonymous), excluding `/config` +
+  `OPTIONS`. It stores `module`/`resource`/`action` + ids + query-param **names** +
+  status + duration — **never** request/response bodies, headers, or query **values**,
+  so no SPI enters the log. Gated by `query_log_enabled`; a logging failure never
+  breaks the request.
+- **Person-field SPI in the audit timeline**: `GET /api/v1/audit/records/{table}/{pk}`
+  renders `[redacted]` for excluded person fields (`core_staff` names/email,
+  notification recipient/body/payload) **by design** — the immutable chain records the
+  field name, not the value; the current value is read from the live row.

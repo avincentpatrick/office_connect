@@ -8,6 +8,7 @@ deadline). One row per processing activity; keep current as modules ship.
 | # | Processing activity | Module | Purpose & lawful basis | Data subjects | Personal data / SPI | Recipients / disclosures | Retention class | Safeguards |
 |---|---|---|---|---|---|---|---|---|
 | 1 | _(example)_ Local travel reimbursement | reimbursement | Process & liquidate travel claims (legal obligation / official function) | Employees | Name, position, itinerary, bank/GCash, DV support | COA, GSIS (as required) | `financial_dv_10y` | RBAC, audit chain, attachment scan, retention |
+| 2 | Identity, directory & access management | foundation (identity/auth/RBAC) | Authenticate & authorize personnel; maintain the plantilla person directory modules join (legal obligation / public-authority function, RA 10173 §12(b)/(e)) | Employees / plantilla persons; login-account holders | Name, work email, position, plantilla item, employee no., employment status, org unit; login email, Argon2id hash, TOTP secret, auth flags; login-attempt metadata (no SPI category) | Internal (RBAC-gated); read-only auditor (COA Res. 2020-034); no external sharing | `default` (10y) | Least-privilege `oc_app` (no DELETE), RBAC, server-side sessions + MFA, hash-chained audit + verify_chain, person-field SPI redaction, privacy-preserving query log, TLS — PIA: `pia-stage-b-identity.md` |
 | … | | | | | | | | |
 
 ## Maintenance

@@ -38,6 +38,17 @@ class Staff(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     """A person on the plantilla. Deactivate/soft-delete on offboarding — the
     row is never hard-deleted, so historical references stay resolvable."""
 
+    # Person-field SPI (Stage B / Increment 4): the direct-identifier VALUES never
+    # enter the immutable audit chain (the field NAME is kept so "the field changed"
+    # stays auditable; the live row is the source of truth for the current value).
+    # Structural/non-identifying fields (employee_no, position_title,
+    # plantilla_item_no, employment_status, org FKs) are recorded normally — they
+    # are not RA-10173 SPI and are useful in the diff (master-plan §4 #4,
+    # database-standards §7).
+    __audit_exclude__ = frozenset(
+        {"given_name", "middle_name", "surname", "full_name", "email"}
+    )
+
     __tablename__ = "core_staff"
     __table_args__ = (
         Index(

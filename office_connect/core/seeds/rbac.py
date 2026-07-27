@@ -62,6 +62,12 @@ _PERMISSION_CATALOG: tuple[tuple[str, str, str], ...] = (
     ("staff.read", "View the staff directory", "staff"),
     ("staff.import", "Import staff records", "staff"),
     ("staff.manage", "Edit staff records", "staff"),
+    # attachments (Stage B / Increment 4 — coarse gate until Stage-C holder scoping)
+    ("attachment.upload", "Upload attachments", "attachment"),
+    ("attachment.read", "View attachment metadata", "attachment"),
+    ("attachment.download", "Download attachment content", "attachment"),
+    ("attachment.delete", "Soft-delete an attachment", "attachment"),
+    ("attachment.dispose.read", "View the disposal-eligibility report", "attachment"),
     # reimbursement (placeholder — pattern only, wired at Stage C)
     ("reimb.claim.create", "Create a reimbursement claim", "reimb"),
     ("reimb.claim.read", "View reimbursement claims", "reimb"),
@@ -94,15 +100,24 @@ ROLE_GRANTS: dict[str, tuple[str, ...]] = {
         "orgunit.read",
         "staff.read",
         "admin.config.read",
+        # Read-only records posture: metadata + the retention report, NOT raw
+        # content bytes (which may carry SPI; downloads are holder-scoped in Stage C).
+        "attachment.read",
+        "attachment.dispose.read",
     ),
     "approver": (
         "reimb.claim.read",
         "reimb.claim.approve",
+        "attachment.read",
+        "attachment.download",
     ),
     "staff": (
         "reimb.claim.create",
         "reimb.claim.read",
         "reimb.claim.submit",
+        "attachment.upload",
+        "attachment.read",
+        "attachment.download",
     ),
 }
 

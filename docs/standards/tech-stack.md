@@ -36,6 +36,7 @@ the same session** (session-end checklist step 3).
 | Pillow | 11.1.0 | Attachments (Increment 4): image re-encode + EXIF/XMP strip; self-contained wheels (no apt) |
 | pillow-heif | 0.21.0 | Attachments: HEIC/HEIF decode → JPEG normalization; bundles libheif |
 | clamd | 1.0.2 | Attachments: pure-Python ClamAV TCP client (lazy-imported; scanner is injectable + fail-closed) |
+| python-multipart | 0.0.20 | Multipart/form-data parsing (Stage B / Inc 4): required by FastAPI for the attachments upload router and the directory CSV-import route (any endpoint declaring `File()`/`Form()`). Pure-Python |
 | sentry-sdk | 2.20.0 | Observability (Increment 4): error tracking (GlitchTip-compatible); lazy-imported, active only with `SENTRY_DSN` |
 | argon2-cffi | 23.1.0 | Auth (Stage B): Argon2id password hashing (`core/security/password.py`). **Cost params: `time_cost=2`, `memory_cost=19 MiB (19456 KiB)`, `parallelism=1`** (OWASP / RFC 9106 option 2, on-prem-sized). Self-contained manylinux wheels (no apt). PHC hash self-describes cost → raise deliberately + re-hash on next login |
 | pyotp | 2.9.0 | Auth (Stage B / Inc 2): TOTP MFA (RFC 6238) for approver/admin roles (NPC Circular 2023-06). Pure-Python; returns the `otpauth://` provisioning URI so the client renders the QR — **no QR-image dependency** server-side. `valid_window=1` (±30 s skew); a used code is single-use within its step (Redis `SETNX`) |

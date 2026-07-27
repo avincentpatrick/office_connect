@@ -75,3 +75,17 @@ def test_send_test_email_via_cli(capsys):
     rc = bootstrap.main(["send-test-email", "--to", "test@example.com"])
     assert rc == 0
     assert '"driver": "log"' in capsys.readouterr().out  # dev auto-selects log
+
+
+def test_read_directory_csv_parses_rows(tmp_path):
+    # The CLI's CSV parse (transport) feeds row mappings to the format-agnostic
+    # core ingest service; a UTF-8 BOM (spreadsheet export) is tolerated.
+    org = tmp_path / "org_units.csv"
+    org.write_text(
+        "code,name,kind,parent_code\nBUR,Bureau,office,\nBUR-D,Div,division,BUR\n",
+        encoding="utf-8-sig",
+    )
+    rows = bootstrap._read_directory_csv(str(org))
+    assert [r["code"] for r in rows] == ["BUR", "BUR-D"]
+    assert rows[1]["parent_code"] == "BUR"
+    assert bootstrap._read_directory_csv(None) == []

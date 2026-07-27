@@ -28,7 +28,15 @@ from office_connect.core.base import (
 
 NotificationChannel = Enum("email", "in_app", name="core_notification_channel")
 NotificationStatus = Enum(
-    "queued", "sending", "sent", "failed", "dead", name="core_notification_status"
+    "queued",
+    "sending",
+    "sent",
+    "failed",
+    "dead",
+    # A recipient opted out of this channel/module (Stage B / Increment 4): the
+    # row is persisted for auditability but never dispatched (terminal).
+    "suppressed",
+    name="core_notification_status",
 )
 DeliveryOutcome = Enum(
     "sent", "failed", name="core_notification_delivery_outcome"
@@ -36,6 +44,12 @@ DeliveryOutcome = Enum(
 
 
 class NotificationOutbox(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
+    # Person-field SPI (Stage B / Increment 4): the recipient address and the free
+    # message body/payload VALUES never enter the immutable audit chain (they very
+    # likely carry names/contact/claim detail). Field names are kept; subject, meta,
+    # status, channel, ids and timestamps are recorded normally.
+    __audit_exclude__ = frozenset({"recipient_email", "body_text", "payload"})
+
     __tablename__ = "core_notifications"
     __table_args__ = (
         Index("ix_core_notifications_status", "status"),

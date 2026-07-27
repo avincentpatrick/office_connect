@@ -32,6 +32,9 @@ google-auth-httplib2==0.2.0
 Pillow==11.1.0
 pillow-heif==0.21.0
 clamd==1.0.2
+# multipart/form-data parsing for the Stage-B attachments upload + directory CSV
+# import routers (FastAPI requires it whenever a route declares File()/Form()).
+python-multipart==0.0.20
 
 # --- Observability (Increment 4) ---
 # Self-hosted error tracking (GlitchTip is Sentry-SDK compatible). Lazy-imported

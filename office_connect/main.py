@@ -15,6 +15,7 @@ from sqlalchemy import text
 
 from office_connect import APP_VERSION
 from office_connect.core.api.errors import register_error_handlers
+from office_connect.core.api.query_log_middleware import QueryLogMiddleware
 from office_connect.core.api.router import api_router
 from office_connect.core.auth.middleware import AuthPrincipalMiddleware, CSRFMiddleware
 from office_connect.core.auth.permission_cache import PermissionCache
@@ -59,9 +60,13 @@ app.include_router(api_router)
 # error (api-standards §3) — the first exception handlers in the app.
 register_error_handlers(app)
 
-# Auth + CSRF middleware. Starlette runs middleware in REVERSE registration order,
-# so adding these two here (before request_id_middleware is defined below) yields
-# the nesting: request_id (outermost) → CSRF → auth-principal → route.
+# Middleware. Starlette runs middleware in REVERSE registration order, so the
+# FIRST add_middleware becomes the INNERMOST wrapper. Effective nesting:
+# request_id (outermost) → CSRF → auth-principal → query-log → route. The query
+# log is innermost so it sees the resolved route params + final status; gated by a
+# config flag so it adds zero overhead when off.
+if settings.query_log_enabled:
+    app.add_middleware(QueryLogMiddleware)
 app.add_middleware(AuthPrincipalMiddleware, cookie_name=settings.session_cookie_name)
 app.add_middleware(CSRFMiddleware, header_name=settings.csrf_header_name)
 

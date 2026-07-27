@@ -15,6 +15,7 @@ from office_connect.core.models.notification import (
     NotificationDelivery,
     NotificationOutbox,
 )
+from office_connect.core.models.notification_preference import NotificationPreference
 from office_connect.core.models.org_unit import OrgUnit
 from office_connect.core.models.pap_code import ObjectCode, PapCode
 from office_connect.core.models.permission import Permission
@@ -39,6 +40,7 @@ __all__ = [
     "LoginAttempt",
     "NotificationDelivery",
     "NotificationOutbox",
+    "NotificationPreference",
     "ObjectCode",
     "OrgUnit",
     "PapCode",

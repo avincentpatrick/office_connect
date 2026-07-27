@@ -73,6 +73,12 @@ async def dispatch_outbox_row(
                 recipients=[row.recipient_email] if row.recipient_email else [],
                 message_id=row.dispatched_message_id,
             )
+        if row.status == "suppressed":  # opt-out honored at persist time — never send
+            return SendResult(
+                driver="suppressed",
+                sent=False,
+                recipients=[row.recipient_email] if row.recipient_email else [],
+            )
 
         row.status = "sending"
         row.attempt_count += 1

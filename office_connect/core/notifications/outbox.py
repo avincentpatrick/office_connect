@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from office_connect.core.config import Settings, get_settings
 from office_connect.core.email import EmailMessage
 from office_connect.core.models.notification import NotificationOutbox
+from office_connect.core.notifications.recipients import resolve_recipient
 from office_connect.core.session import OCSession
 
 # The injected enqueue callable (ops registers a Celery send_task). None = no
@@ -77,12 +78,14 @@ async def persist_notification(
             return existing
 
     email = notification.email
-    recipient_email = email.to[0] if (email and email.to) else meta.get("recipient_email")
+    # Resolve the concrete recipient (user_id → email) and honor delivery prefs —
+    # a suppressed (opted-out / unresolvable) row is persisted but never dispatched.
+    resolved = await resolve_recipient(session, notification, settings=settings)
     row = NotificationOutbox(
         channel=notification.channel,
-        status="queued",
-        recipient_email=recipient_email,
-        recipient_user_id=meta.get("recipient_user_id"),
+        status=resolved.status,
+        recipient_email=resolved.recipient_email,
+        recipient_user_id=resolved.recipient_user_id,
         subject=(email.subject if email else meta.get("subject", "")),
         body_text=(email.text_body if email else meta.get("body_text")),
         payload=_payload_from(notification),
