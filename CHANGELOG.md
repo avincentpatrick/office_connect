@@ -11,6 +11,27 @@ makes the push-per-phase rule auditable.
 
 ## [Unreleased]
 
+### Added
+- **Stage C — the shared core workflow engine** (`core_workflow_*`, 2026-07-27): the
+  ONE approval/routing engine every module will consume (Rule 10 + master-plan §1.1 #1),
+  built as a pure core service ahead of its first consumer (reimbursement R-4). A workflow
+  is authored as versioned, **immutable-once-published** definitions (states + transitions
+  with **typed** amount/permission guards — no DSL), started as an instance pinned to its
+  version, and driven by an atomic, idempotent, compare-and-swap `execute_action`
+  (409 on a stale version or a lost race). Approval gates route by org scope
+  (`authorize_scoped`) + segregation-of-duties (no self-approval, distinct four-eyes
+  approvers), with **delegation / OIC** recorded as "acted on behalf of". The
+  append-only, **audited** event log is the authoritative history — the instance's current
+  state is a derived read-model proven by an event-fold consistency check. Return loops
+  back (resubmit restarts, revision-tracked); reject is terminal. An idempotent,
+  non-interrupting SLA sweep (`ops.sweep_workflow_sla`, beat every 5 min) escalates overdue
+  steps to the holder only. A module's feature flag blocks **new** instances while in-flight
+  ones always finish. New permission strings `workflow.definition.read/manage/publish`,
+  `workflow.instance.read`, `workflow.delegation.manage` (auditor gets the reads). Contract:
+  `docs/standards/workflow-standards.md`. Verified: **pytest 320 (+34), lint-imports 3/3**,
+  migration `0012` (8 tables + 6 enums; `core_workflow_events` append-only + REVOKE UPDATE;
+  idempotent + reversible). No new dependency.
+
 ## [0.2.0] — 2026-07-27 — Phase 2 (Stage B) complete
 
 ### Added

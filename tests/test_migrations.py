@@ -20,6 +20,14 @@ BUSINESS_TABLES = {
     "core_users",
     "core_role_permissions",
     "core_user_roles",
+    # Stage C — shared workflow engine
+    "core_workflow_definitions",
+    "core_workflow_definition_versions",
+    "core_workflow_states",
+    "core_workflow_transitions",
+    "core_workflow_instances",
+    "core_workflow_steps",
+    "core_workflow_delegations",
 }
 LOOKUP_TABLES = {
     "core_feature_flags",
@@ -39,6 +47,8 @@ APPEND_ONLY_TABLES = {
     "core_notification_deliveries",
     "core_report_lineages",
     "core_login_attempts",
+    # Stage C — append-only, audited decision log
+    "core_workflow_events",
 }
 AUDIT_COLS = {"created_at", "created_by", "updated_at", "updated_by"}
 SOFT_DELETE_COLS = {"deleted_at", "deleted_by"}

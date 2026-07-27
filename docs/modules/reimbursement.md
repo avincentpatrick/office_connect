@@ -25,7 +25,7 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | Checklist seeded from FS-BD-01 vs COA 2012-001 | Checklist catalog **versioned to COA Circular 2023-004** (updates 2012-001 §1.2.4.1); CA-grant set includes the Chief-Accountant no-unliquidated-CA certification as a **DB-enforced block** (PD 1445 §89), not a warning | same digest |
 | "Appendix A/B" (FS-BD-01 internal labels) | Generated PDFs print-faithful to **GAM Vol II**: App 32 DV · App 44 Liquidation Report · **App 45 Itinerary of Travel** · App 46 RER · App 47 Certificate of Travel Completed | GAM 2015 numbering — same digest |
 | Approved IoT is the only itinerary | **Revised IoT as a new version** (justification required) when actuals deviate; CTC text discloses the deviation | COA liquidation requirement |
-| Module-internal approval steps (`reimb_approval_steps`) behind narrow interfaces | Chain runs on the **shared core workflow engine** (built at R-4, first consumer); delegation/OIC + versioned definitions come free | Owner decision 2026-07-22 + Rule 10 — supersedes the spec's reconciliation-debt approach |
+| Module-internal approval steps (`reimb_approval_steps`) behind narrow interfaces | Chain runs on the **shared core workflow engine** (`core_workflow_*`, **built 2026-07-27** as pure core — R-4 core pulled forward; reimbursement is its first *definition* at R-4-app); delegation/OIC + versioned definitions come free | Owner decision 2026-07-22 + Rule 10 — supersedes the spec's reconciliation-debt approach. Contract: `docs/standards/workflow-standards.md` |
 | `reimb_attachments` self-contained | Rides the **core attachments service** (validation/scan/store) with a module join table; retention_class = 10-yr financial records (GRDS 2023) | Rule 10 + records-retention research |
 | (spec silent) | **Physical-document custody states** per attachment (scanned → original to Accounting → forwarded to COA); e-signature decision per artifact with the resident COA auditor (default: printed + wet-ink remains the record) | paper post-audit reality — master plan §3.1 |
 
@@ -52,11 +52,27 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | R-1 | Schema + config | not started | — | — |
 | R-2 | Claim wizard — **also delivers the first React surface: app shell + design tokens + component-library seed (TaskList, StatusTag, ErrorSummary, wizard)** per ui-standards §7 fill-trigger (owner decision 2026-07-22) | not started | — | — |
 | R-3 | Checklist engine + uploads (checklist grammar built as a **core service** — Rule 10) | not started | — | — |
-| R-4 | Approval chain + work management — **ships the shared core workflow engine** (first consumer) | not started | — | — |
+| R-4 | Approval chain + work management — **ships the shared core workflow engine** (first consumer). **Engine core shipped 2026-07-27** (session 11, `core_workflow_*`, migration `0012`); R-4-app remaining = author the reimbursement definition (states = spec §6 machine; certify_A/B/C via `step_kind`→gate config), wire `reimb_claims.workflow_instance_id`, the My-Work inbox, and the escalation-notification via `register_sla_enqueuer` | engine core ✅ / R-4-app not started | engine core green | 11 |
 | R-5…R-9 | Per spec §14 (templates/signatures → liquidation → external tracking → insights → hardening/pilot) | not started | — | — |
 
 ## 5. Decisions log
 
+- **2026-07-27 (session 11 — Stage C: shared core workflow engine)** — the ONE approval
+  engine (`core_workflow_*`) was built as pure core (R-4 core pulled forward, ahead of the
+  reimbursement schema). Contract: `docs/standards/workflow-standards.md`; decisions in
+  `foundation.md` §7. **Consequences for the reimbursement build:**
+  - R-1 can now add `reimb_claims.workflow_instance_id BIGINT FK → core_workflow_instances`
+    (module→core; the engine never references `reimb_*`).
+  - The spec §6 status machine maps to `core_workflow_states` rows; DV-box certifications
+    (`step_kind` certify_A/B/C) map to gate states with `enforce_segregation=true` +
+    distinct `required_permission`. **TODO (R-4-app):** define the amount-tier →
+    `required_permission` mapping (DOH DO 2019-0225 chain) as transition amount guards +
+    per-state permissions. The default `reimb.claim.approve` is a single-gate placeholder.
+  - CA hard-block (PD 1445 §89) stays a **DB constraint on `reimb_cash_advances`** (R-1/R-6)
+    — it is a data-integrity rule, NOT a workflow guard.
+  - Escalation notifications: R-4-app registers a notifier via
+    `core.workflow.register_sla_enqueuer` (the engine emits `escalation` events now;
+    delivery is deferred).
 - **2026-07-23** — Delta register extended with the research corrections
   (EO 77 3-cluster DTE, deduction/vehicle flags, COA 2023-004 checklist basis,
   GAM form numbering, CA hard-block, Revised-IoT versioning, custody states);

@@ -27,6 +27,16 @@ from office_connect.core.models.staff import Staff
 from office_connect.core.models.tenant_config import TenantConfig
 from office_connect.core.models.user import User
 from office_connect.core.models.user_role import UserRole
+from office_connect.core.models.workflow import (
+    WorkflowDefinition,
+    WorkflowDefinitionVersion,
+    WorkflowDelegation,
+    WorkflowEvent,
+    WorkflowInstance,
+    WorkflowState,
+    WorkflowStep,
+    WorkflowTransition,
+)
 
 __all__ = [
     "Activity",
@@ -53,4 +63,12 @@ __all__ = [
     "TenantConfig",
     "User",
     "UserRole",
+    "WorkflowDefinition",
+    "WorkflowDefinitionVersion",
+    "WorkflowDelegation",
+    "WorkflowEvent",
+    "WorkflowInstance",
+    "WorkflowState",
+    "WorkflowStep",
+    "WorkflowTransition",
 ]

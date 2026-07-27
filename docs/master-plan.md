@@ -61,7 +61,7 @@ compiled by hand. Connectedness is enforced structurally, not aspirationally:
 
 | # | Core service | What it owns | Consumers |
 |---|---|---|---|
-| 1 | **Workflow engine** (`core_workflow_*`) | Versioned **immutable** definitions (instances pinned to their version), states, transitions with typed guards (`min_amount`, `required_role`, `requires_comment` — no free-form DSL), per-instance step rows with `join_type` (all/any/quorum), append-only event log (derived `current_state` + replay test), delegation/OIC with on-behalf-of recording, compare-and-swap transitions (409 on race) + idempotency keys, SELECT FOR UPDATE fan-in, SLA sweeps (idempotent, non-interrupting reminders). Flag OFF blocks **new** instances only — in-flight always finishes. | reimb, dtwis, qms, supply, plan, perf, admin |
+| 1 | **Workflow engine** (`core_workflow_*`) — **SHIPPED 2026-07-27 (Stage C, migration `0012`; contract: `docs/standards/workflow-standards.md`)** | Versioned **immutable** definitions (instances pinned to their version), states, transitions with typed guards (`min_amount`/`max_amount`, `required_permission`, `requires_comment` — no free-form DSL; authorizes on permission STRINGS via `authorize_scoped`, `required_role_id` reserved unwired), per-instance step rows with `join_type` (all/any/quorum, fan-in scoped to `revision_no`), append-only **audited** event log (derived `current_state` + replay test), delegation/OIC with on-behalf-of recording (**`core_workflow_delegations`** — refines B3; see below), compare-and-swap transitions (409 on race) + idempotency keys, SELECT FOR UPDATE fan-in, SLA sweeps (idempotent, non-interrupting reminders). Flag OFF blocks **new** instances only — in-flight always finishes. | reimb, dtwis, qms, supply, plan, perf, admin |
 | 2 | **Attachments & files** (`core_attachments`) | Stream-capped upload → magic-byte allowlist (JPEG/PNG/WebP/PDF; HEIC→JPEG; never SVG) → SHA-256 → content-addressed volume store → ClamAV scan (fail-closed) → Pillow re-encode/EXIF-strip. Auth-checked streaming downloads only (no static mounts). `retention_class`/`retain_until`/`legal_hold` columns. | all modules |
 | 3 | **Frozen-snapshot signatures** | Export→PDF→SHA-256→snapshot+identity+timestamp; "modified after signature" re-flag (reference §19.8, promoted to core). | reimb, dtwis, qms, perf |
 | 4 | **Notifications** | Outbox table + retry, SMTP/Gmail drivers, in-app bell + notification center, WebSocket via Redis Pub/Sub + 30 s poll fallback, per-user prefs. Modules emit events only. | all modules |
@@ -213,7 +213,15 @@ ledger (§5) and research hardening — full detail in `docs/modules/reimburseme
   pages; server-side save-and-return; directory prefill (WCAG 2.2 §3.3.7).
 - **R-4**: the **shared core workflow engine** ships here (owner decision) and the
   reimbursement chain becomes its first definition. Sequential now; `join_type`
-  ready for DTWIS parallel routing.
+  ready for DTWIS parallel routing. **Engine CORE shipped 2026-07-27 (session 11**,
+  ahead of R-4-app — pure `core_workflow_*`, migration `0012`, `docs/standards/workflow-standards.md`);
+  R-4-app remaining = author the reimbursement definition + wire
+  `reimb_claims.workflow_instance_id` + the My-Work inbox + escalation delivery.
+  **Delegation decision (2026-07-27):** on-behalf-of uses a dedicated
+  `core_workflow_delegations` table — this refines the Stage-B B3 "no RBAC delegation
+  table" note (a role-window grants a ROLE; a workflow delegation records one PERSON
+  exercising another's authority), which master-plan §1.1 #1's on-behalf-of mandate
+  outranks. See `foundation.md` §7.
 - **R-5**: template auto-assembly generates **print-faithful GAM Vol II forms**:
   App 32 DV support, App 44 Liquidation Report, App 45 Itinerary of Travel,
   App 46 RER, App 47 Certificate of Travel Completed.

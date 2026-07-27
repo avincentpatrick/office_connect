@@ -110,11 +110,21 @@ Every table belongs to exactly one class:
 |---|---|---|
 | **Business** | `created_at timestamptz NOT NULL` · `created_by BIGINT NULL` · `updated_at timestamptz NOT NULL` · `updated_by BIGINT NULL` · `deleted_at timestamptz NULL` · `deleted_by BIGINT NULL` | `core_activities`, `reimb_claims`, `core_tenant_configs` |
 | **Lookup / catalog** | all Business columns **plus** `is_active boolean NOT NULL DEFAULT true` | `core_feature_flags`, `reimb_checklist_catalogs`, `reimb_return_reason_catalogs` |
-| **Append-only event** | `created_at` (+ `created_by` / `actor_id`) **only** — no `updated_*`, no `deleted_*`. Immutability is enforced by grants (§8), not columns. | `core_audit_logs`, `core_query_logs`, `reimb_status_histories`, `reimb_return_events`, `reimb_external_events` |
+| **Append-only event** | `created_at` (+ `created_by` / `actor_id`) **only** — no `updated_*`, no `deleted_*`. Immutability is enforced by grants (§8), not columns. | `core_audit_logs`, `core_query_logs`, `core_workflow_events`, `reimb_status_histories`, `reimb_return_events`, `reimb_external_events` |
 
 The append-only class is the **documented exception** to the
 soft-delete-everywhere rule: `updated_*`/`deleted_*` columns on an immutable
 event log would contradict the very auditability it provides.
+
+> **Audited vs unaudited append-only (Stage C).** Most append-only logs are
+> *log mechanisms themselves* and are excluded from the hash chain
+> (`core/audit.py::_UNAUDITED`: `core_audit_logs`, `core_query_logs`,
+> `core_notification_deliveries`, `core_report_lineages`, `core_login_attempts`).
+> `core_workflow_events` is the deliberate counter-example: append-only **and
+> audited** — it is NOT in `_UNAUDITED`, so every workflow event INSERT is
+> hash-chained (the decision log rides the same integrity proof as the business
+> rows). Its free-text/SPI `payload` uses `__audit_exclude__` (§7) so values never
+> seal into the chain; `comment` is kept in clear (the decision rationale).
 
 ## 7. Audit trail (standing rule 5)
 

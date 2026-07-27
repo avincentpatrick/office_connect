@@ -44,6 +44,13 @@ celery_app.conf.update(
             "schedule": crontab(minute="*/5"),
             "options": {"expires": 240},
         },
+        # Escalate overdue workflow steps (idempotent, non-interrupting). Cheap
+        # no-op when nothing is due (Stage C — the shared workflow engine).
+        "sweep-workflow-sla": {
+            "task": "ops.sweep_workflow_sla",
+            "schedule": crontab(minute="*/5"),
+            "options": {"expires": 240},
+        },
     },
 )
 

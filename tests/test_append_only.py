@@ -36,6 +36,13 @@ DENIED_STATEMENTS = [
     "DELETE FROM core_org_units WHERE id = 1",
     "DELETE FROM core_staff WHERE id = 1",
     "TRUNCATE core_audit_logs",
+    # Stage C: core_workflow_events is append-only (created_* only, REVOKE UPDATE).
+    "UPDATE core_workflow_events SET comment = 'x' WHERE id = 1",
+    "DELETE FROM core_workflow_events WHERE id = 1",
+    "TRUNCATE core_workflow_events",
+    # Stage C: no DELETE anywhere for oc_app (business workflow tables too).
+    "DELETE FROM core_workflow_instances WHERE id = 1",
+    "DELETE FROM core_workflow_definitions WHERE id = 1",
 ]
 
 

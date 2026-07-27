@@ -233,6 +233,44 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
 
 ## 7. Decisions log
 
+- **2026-07-27 (Stage C — shared core workflow engine, R-4 core pulled forward)** —
+  built the ONE approval/routing engine (`core_workflow_*`, `office_connect/core/workflow/`)
+  as a pure core service, ahead of R-4-app (Rule 10 + master-plan §1.1 #1). **One
+  migration** (`0012`): 8 tables + 6 enums; `core_workflow_events` is append-only +
+  **audited** with `REVOKE UPDATE`. pytest 320 (+34), lint 3/3. Full contract in
+  [`docs/standards/workflow-standards.md`](../standards/workflow-standards.md). Key
+  decisions (user-confirmed at kickoff):
+  - **First Stage-C increment = the engine** (not the reimb schema or the React shell) —
+    foundation-first: it is pure backend (no FE tooling decisions block it), the highest
+    Rule-10 leverage, and it unblocks R-1 (`reimb_claims.workflow_instance_id` will FK
+    into `core_workflow_instances`). The engine is testable standalone via a synthetic
+    definition; reimbursement's chain becomes its first *definition* at R-4-app.
+  - **Delegation = a first-class `core_workflow_delegations` table** — this **refines**
+    the B3 "no RBAC delegation table" decision, it does not contradict it. B3's
+    `core_user_roles.valid_from/valid_to` grants a ROLE for a window; the workflow
+    delegation records that one PERSON exercised another's authority for a workflow
+    action (`event.actor_user_id` + `on_behalf_of_user_id` → "Approved by Cruz (OIC for
+    Reyes)"). master-plan §1.1 #1 mandates on-behalf-of recording, and it outranks the
+    module-doc note. A role-window cannot express person→person delegation.
+  - **Authorize on permission STRINGS, not role ids** — the design doc's
+    `required_role_id` becomes `required_permission` resolved by `authorize_scoped`
+    (org-scoped, delegation-aware). A nullable `required_role_id` is reserved on
+    transitions, unwired, for a future role-typed guard.
+  - **CAS via row lock + audited ORM mutate**, not a raw conditional `UPDATE` — the audit
+    chain forbids unaudited bulk DML (`_block_unaudited_bulk_dml`). `SELECT … FOR UPDATE`
+    the instance + in-Python state/version check → 409; correctness identical.
+  - **Fan-in scoped to `instance.revision_no`** (a `revision_no` column on
+    `core_workflow_steps`) so a resubmit's fresh steps are fanned in independently of a
+    prior visit's returned/done steps.
+  - **SLA first cut = seam + stamping + one idempotent escalation**; the recurring
+    reminder ladder + escalation-notification delivery are deferred to R-4-app (which
+    registers a notifier via `register_sla_enqueuer`). `ops.sweep_workflow_sla` (beat,
+    */5 min) calls the pure core sweep — core stays worker-free.
+  - **FE stack pinned for the later React shell** (not built this session): React 19 +
+    Vite 6 + Tailwind 4 + TypeScript, headless primitives (Radix/Headless UI) styled on
+    the `--oc-*` tokens. Lands in ui-standards §7 + tech-stack §4 the session the
+    scaffold is built.
+
 - **2026-07-27 (Stage B Increment 4 — wire seams + directory + compliance)** — closed
   the deferred shared-service seams + the Stage-B compliance gates, then the phase-2 QA
   gate. **One migration** (`0011`); the rest is app-layer. pytest 286 (+48), lint 3/3.

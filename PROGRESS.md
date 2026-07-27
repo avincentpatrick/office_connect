@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C: Reimbursement vertical + the shared core workflow engine + the first React/Vite/Tailwind shell (the first user-facing module on the Stage A/B foundation floor).**
+> **Resume Office-Connect — Stage C Increment R-1: the Reimbursement model + config pack (reimb_* schema on top of the now-shipped core workflow engine), OR the first React/Vite/Tailwind shell — confirm the next increment at kickoff.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,94 +10,96 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **Stage B (Phase 2) COMPLETE** — Increments **B1 ✅ + B2 ✅ + B3 ✅ +
-  B4 ✅**; **phase-2 QA gate PASSED** (pytest 286/286, lint-imports 3/3, migration
-  chain `0001→0011` idempotent + reversible). Phase 0 / Stage A remains complete +
-  pushed (tag `phase-0-complete`). **Migration head now `0011`** (B4's one migration:
-  `core_notification_preferences` + the `suppressed` status). **PUSHED** — the first
-  Stage B push landed: `origin/master` = `b3d150c` (B1–B4) + annotated tag
-  `phase-2-complete` (credential `avincentpatrick` confirmed). **Next: Stage C —
-  Reimbursement vertical + core workflow engine + first React shell.** Master Plan
+- **Phase:** **Stage C IN PROGRESS** — the **shared core workflow engine (R-4 core,
+  pulled forward) is BUILT** (`core_workflow_*`, `office_connect/core/workflow/`), the
+  first Stage-C code increment. Stage A (`phase-0-complete`) + Stage B
+  (`phase-2-complete`) remain complete + pushed. **Migration head now `0012`** (one
+  Stage-C migration: 8 workflow tables + 6 enums; `core_workflow_events` append-only +
+  audited). **Verified: pytest 320/320 (+34), lint-imports 3/3, migration `0011↔0012`
+  idempotent + reversible.** Engine contract lives in the new
+  `docs/standards/workflow-standards.md`. **NOT pushed** — Stage C pushes at its QA gate
+  (reimbursement sub-phases tag `reimb-R<N>-complete`; cadence to confirm). Master Plan
   v1 in force.
-- **Last session:** #10 — 2026-07-27 — **Stage B Increment 4 (wire seams + directory
-  + compliance + phase-2 gate)**. Closed the three deferred shared-service seams +
-  the two Stage-B compliance gates. **Authed attachments router** (`/api/v1/attachments`,
-  `attachment.*` gates, per-upload scan enqueue after commit + holder-auth seam,
-  streaming EXIF-stripped download). **Notification recipient/prefs** —
-  `recipient_user_id → email` resolution + `core_notification_preferences` opt-out
-  (security-class bypass; `suppressed` status). **CSS-IS directory ingestion** — pure
-  atomic idempotent CSV upsert (`core/directory/ingest.py`) via `POST
-  /directory/import` + `bootstrap ingest-directory`, now the single path
-  `load-fixtures` uses. **Admin provisioning** (`/api/v1/users`) — create-from-staff
-  (temp password, no self-registration) + deactivate (revokes all sessions) /
-  reactivate, all audited. **Query-log middleware** — one `core_query_logs` row per
-  `/api/v1` request (ids/param-names only, no SPI). **Person-field SPI redaction** —
-  `core_staff` names/email + notification recipient/body/payload withheld from the
-  chain. **Stage-B PIA** + processing-register row. Adds `python-multipart`.
-  **Verified: pytest 286/286 (+48), lint-imports 3/3, migration `0011`.**
-- **Decisions this session (user-confirmed at kickoff):** notification prefs = a
-  dedicated `core_notification_preferences` table (migration `0011`) + `suppressed`
-  status, security/transactional bypass; person-field SPI = direct identifiers only
-  (`core_staff` names/email + notification values; **keep** `core_users.email`,
-  `employee_no`, position/plantilla/status); query-log scope = all `/api/v1` requests
-  (reads + writes, incl. anonymous) minus `/config` + OPTIONS; phase-2 push = prepare
-  then **pause** before `git push`/tag (D4); CSS-IS ingestion = build the mechanism,
-  run on synthetic fixtures (real feed not in workspace); attachments = coarse RBAC +
-  a Stage-C holder-scoping seam. See `docs/modules/foundation.md` §7 (B4).
-- **Blockers / waiting on user:** none — Stage B is complete + pushed. *(Dev note: B4
-  added `python-multipart` → the app/worker image was rebuilt; migration head is now
-  `0011`.)*
+- **Last session:** #11 — 2026-07-27 — **Stage C: the shared core workflow engine**
+  (Rule 10 centerpiece). 8 tables + 6 enums (`core_workflow_definitions/_versions/
+  _states/_transitions/_instances/_steps/_events/_delegations`), migration `0012`; a pure
+  `core/workflow/` package (`definitions` authoring + graph validation + one-way publish;
+  `transitions.execute_action` = FOR-UPDATE lock → idempotency replay → CAS 409 → typed
+  guard routing → org-scope + delegation authz → maker-checker → step fan-in by
+  `join_type` (revision-scoped) → state move + `row_version` bump → append audited event;
+  `available_actions`; `steps`; `delegation.resolve_authority`; `replay` fold-consistency;
+  `sla.sweep_due_steps` + `register_sla_enqueuer`). `workflow.*` permission strings
+  seeded (auditor gets the reads). Beat `ops.sweep_workflow_sla` (ops→core seam). 9 new
+  test files (+ extended `test_append_only`/`test_migrations`). **No new dependency.**
+- **Decisions this session (user-confirmed at kickoff):** first Stage-C increment = **the
+  engine** (foundation-first: pure backend, highest Rule-10 leverage, unblocks R-1's
+  `reimb_claims.workflow_instance_id` FK); delegation = a first-class
+  **`core_workflow_delegations`** table (on-behalf-of; refines B3, not a contradiction —
+  master-plan §1.1 #1 outranks the module-doc note); FE stack for the later React shell =
+  **React 19 + Vite 6 + Tailwind 4 + TypeScript, headless primitives (Radix/Headless UI)
+  on the `--oc-*` tokens** (lands in ui-standards §7 + tech-stack §4 the session the
+  scaffold is built, NOT now). Engineering calls: authorize on permission STRINGS
+  (`required_permission`, not `required_role_id`); CAS = row lock + audited ORM mutate (the
+  audit chain forbids bulk DML); `core_workflow_events` is append-only **and** audited;
+  fan-in scoped to `revision_no`; SLA first cut = one idempotent escalation (ladder +
+  delivery deferred to R-4-app). See `docs/standards/workflow-standards.md` +
+  `docs/modules/foundation.md` §7.
+- **Blockers / waiting on user:** none. **Kickoff choice for next session:** confirm the
+  next increment — **R-1 (reimbursement model + config pack)** vs **the React/Vite/Tailwind
+  shell (R-2 delta)**. Both are unblocked; R-1 is the natural continuation (build `reimb_*`
+  on the engine).
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Stage A (Phase 0) + Stage B (Phase 2) are COMPLETE and the foundation floor
-is finished. Available to build on: identity split (core_staff directory + core_users
-logins) + admin provisioning (/api/v1/users, no self-registration); auth (cookie Redis
-sessions db 4, Argon2id, NIST policy, throttle, two-step TOTP MFA, break-glass, CSRF);
-RBAC on permission STRINGS — require_permission(perm, scope=GLOBAL|REQUESTER) with
-org-unit scoping (core/org_units.py ancestry) + delegation windows + the reusable
-maker-checker helper (core/maker_checker.py, 409 segregation_of_duties; DB-level
-constraint deferred to here); hash-chained audit + read-only auditor report + query
-log + person-field SPI redaction; the shared services — attachments (core/attachments,
-HTTP router at /api/v1/attachments with a holder-scoping seam register_holder_authorizer
-keyed on holder_kind), notifications (send_notification + prefs + recipient resolution),
-directory ingest, storage/email drivers, notification outbox; reference data (UACS/PAP
-+ object codes, activity tags, holidays + the pure workdays engine, compliance
-deadlines), the seed framework, and the design-token contract served at /api/v1/config
-(tokens present even under the DB fail-safe). reimb.claim.create/read/submit/approve
-permission strings are already seeded (placeholder, unwired). Migration head 0011.
-pytest 286/286, lint-imports 3/3. Phase-2 pushed at tag phase-2-complete.
-Read CLAUDE.md, then docs/modules/reimbursement.md (full plan + delta register: EO 77
-3-cluster DTE, COA 2023-004, GAM form numbers, CA hard-block), master-plan.md §1
-(core-services registry + connectedness contract — the ONE shared core workflow engine
-is built here at R-4 and supersedes any module-internal approach; Rule 10) + §2 Stage C
-(R-0…R-9) + §3 (statutory calendar), docs/standards/ui-standards.md (component inventory
-+ layout templates + GOV.UK task-list + tokens) and workflow/database standards, and
-the cited docs/research digests.
-Task: Begin Stage C — the Local Travel Reimbursement vertical, the shared core workflow
-engine, and the FIRST React/Vite/Tailwind shell + component library (the first
-user-facing module). This is a multi-increment stage (R-0…R-9): confirm the increment
-sequencing at kickoff. Likely first increments: (R-0) the React/Vite/Tailwind shell +
-component library wired to /api/v1/config tokens + the auth/session flow; (R-4 core)
-the shared workflow engine (states, transitions, approval routing via RBAC org-scope +
-maker-checker) as a core service other modules consume — NOT module-internal; then the
-reimbursement claim schema + forms + DV/attachment/workflow wiring on top. Consume the
-existing shared services (Rule 10 — check the registry before adding a table/service);
-wire the attachments holder authorizer for reimb_claim; emit notification events (don't
-build delivery). Everything auditable + soft-deleted + connected (master-plan §1
-"everything is connected"). Money server-computed, UI displays.
-Acceptance (per-increment, confirm at kickoff): the React shell runs against the live
-API with the token/component/layout system (Rule 1); the shared workflow engine drives
-a claim through submit → review → approve with maker-checker + org-scoped routing and a
-full audit trail; a reimbursement claim can be created/submitted/approved end-to-end
-with attachments + notifications; pytest green; lint-imports 3/3 (modules import core,
-never each other); per-increment docs + PROGRESS + CHANGELOG updated; commit per session.
-Open questions for the user (confirm at kickoff): (a) the R-0…R-9 increment sequencing
-+ where the React shell lands vs the workflow engine first; (b) frontend tooling/pins
-(React 18 + Vite + Tailwind + the component-library choice) since this is the first FE
-code; (c) scope of the first vertical slice (which reimbursement path/forms to wire
-first — the EO 77 3-cluster DTE local-travel path).
+Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS — the shared core
+workflow engine is BUILT and green (the first Stage-C code increment). Available to build
+on now, in ADDITION to the Stage A/B foundation (identity/auth/RBAC/org-scope/maker-
+checker/audit/attachments/notifications/directory/reference-data/seeds/token-contract):
+the ONE workflow engine core_workflow_* (office_connect/core/workflow/) — author a chain
+via create_definition/create_version/add_state/add_transition/publish_version (immutable
+once published; graph-validated); run it via start_instance(feature_flag_key=...),
+execute_action (atomic, idempotent, CAS 409, org-scope+delegation authz, maker-checker,
+join_type fan-in, append-only AUDITED events), available_actions; integrity via
+fold_events/is_consistent; SLA via sweep_due_steps + register_sla_enqueuer (ops seam,
+beat ops.sweep_workflow_sla). Authorizes on permission STRINGS; delegation via
+core_workflow_delegations (on-behalf-of). Engine imports NO module tables — a module row
+FKs INTO core_workflow_instances via (subject_kind, subject_id). Migration head 0012.
+pytest 320/320, lint-imports 3/3. Full contract: docs/standards/workflow-standards.md.
+Read CLAUDE.md, then docs/standards/workflow-standards.md, docs/modules/reimbursement.md
+(delta register + R-phase table — note R-4 engine core is DONE; R-1 remaining), master-
+plan.md §1.1 (core-services registry — reference numbers, checklist engine item 7,
+attachments, calendar) + §2 Stage C + §3 (statutory calendar), database-standards.md,
+and — if building the React shell — ui-standards.md (component inventory + layout
+templates + tokens) + the FE pins already chosen (below).
+Task: continue Stage C with the NEXT increment — CONFIRM at kickoff which:
+  (A) R-1 — Reimbursement model + config pack: the reimb_* schema (reimb_configs,
+      reimb_claims incl. workflow_instance_id BIGINT FK -> core_workflow_instances,
+      reimb_cash_advances, reimb_itinerary_legs, reimb_dte_clusters + PSGC region map,
+      reimb_checklist_catalogs/_items, reimb_approval_steps, reimb_signatory_configs,
+      reimb_return_reason_catalogs/_return_events, reimb_attachments, reimb_status_
+      histories, reimb_external_events, reimb_template_maps); the effective-dated config
+      pack (EO 77 3-cluster DTE rates, 50/30/20, deadlines, thresholds); RB-/LQ- ref-
+      number series; the CA hard-block DB constraint (PD 1445 §89); seed catalogs +
+      synthetic fixtures. Add module.reimbursement to the lint-imports independence
+      contract. Acceptance: migrations idempotent+reversible; seeds load; config editable;
+      rates render with sources; pytest green; lint 3/3.
+  (B) React shell (R-2 delta) — the FIRST frontend: app shell + the 6 layout templates +
+      the 13-component inventory seed, wired to GET /api/v1/config tokens (Tailwind v4
+      @theme <- --oc-* CSS vars) + the auth/session/CSRF (X-Requested-With) flow; add a
+      compose `web` service (Vite :5174) + CORS (or a Vite dev proxy). FE stack CONFIRMED
+      2026-07-27: React 19 + Vite 6 + Tailwind 4 + TypeScript; headless primitives
+      (Radix/Headless UI) on the tokens; single icon set (choose at kickoff); exact-pin
+      package.json (rule 9) + fill ui-standards §7 + tech-stack §4. Node version: pin it.
+      Acceptance: shell runs against the live API; tokens/components/templates only
+      (Rule 1); WCAG AA; pytest green; lint 3/3.
+Rule 10 throughout — check the core-services registry before adding any table/service;
+the approval chain is the workflow engine (already built), NOT module-internal. Everything
+auditable + soft-deleted + connected; money server-computed, UI displays.
+Open questions for the user (confirm at kickoff): (a) R-1 vs the React shell next;
+(b) if the shell — the single icon library + Node version pin; (c) push cadence — do we
+tag/push reimb-R<N>-complete per increment (development-workflow §4) or once at the Stage C
+R-9 gate?
 ```
 
 ---
@@ -110,7 +112,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (engine core ✅) | 11 | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
@@ -131,6 +133,62 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 11 — 2026-07-27 — Stage C: the shared core workflow engine (R-4 core, pulled forward)
+
+- **Phase(s):** C (Stage C first code increment) · **Commit:** `session(2026-07-27)`
+  (Stage C) — **local only** (Stage C pushes at its QA gate).
+- **Kickoff decisions (user-confirmed):** first Stage-C increment = **the engine**
+  (foundation-first — pure backend, highest Rule-10 leverage, unblocks R-1's
+  `reimb_claims.workflow_instance_id` FK); **delegation = a first-class
+  `core_workflow_delegations` table** (on-behalf-of; refines B3 — master-plan §1.1 #1
+  outranks the module-doc "no table" note); FE stack for the later shell = **React 19 +
+  Vite 6 + Tailwind 4 + TypeScript, headless primitives (Radix/Headless UI) on `--oc-*`
+  tokens** (lands in ui-standards §7 + tech-stack §4 when the scaffold is built).
+- **Done (one migration `0012`; the rest app-layer, all in `core/`):**
+  - **Schema** — `core/models/workflow.py`: 6 enums + 8 tables. Design-time (business):
+    `core_workflow_definitions` / `_definition_versions` (immutable once published) /
+    `_states` (approval-gate config: `required_permission`, `join_type`, `step_count`,
+    `quorum_count`, `sla_hours`, `enforce_segregation`) / `_transitions` (typed guards:
+    `min/max_amount`, `required_permission`, `requires_comment`; `required_role_id`
+    reserved unwired). Runtime (business): `_instances` (pinned version, `row_version`
+    CAS, `revision_no`, polymorphic `(subject_kind, subject_id)` no-FK back-ref,
+    `amount`/`context` guard inputs) / `_steps` (per-approver fan-in rows, `revision_no`-
+    scoped, `sla_due_at`). History: `_events` (**append-only + audited**, REVOKE UPDATE,
+    `payload` `__audit_exclude__`; partial-unique `(instance,idempotency_key)` and
+    `(step,escalation_level)`). Delegation (business): `_delegations`.
+  - **Service** — pure `core/workflow/`: `definitions` (author + `validate_graph` +
+    one-way `publish_version` + `get_published_version`); `transitions.execute_action`
+    (the heart — FOR-UPDATE lock → idempotency replay → CAS 409 → typed-guard routing →
+    `resolve_authority` (org-scope + delegation) → `assert_segregation` → step fan-in by
+    `join_type` → state move + `row_version` bump → activate next gate + stamp SLA →
+    append audited event) + `available_actions`; `steps` (activate/`join_satisfied`);
+    `delegation.resolve_authority`; `replay.fold_events`/`is_consistent`;
+    `sla.sweep_due_steps` + `register_sla_enqueuer`; `service.start_instance` (the flag
+    gate); `errors` (structured `APIError` codes).
+  - **Seeds/seams** — `workflow.definition.read/manage/publish` + `workflow.instance.read`
+    + `workflow.delegation.manage` (auditor gets the reads); `ops/workflow_tasks.py`
+    (`ops.sweep_workflow_sla`, ops→core injection) + beat schedule (*/5 min); flag gate in
+    `start_instance`.
+  - **Docs** — NEW `docs/standards/workflow-standards.md` (the engine contract, 7
+    consumers); `database-standards.md` §6 (audited-vs-unaudited append-only note);
+    `foundation.md` §7 (Stage-C decision record incl. the B3-delegation refinement);
+    `reimbursement.md` (delta + R-4 status: engine core done, R-4-app remaining);
+    `master-plan.md` §1.1 #1 + §2 R-4 (SHIPPED + delegation delta).
+- **Verified:** **pytest 320/320 (+34** across definitions/transitions/maker-checker/
+  scope/delegation/return-reject/replay/sla/flag/concurrency + extended append-only &
+  migrations), **lint-imports 3/3** (engine pure core; the ops→core SLA seam is the only
+  cross-boundary edge and lives in ops), migration `0011↔0012` idempotent + reversible.
+  The concurrency test drives two real sessions at one instance — exactly one approve wins,
+  the other gets a 409.
+- **Decisions:** see `docs/standards/workflow-standards.md` + `docs/modules/foundation.md`
+  §7 (Stage C). Engineering calls: permission-string authz (not role ids); CAS via row
+  lock + audited ORM mutate; events audited append-only; fan-in `revision_no`-scoped; SLA
+  first cut = one idempotent escalation (ladder/delivery deferred to R-4-app).
+- **Docs updated:** workflow-standards.md (new), database-standards.md, foundation.md,
+  reimbursement.md, master-plan.md, CHANGELOG.md `[Unreleased]`, this file.
+- **Next:** Stage C next increment — **R-1 (reimbursement model + config pack)** or **the
+  React shell** (confirm at kickoff; see the Next Session Prompt).
 
 ### Session 10 — 2026-07-27 — Stage B Increment 4 (wire seams + directory + compliance) + phase-2 gate
 

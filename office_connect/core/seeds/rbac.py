@@ -68,6 +68,14 @@ _PERMISSION_CATALOG: tuple[tuple[str, str, str], ...] = (
     ("attachment.download", "Download attachment content", "attachment"),
     ("attachment.delete", "Soft-delete an attachment", "attachment"),
     ("attachment.dispose.read", "View the disposal-eligibility report", "attachment"),
+    # workflow engine (core-service #1) — admin of definitions + read of instances.
+    # Per-instance ACTING is authorized by the transition/step's own permission
+    # (e.g. reimb.claim.approve), never a generic "act" grant.
+    ("workflow.definition.read", "View workflow definitions", "workflow"),
+    ("workflow.definition.manage", "Create/edit workflow definitions", "workflow"),
+    ("workflow.definition.publish", "Publish a workflow definition version", "workflow"),
+    ("workflow.instance.read", "View workflow instances", "workflow"),
+    ("workflow.delegation.manage", "Manage OIC / delegations", "workflow"),
     # reimbursement (placeholder — pattern only, wired at Stage C)
     ("reimb.claim.create", "Create a reimbursement claim", "reimb"),
     ("reimb.claim.read", "View reimbursement claims", "reimb"),
@@ -104,6 +112,9 @@ ROLE_GRANTS: dict[str, tuple[str, ...]] = {
         # content bytes (which may carry SPI; downloads are holder-scoped in Stage C).
         "attachment.read",
         "attachment.dispose.read",
+        # Workflow: read the definitions + the instance/decision history (COA trail).
+        "workflow.definition.read",
+        "workflow.instance.read",
     ),
     "approver": (
         "reimb.claim.read",
