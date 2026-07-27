@@ -12,7 +12,7 @@ Nothing user-facing precedes it (`references/Phased_Rollout_Assessment.md` §3).
 | Increment 2 — ops: deploy, backup/restore, Celery, explicit-step migrations, git remote | 0 / Stage A | ✅ done (session 4) — proven-restore drill green, worker/beat up, pytest 31/31 |
 | Increment 3 — integrations: storage/email drivers, bootstrap CLI, token contract | 0 / Stage A | ✅ done (session 5) — pytest 68/68; local storage round-trip, email drivers + outbox stub, bootstrap CLI (prod-refusing), `/api/v1/config` tokens |
 | Increment 4 — spine amendments (master plan §2 Stage A) | 0 / Stage A | ✅ done (session 6) — pytest 132; taxonomy/UACS/holiday+WD engine/compliance calendar/attachments (ClamAV-opt-in)/notification outbox/report lineage/seed framework/observability; **Phase 0 QA gate → tag `phase-0-complete`, first push** |
-| Auth / RBAC / staff directory ("one login") | 2 / Stage B | **in progress** — B1 ✅ (identity schema + RBAC seeds + break-glass + credential redaction, head `0010`) · B2 ✅ (auth: Redis sessions on db 4, Argon2id login, NIST password policy + top-100k blocklist, throttle, TOTP MFA, CSRF, actor injection, `auth.*` events; **pytest 213, lint 3/3, no migration**). B3 (RBAC enforcement), B4 (wiring + directory + PIA) next |
+| Auth / RBAC / staff directory ("one login") | 2 / Stage B | **in progress** — B1 ✅ (identity schema + RBAC seeds + break-glass + credential redaction, head `0010`) · B2 ✅ (auth: Redis sessions on db 4, Argon2id login, NIST password policy + top-100k blocklist, throttle, TOTP MFA, CSRF, actor injection, `auth.*` events) · B3 ✅ (RBAC enforcement: Redis-cached `require_permission` invalidated by `permissions_version`, org-scoped grants, delegation/OIC via `valid_from/to`, maker-checker helper, auditor report; **pytest 238, lint 3/3, no migration**). B4 (wiring + directory + PIA) next |
 
 > **2026-07-23:** sequencing and scope now governed by [`docs/master-plan.md`](../master-plan.md)
 > (Stage A = Phase 0 increments 2–4; Stage B = Phase 2). This doc keeps the
@@ -170,10 +170,12 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
   `get_session` injects `actor_id`; `core_login_attempts` rows + `auth.*` events
   (logout/revoke via the new `append_auth_event` hash-chained row). No migration.
   **pytest 213, lint 3/3.** See §7 (Stage B Increment 2).
-- **B3 — RBAC enforcement:** `require_permission` dependency, Redis-cached
-  effective-permission set (invalidated by `core_users.permissions_version`),
-  org-unit-scoped grants, delegation/OIC (uses `core_user_roles.valid_from/to`),
-  maker-checker DB checks, auditor role + printable chain-verification report.
+- **B3 — RBAC enforcement:** ✅ `require_permission(perm, scope=)` rewired to a
+  Redis-cached effective set (db 4, version-keyed by `core_users.permissions_version`,
+  boundary-TTL); org-unit-scoped grants (`core.org_units.authorize_scoped` +
+  ancestry CTE); delegation/OIC via `core_user_roles.valid_from/to`; reusable
+  maker-checker helper; grant/revoke admin API + read-only auditor report. No
+  migration. **pytest 238, lint 3/3.** See §7 (Stage B Increment 3).
 - **B4 — wire seams + directory + compliance:** authed attachments router,
   notification recipient/prefs resolution, CSS-IS inbound directory ingestion +
   admin provisioning, query-log middleware, full person-field SPI policy, Stage-B
@@ -223,6 +225,43 @@ audit-payload SPI policy decision executes here (master plan §4 #4).
   immutable; JSON logs carry the request id.)*
 
 ## 7. Decisions log
+
+- **2026-07-23 (Stage B Increment 3 — RBAC enforcement)** — authorization on the
+  B2 auth runtime. **No migration** (identity schema complete since B1). pytest
+  238 (+25), lint 3/3. Key decisions (user-confirmed at kickoff + engineering calls):
+  - **Delegation/OIC = `valid_from`/`valid_to` only, no table.** Resolves the
+    master-plan §2 ("delegation table") vs §5-B3 (`valid_from/to`) conflict in
+    favor of the window columns B1 already added — no new schema.
+  - **Permission cache = version-keyed + boundary-TTL, no pub/sub.** The Redis
+    entry key embeds `core_users.permissions_version` (db 4, the auth keyspace);
+    a grant/revoke bumps the version AND stamps it onto the target's live session
+    records in place (`SessionStore.set_permissions_version`, Lua-guarded so an
+    expiring session can't be re-created partial) — so the change lands on the
+    **next request** via a fresh cache key → miss → reload. The cache TTL is capped
+    at the next `valid_from/valid_to` edge so a delegation expiry (which bumps no
+    version) still drops precisely; a 300s backstop is the ceiling. A **cache hit
+    takes no DB hit** (the loader opens a session only on a miss).
+  - **`require_permission` signature preserved; `scope=` added.** Default
+    `scope=GLOBAL` = the cached, org-agnostic membership check (identical to B2 for
+    the 3 admin routes). `scope=REQUESTER` = uncached, fresh-DB org check
+    (`core.org_units.authorize_scoped`): global grant, or a scoped
+    `org_unit_id` that is an ancestor-or-self of the request's unit (recursive
+    `parent_org_unit_id` CTE, the first ancestry walker in the codebase). Unscoped
+    semantics kept UNCHANGED (any active grant confers) for backward-compat;
+    tightening to global-only defers to Stage C when scoped grants are actually
+    issued.
+  - **Maker-checker = reusable pure helper now** (`core.maker_checker.assert_segregation`,
+    no self-approval / distinct DV-Box A/B/C approvers, `409 segregation_of_duties`);
+    the DB-level constraint defers to Stage C with the approval table.
+  - **Auditor report = printable HTML + JSON.** `GET /audit/verify` runs
+    `verify_chain` over the whole chain and renders a print-friendly PASS/FAIL
+    report (JSON via `Accept`); `GET /audit/records/{table}/{row_pk}` is the
+    per-record timeline. The seeded `auditor` role (read/verify grants only) is
+    read-only everywhere by permission-gating alone — no extra mechanism.
+  - **`rbac.role.granted`/`revoked` events** ride the hash chain via
+    `append_auth_event` (given optional `table_name`/`row_pk` so they attribute to
+    `core_user_roles`, not the default `core_sessions`), alongside the natural
+    `core_user_roles` insert/soft-delete audit row.
 
 - **2026-07-23 (Stage B Increment 2 — authentication)** — the auth runtime on the
   B1 floor. **No migration** (identity schema complete). pytest 213, lint 3/3.

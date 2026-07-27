@@ -323,19 +323,24 @@ async def append_auth_event(
     actor_id: int | None = None,
     request_id: str | None = None,
     data: dict[str, Any] | None = None,
+    table_name: str = "core_sessions",
+    row_pk: int | None = None,
 ) -> None:
-    """Append ONE hash-chained audit row for a session-lifecycle event that mutates
-    no audited business row — ``auth.logout`` / ``auth.session.revoked`` (logout is
-    a pure Redis op; revoke-all deletes Redis records). Login/mfa/password events
-    already ride the chain via ``core_login_attempts`` + the natural ``core_users``
-    UPDATE, so this helper is deliberately narrow.
+    """Append ONE hash-chained audit row for a semantic lifecycle event that mutates
+    no (or no *sufficiently descriptive*) audited business row — ``auth.logout`` /
+    ``auth.session.revoked`` (pure Redis ops) and the B3 ``rbac.role.granted`` /
+    ``rbac.role.revoked`` events (which name *what happened* alongside the natural
+    ``core_user_roles`` row). Login/mfa/password events already ride the chain via
+    ``core_login_attempts`` + the natural ``core_users`` UPDATE.
 
     It respects the ``action`` CHECK (``insert``) and writes a *logical*
-    ``table_name='core_sessions'`` (``row_pk`` = the subject user — a sanctioned
-    no-FK generic pointer). ``verify_chain`` reconstructs these rows identically, so
-    they sit in the one existing chain. A forbidden ``data`` key raises — no secret
-    can enter. Call AFTER flushing any pending ORM changes so this row chains after
-    them; it writes on the session's own connection, committing atomically with it.
+    ``table_name`` (default ``'core_sessions'``; RBAC events pass
+    ``'core_user_roles'``) with ``row_pk`` a sanctioned no-FK generic pointer
+    (defaults to the subject user). ``verify_chain`` reconstructs these rows
+    identically, so they sit in the one existing chain. A forbidden ``data`` key
+    raises — no secret can enter. Call AFTER flushing any pending ORM changes so
+    this row chains after them; it writes on the session's own connection,
+    committing atomically with it.
     """
     data = data or {}
     forbidden = _FORBIDDEN_EVENT_KEYS.intersection(data)
@@ -343,6 +348,7 @@ async def append_auth_event(
         raise ValueError(
             f"auth event payload may not carry secrets: {sorted(forbidden)}"
         )
+    effective_row_pk = row_pk if row_pk is not None else subject_user_id
     info = session.sync_session.info
     actor_id = actor_id if actor_id is not None else info.get("actor_id")
     request_id = request_id if request_id is not None else info.get("request_id")
@@ -360,8 +366,8 @@ async def append_auth_event(
     at = utc_now()
     new = {"event": event, **{k: serialize_value(v) for k, v in data.items()}}
     payload = build_payload(
-        table="core_sessions",
-        row_pk=subject_user_id,
+        table=table_name,
+        row_pk=effective_row_pk,
         action="insert",
         actor_id=actor_id,
         request_id=request_id,
@@ -377,8 +383,8 @@ async def append_auth_event(
                 "created_at": at,
                 "actor_id": actor_id,
                 "request_id": request_id,
-                "table_name": "core_sessions",
-                "row_pk": subject_user_id,
+                "table_name": table_name,
+                "row_pk": effective_row_pk,
                 "action": "insert",
                 "old_data": None,
                 "new_data": new,

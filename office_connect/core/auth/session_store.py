@@ -44,6 +44,14 @@ from office_connect.core.time import UTC, utc_now
 _SESSION_PREFIX = "session:"
 _USER_PREFIX = "user_sessions:"
 
+# Set a field ONLY if the session hash still exists — a plain HSET on an
+# expired-away key would recreate a partial (undecodable) hash. Used by
+# set_permissions_version, which races the session's own TTL.
+_HSET_IF_EXISTS = (
+    "if redis.call('exists', KEYS[1]) == 1 then "
+    "return redis.call('hset', KEYS[1], ARGV[1], ARGV[2]) end return 0"
+)
+
 
 class SessionCapReached(Exception):
     """Raised by ``create_session`` when the cap policy is "reject" and full."""
@@ -281,6 +289,31 @@ class SessionStore:
         if count:
             await pipe.execute()
         return count
+
+    async def set_permissions_version(
+        self, user_id: int, permissions_version: int
+    ) -> int:
+        """Stamp a new ``permissions_version`` on every live session of a user, IN
+        PLACE (no id rotation — an admin granting/revoking a role for someone else
+        can't re-issue that person's cookie). ``touch`` re-reads the hash on each
+        request, so the next request rebuilds the ``Principal`` with the new
+        version → a new permission-cache key → cache miss → fresh DB load. This is
+        how a grant/revoke "takes effect on the next request." Returns the count."""
+        await self._prune_user_index(user_id)
+        sids = await self._redis.zrange(self._ukey(user_id), 0, -1)
+        if not sids:
+            return 0
+        pipe = self._redis.pipeline()
+        for sid in sids:
+            pipe.eval(
+                _HSET_IF_EXISTS,
+                1,
+                self._skey(sid),
+                "permissions_version",
+                str(permissions_version),
+            )
+        await pipe.execute()
+        return len(sids)
 
     async def list_for_user(
         self, user_id: int, *, now: datetime | None = None

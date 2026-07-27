@@ -17,6 +17,7 @@ from office_connect import APP_VERSION
 from office_connect.core.api.errors import register_error_handlers
 from office_connect.core.api.router import api_router
 from office_connect.core.auth.middleware import AuthPrincipalMiddleware, CSRFMiddleware
+from office_connect.core.auth.permission_cache import PermissionCache
 from office_connect.core.auth.session_store import SessionStore
 from office_connect.core.config import get_settings
 from office_connect.core.db import engine
@@ -38,6 +39,9 @@ async def lifespan(app: FastAPI):
         settings.resolved_session_redis_url, decode_responses=True
     )
     app.state.session_store = SessionStore(app.state.session_redis, settings)
+    # RBAC (Increment 3): the effective-permission cache shares the db-4 auth
+    # keyspace, invalidated by core_users.permissions_version.
+    app.state.permission_cache = PermissionCache(app.state.session_redis, settings)
     # Register the notification enqueuer (ops → core injection) so celery-mode
     # dispatch works: send_notification enqueues to the worker after commit.
     # app → ops import is import-linter-legal (only `core` may not import ops).

@@ -12,6 +12,28 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage B (Phase 2) Increment 3 — RBAC enforcement** (2026-07-23): real
+  authorization on the B2 auth runtime (**no migration**). **Permission-gated
+  routes** — every protected endpoint declares a permission *string* (never a role
+  name); `require_permission(perm, scope=)` resolves the actor's effective set from
+  a **Redis cache** (db 4) keyed by `core_users.permissions_version`, so a cache hit
+  takes no DB hit. **Grant/revoke lands on the next request** — an admin grant/revoke
+  bumps the version and stamps it onto the target's live sessions, taking effect
+  immediately without a re-login; no pub/sub. **Org-unit-scoped authorization** —
+  `scope=REQUESTER` checks the actor's grant against the request's org unit by
+  walking the `core_org_units` ancestry (a scoped `org_unit_id` covers its subtree;
+  a global grant covers everywhere). **Delegation / OIC** — time-boxed grants via
+  `core_user_roles.valid_from`/`valid_to`, with the cache TTL capped at the next
+  window edge so an expiring delegation drops precisely. **Maker-checker** — a
+  reusable no-self-approval / distinct-approver segregation-of-duties check (COA
+  92-389, NGICS). **RBAC admin API** (`/api/v1/rbac/*`) — grant/revoke roles
+  (org-scoped and/or time-bounded) + read the role/permission catalog, emitting
+  `rbac.role.granted`/`revoked` hash-chain events. **Read-only auditor** (COA Res.
+  2020-034) — `GET /api/v1/audit/verify` renders a printable HTML chain-verification
+  report (PASS/FAIL, JSON via `Accept`) and `GET /api/v1/audit/records/{table}/{pk}`
+  the per-record timeline; the `auditor` role is read-only everywhere by permission
+  gating alone. New error slugs `forbidden` (403) and `segregation_of_duties` (409).
+  Verified: **pytest 238 (+25), lint-imports 3/3**, no schema change.
 - **Stage B (Phase 2) Increment 2 — authentication** (2026-07-23): the login
   runtime on the B1 identity floor (**no migration**). **Cookie-based server-side
   sessions** on Redis (logical db 4) — an opaque HttpOnly/`SameSite=Lax`/`Path=/api`

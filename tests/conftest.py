@@ -114,6 +114,14 @@ async def session_store(session_redis):
 
 
 @pytest.fixture
+async def permission_cache(session_redis):
+    """The RBAC permission cache over the same db-4 keyspace the app uses (B3)."""
+    from office_connect.core.auth.permission_cache import PermissionCache
+
+    return PermissionCache(session_redis, get_settings())
+
+
+@pytest.fixture
 async def seed_rbac(app_session):
     """Idempotently seed the permission/role catalogs + default grants."""
     from office_connect.core.seeds import apply_dataset

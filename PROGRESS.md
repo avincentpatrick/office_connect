@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage B Increment 3 (B3): RBAC enforcement — Redis-cached `require_permission` (invalidated by `permissions_version`), org-unit-scoped grants, delegation/OIC via `valid_from/to`, maker-checker DB checks, read-only auditor role + printable chain-verification report.**
+> **Resume Office-Connect — Stage B Increment 4 (B4): wire seams + directory + compliance — authed attachments HTTP router, notification recipient/prefs resolution, CSS-IS inbound directory ingestion + admin user provisioning, query-log middleware, full person-field SPI policy, Stage-B PIA, then the phase-2 QA gate (tag `phase-2-complete`, Stage B's first push).**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,104 +10,103 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **Stage B (Phase 2) IN PROGRESS** — Increments **B1 ✅ + B2 ✅**.
+- **Phase:** **Stage B (Phase 2) IN PROGRESS** — Increments **B1 ✅ + B2 ✅ + B3 ✅**.
   Phase 0 / Stage A remains complete + pushed (tag `phase-0-complete`,
-  `origin/master` = `5eb19a4`). **Migration head still `0010`** (B2 added no
+  `origin/master` = `5eb19a4`). **Migration head still `0010`** (B3 added no
   migration; local, not pushed — Stage B pushes only at its QA gate, tag
-  `phase-2-complete`, after B4). **Next: Increment B3 — RBAC enforcement.**
-  Master Plan v1 in force.
-- **Last session:** #8 — 2026-07-23 — **Stage B Increment 2 (authentication)**.
-  Built the login runtime on the B1 floor, **no migration**. New `core/auth/`
-  package (session_store, policy, principal, password_policy, throttle, mfa,
-  verifiers, service, middleware, dependencies) + `core/api/auth.py` +
-  `core/api/errors.py` + `core/api/schemas/`. **Redis server-side sessions on
-  db 4** (not db 3 — GlitchTip collision; a core-local `redis_db_url` keeps
-  `core ↛ ops` green): opaque HttpOnly/SameSite=Lax/Path=/api cookie, Hash +
-  per-user ZSET, fresh id at login / rotate on privilege change, 12h absolute +
-  30/60-min idle, cap 3, revoke-all on password change. **Argon2id login**
-  (reused) + transparent re-hash. **NIST 800-63B-4 policy** + **vendored top-100k
-  blocklist** (gzipped package data). **Throttle-not-lockout** (per-account +
-  per-IP backoff, generic 401, dummy-hash timing parity). **Two-step TOTP MFA**
-  (pyotp) + force-enrollment for approver/admin. **Break-glass** local login.
-  **Custom-header CSRF** + **auth-principal middleware** → `get_session` injects
-  the real `actor_id`. **`append_auth_event`** hash-chains logout/session-revoke
-  within the `action=insert` CHECK (logical `core_sessions`, no secret). First
-  **error envelope** handlers. **Verified: pytest 213/213 (+58), lint-imports
-  3/3**; live end-to-end login/logout/MFA/change-password via curl; chain intact.
-- **Decisions this session (user-confirmed at kickoff):** single-tenant auth (no
-  `tenant_id`) — B1 revisit note resolved; logout/revoke = **hash-chained semantic
-  rows** (`append_auth_event`); sessions on **Redis db 4** (not the briefed db 3);
-  researched session defaults (12h/30-60/cap 3). Engineering calls: force-MFA-
-  enrollment (not block), two-step MFA, minimal DB-backed `require_permission` now,
-  committed gzipped blocklist. See `docs/modules/foundation.md` §7 (B2).
-- **Blockers / waiting on user:** none. *(Dev note: `pyotp` is in `requirements.txt`
-  + pip-installed into the running app/worker; the image was rebuilt this session —
-  if starting fresh, `docker compose build app worker` bakes in `argon2-cffi` +
-  `pyotp`.)*
+  `phase-2-complete`, after B4). **Next: Increment B4 — wire seams + directory +
+  compliance + phase-2 QA gate.** Master Plan v1 in force.
+- **Last session:** #9 — 2026-07-23 — **Stage B Increment 3 (RBAC enforcement)**.
+  Authorization on the B2 runtime, **no migration**. `require_permission(perm,
+  scope=)` rewired behind its frozen signature to a **Redis-cached** effective set
+  (db 4, key `authz:perm:{uid}:v{permissions_version}`) — a cache hit takes **no DB
+  hit**; invalidation is version-keyed. New `core/auth/permission_cache.py`,
+  `core/org_units.py` (ancestry CTE + `authorize_scoped`), `core/maker_checker.py`,
+  `core/rbac.py` (grant/revoke service), `core/api/rbac.py` + `core/api/audit.py`
+  + schemas. **Grant/revoke lands on the next request** — the service bumps
+  `core_users.permissions_version` and HSETs it onto the target's live sessions
+  (`SessionStore.set_permissions_version`, Lua-guarded), then emits
+  `rbac.role.granted/revoked` chain events (`append_auth_event` gained optional
+  `table_name`/`row_pk`). **Org-scoped** grants resolve via the `parent_org_unit_id`
+  ancestry walk. **Delegation/OIC** = `valid_from/to` with the cache TTL capped at
+  the next window edge. **Maker-checker** reusable helper (`409 segregation_of_duties`).
+  **Read-only auditor** report: `GET /api/v1/audit/verify` (printable HTML + JSON
+  PASS/FAIL) + `/audit/records/{table}/{pk}` timeline. **Verified: pytest 238/238
+  (+25), lint-imports 3/3.**
+- **Decisions this session (user-confirmed at kickoff):** delegation via
+  `valid_from/to` only (no table — resolves the master-plan §2 vs foundation §5
+  conflict); maker-checker = reusable helper now, DB constraint deferred to Stage C;
+  auditor report = printable HTML + JSON; permission cache = version-keyed +
+  boundary-aware TTL + in-place live-session bump, no pub/sub. Engineering call:
+  unscoped `require_permission` semantics kept unchanged (any active grant confers);
+  the global-only tightening defers to Stage C. See `docs/modules/foundation.md`
+  §7 (B3).
+- **Blockers / waiting on user:** none. *(Dev note: B3 added no new dependency and
+  no migration; nothing to rebuild. `argon2-cffi` + `pyotp` remain baked into the
+  app/worker image from B2.)*
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Stage B Increments B1 + B2 are COMPLETE. Identity schema at head 0010 (no
-B2 migration). Authentication is live: cookie-based Redis server-side sessions on
-db 4 (core/auth/session_store.py; opaque HttpOnly/SameSite=Lax/Path=/api cookie,
-Hash + per-user ZSET, rotate on privilege change, 12h absolute / 30-60min idle,
-cap 3, revoke-all), Argon2id login + re-hash, NIST password policy + vendored
-top-100k blocklist, throttle-not-lockout, two-step TOTP MFA + force-enrollment,
-break-glass local login, custom-header CSRF, error envelope. AuthPrincipalMiddleware
-sets request.state.user; core/db.py get_session injects actor_id; logout/revoke are
-hash-chained via core/audit.py append_auth_event. A MINIMAL, UNCACHED, DB-backed
-require_permission(perm) already exists in core/auth/dependencies.py (used by the
-admin session/reset routes) — B3 REPLACES its internals behind the same signature.
-core_users.permissions_version (int, bumped on grant/revoke) and
-core_user_roles.valid_from/valid_to (delegation window) already exist. RBAC seeded
-(27 perms/4 roles/41 grants). pytest 213/213, lint-imports 3/3. Nothing pushed
-(Stage B pushes only at its QA gate). Read CLAUDE.md, then
-docs/research/round1/auth-rbac-onprem.md, master-plan.md §2 Stage B + §3.1
-(COA gates), and docs/modules/foundation.md §5 "Stage B increment plan" + §7
-(B1 + B2 decisions).
-Task: Build Increment B3 — RBAC enforcement. Per auth-rbac-onprem.md + master-plan:
-  (1) Redis-cached effective-permission set per user, keyed/invalidated by
-      core_users.permissions_version (bump the version on any grant/revoke →
-      the cache is stale-safe, takes effect next request). Swap require_permission's
-      internals to read the cache (fall back to the DB query on a miss); keep the
-      dependency signature stable. Code authorizes on permission STRINGS, never role
-      names.
-  (2) Org-unit-scoped authorization: core_user_roles.org_unit_id NULL = global grant;
-      set = scoped. Resolve an approver by walking the requester's core_org_units
-      ancestry (self-ref parent_org_unit_id). Add a scope parameter to
-      require_permission (e.g. scope=REQUESTER_ORG) for org-bounded checks.
-  (3) Delegation / OIC: time-bounded grants via core_user_roles.valid_from/valid_to
-      (already honored by the B2 permission query) — confirm at kickoff whether a
-      dedicated delegation table is wanted or valid_from/to suffices (foundation §5
-      says the latter; master-plan §2 mentions a table).
-  (4) Maker-checker: a DB-level pairwise-distinct check pattern for DV Boxes A/B/C
-      (COA 92-389 / NGICS) — the reusable check that later reimbursement approvals
-      call (no self-approval; distinct approvers per box).
-  (5) Read-only AUDITOR role (COA Res. 2020-034): a permission-gated, printable
-      chain-verification report endpoint that runs core/audit.py verify_chain and
-      renders a per-record timeline + PASS/FAIL. auditor is read-only everywhere.
-  (6) Grant/revoke service (admin): create/soft-delete core_user_roles rows, bump
-      the target user's permissions_version, invalidate the Redis permission cache,
-      and emit rbac.role.granted/revoked audit events.
-Files: office_connect/core/auth/ (a permissions-cache module + require_permission
-rewrite + org-scope resolver + maker-checker helper), office_connect/core/api/
-(RBAC admin + auditor report endpoints), possibly core/api/schemas/, tests/,
-docs/standards/api-standards.md (authz contract), docs/modules/foundation.md,
-CHANGELOG. Likely NO migration (identity schema is complete) — flag if maker-checker
-needs one (it may defer to the reimbursement vertical, Stage C).
-Acceptance: require_permission resolves from the Redis cache and a grant/revoke bumps
-permissions_version so the change lands on the NEXT request; an org-scoped permission
-denies a requester outside the grantee's org subtree; a time-expired delegation grant
-no longer authorizes; maker-checker rejects a self-approval / same-approver-twice;
-the auditor report prints a chain-verification PASS and is denied to non-auditors;
-pytest green; lint-imports 3/3.
-Open questions for the user: (a) delegation via valid_from/to only vs a dedicated
-delegation/OIC table (default: valid_from/to, per foundation §5); (b) does B3's
-maker-checker ship as a reusable core helper now or defer the concrete DV Box A/B/C
-wiring to Stage C reimbursement (default: ship the reusable helper + tests now,
-wire the boxes at Stage C); (c) permission-cache TTL + invalidation strategy
-(default: cache keyed by permissions_version, short TTL backstop, no pub/sub).
+Context: Stage B Increments B1 + B2 + B3 are COMPLETE. Identity schema at head 0010
+(no B2/B3 migration). Authentication is live (cookie Redis sessions db 4, Argon2id,
+NIST policy, throttle, two-step TOTP MFA, break-glass, custom-header CSRF, error
+envelope; AuthPrincipalMiddleware → request.state.user; get_session injects actor_id).
+AUTHORIZATION is now live (B3): require_permission(perm, scope=OrgUnitScope.GLOBAL|
+REQUESTER) in core/auth/dependencies.py reads a Redis-cached effective-permission set
+(core/auth/permission_cache.py, db 4, key authz:perm:{uid}:v{permissions_version};
+cache hit = no DB hit). Grant/revoke (core/rbac.py + /api/v1/rbac/*) bump
+permissions_version + SessionStore.set_permissions_version so a change lands next
+request; org scope via core/org_units.py (ancestry CTE + authorize_scoped); delegation
+via valid_from/to (cache TTL capped at the next window edge); maker-checker helper
+(core/maker_checker.py, 409 segregation_of_duties); read-only auditor report
+(/api/v1/audit/verify printable HTML+JSON, /api/v1/audit/records/{table}/{pk}).
+rbac.role.granted/revoked ride the hash chain (append_auth_event gained table_name/
+row_pk). Code authorizes on permission STRINGS only. pytest 238/238, lint-imports 3/3.
+Nothing pushed (Stage B pushes only at its QA gate). Read CLAUDE.md, then
+docs/modules/foundation.md §5 "Stage B increment plan" (B4 line) + §7 (B1/B2/B3
+decisions), master-plan.md §2 Stage B + §3.1 (COA/NPC gates), api-standards.md
+§6+§7, and docs/research/round1/auth-rbac-onprem.md (directory/provisioning/LDAP).
+Task: Build Increment B4 — wire the deferred seams + directory + compliance, then
+the phase-2 QA gate. Per foundation §5 + master-plan §2 Stage B:
+  (1) Authed attachments HTTP router: give core/attachments/service.py's upload/
+      download (currently an injected authorize hook — see the Inc-4 decision in
+      foundation §7) real /api/v1 routes gated by require_permission; wire the
+      scan+re-encode Celery path end-to-end through HTTP.
+  (2) Notification recipient/prefs resolution: resolve core_notifications recipients
+      + per-user delivery prefs (the Inc-4 outbox left recipient resolution as a
+      seam); respect channel + opt-outs.
+  (3) CSS-IS inbound directory ingestion + admin user provisioning: ingest the
+      inbound staff/org feed into core_staff/core_org_units (directory decoupled
+      from CSS-IS, feed-only — foundation §7 B1); admin provisioning endpoints
+      (create/deactivate core_users, no self-registration) gated by user.* perms.
+  (4) Query-log middleware: populate core_query_logs (append-only) per the audit-
+      usability posture; ensure no SPI values enter it.
+  (5) Full person-field SPI policy: extend the B1 credential redaction to the
+      broader person-field SPI set in the audit payload (master-plan §4 audit-
+      payload policy — log IDs + field names, resolve at read; no SPI VALUES in the
+      immutable chain).
+  (6) Stage-B PIA (Privacy Impact Assessment) doc — the per-module governance gate
+      before any real data (master-plan §3.1); then run the phase-2 QA gate and,
+      on pass, push + tag phase-2-complete (Stage B's first push — provision/confirm
+      the git remote first).
+Files: office_connect/core/api/ (attachments + admin-provisioning + directory-ingest
+routers), core/attachments/ + core/notifications/ (wire the seams), a query-log
+middleware, core/audit.py or a payload-policy module (SPI value redaction), likely
+ops/ for the CSS-IS ingest job, tests/, docs/ (api-standards, foundation, a Stage-B
+PIA under docs/compliance/, CHANGELOG). Flag if any wiring needs a migration
+(the query-log/notification tables exist; person-SPI redaction is app-layer).
+Acceptance: an authed user can upload/download an attachment through HTTP subject to
+require_permission (unauthorized denied); notifications resolve real recipients +
+honor prefs; the CSS-IS feed populates the directory + admin can provision/deactivate
+a login; query-log rows are written with no SPI values; the audit chain carries no
+person-SPI VALUES (only ids/field names) and still verifies; the Stage-B PIA is
+written; pytest green; lint-imports 3/3; phase-2 QA gate passes → tag phase-2-complete.
+Open questions for the user (confirm at kickoff): (a) does B4 fully wire CSS-IS
+ingestion now or stub it against synthetic fixtures until the real feed exists;
+(b) scope of the person-field SPI set to redact in this increment vs deferring
+low-risk fields; (c) whether the git remote is provisioned so the phase-2 push/tag
+can actually land at the gate (B2/B3 are local-only).
 ```
 
 ---
@@ -119,7 +118,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
-| B | 2 | Identity & access: auth / RBAC / directory / delegation | in progress (B1 ✅ · B2 ✅) | 7–8 | — | — |
+| B | 2 | Identity & access: auth / RBAC / directory / delegation | in progress (B1 ✅ · B2 ✅ · B3 ✅) | 7–9 | — | — |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | not started | — | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
@@ -141,6 +140,53 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 9 — 2026-07-23 — Stage B Increment 3 (RBAC enforcement)
+
+- **Phase(s):** 2 / Stage B (B3) · **Commit:** `session(2026-07-23)` — **local
+  only** (Stage B pushes at its QA gate, tag `phase-2-complete`, after B4).
+- **Kickoff decisions (user-confirmed):** delegation/OIC via
+  `core_user_roles.valid_from/to` **only, no table** (resolves master-plan §2 vs
+  foundation §5); maker-checker = **reusable core helper + tests now**, DB-level
+  constraint deferred to Stage C (approval table doesn't exist yet); auditor report
+  = **printable HTML + JSON**; permission cache = **version-keyed + boundary-aware
+  TTL + in-place live-session bump, no pub/sub**. Engineering call: unscoped
+  `require_permission` semantics kept unchanged (any active grant confers) — the
+  global-only tightening defers to Stage C.
+- **Done (no migration — identity schema complete since B1):**
+  - **`core/auth/permission_cache.py`** — `PermissionCache` (injected db-4 Redis),
+    key `authz:perm:{uid}:v{permissions_version}`, JSON code-set, `get_or_load`
+    (loader runs only on a miss → cache hit = no DB hit), TTL capped at the next
+    valid-window edge, `invalidate`.
+  - **`core/auth/dependencies.py`** — `require_permission(perm, scope=GLOBAL)`
+    rewired behind its frozen signature: GLOBAL = cached membership; REQUESTER =
+    uncached `authorize_scoped`. New `get_permission_cache`, `load_permission_entry`
+    (codes + next boundary). `effective_permissions` kept.
+  - **`core/org_units.py`** — `ancestors_or_self` recursive `parent_org_unit_id`
+    CTE (depth-guarded, first ancestry walker), `scoped_org_units`, `authorize_scoped`
+    (global grant, or a scoped unit covering the request's subtree); `OrgUnitScope`.
+  - **`core/maker_checker.py`** — `assert_segregation` (no self-approval / distinct
+    DV-Box A/B/C approvers, `409 segregation_of_duties`).
+  - **`core/rbac.py`** — `grant_role`/`revoke_role`: upsert/restore or soft-delete
+    `core_user_roles`, bump `permissions_version`, `set_permissions_version` on live
+    sessions (post-commit), emit `rbac.role.granted/revoked` chain events.
+  - **`core/api/rbac.py` + `core/api/audit.py` + schemas** — RBAC admin (grant/
+    revoke + role/permission/user-role reads) and auditor (`/audit/verify` printable
+    HTML+JSON PASS/FAIL, `/audit/records/{table}/{pk}` timeline); routers mounted.
+  - **Seams touched** — `session_store.set_permissions_version` (Lua-guarded HSET),
+    `audit.append_auth_event` (+ optional `table_name`/`row_pk`), `config.py`
+    (`authz_cache_backstop_seconds`), `main.py` (cache on `app.state`).
+- **Verified:** **pytest 238/238** (+25 across permission-cache/org-scope/maker-
+  checker/rbac-enforcement/audit-report), **lint-imports 3/3** (all new code in
+  `core`, boundary held). No new dependency, no migration. The ASGI client tests
+  exercise the full live stack (real middleware, Redis db 4, Postgres) — grant/
+  revoke landing on the next request, org-subtree denial, auditor read-only, and a
+  printable PASS report are all covered end-to-end.
+- **Decisions:** see `docs/modules/foundation.md` §7 (Stage B Increment 3).
+- **Docs updated:** api-standards.md (§5 + new §7 AuthZ contract), foundation.md
+  (§1/§5/§7), CHANGELOG.md, this file.
+- **Next:** Increment B4 — wire seams + directory + compliance + phase-2 QA gate
+  (see the Next Session Prompt).
 
 ### Session 8 — 2026-07-23 — Stage B Increment 2 (authentication)
 

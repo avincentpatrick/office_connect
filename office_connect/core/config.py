@@ -90,6 +90,13 @@ class Settings(BaseSettings):
     session_reauth_seconds: int = 5 * 60
     session_max_concurrent: int = 3
     session_cap_policy: str = "evict_oldest"  # or "reject"
+    # --- Authorization cache (Stage B / Increment 3, RBAC) ---
+    # The effective-permission set is cached in Redis (db 4, the auth keyspace),
+    # keyed by core_users.permissions_version so a grant/revoke that bumps the
+    # version orphans the old entry. This is the BACKSTOP TTL only — a live entry
+    # is additionally capped at the next valid_from/valid_to boundary so an
+    # expiring delegation/OIC grant drops from cache exactly when its window ends.
+    authz_cache_backstop_seconds: int = 300
     # Throttle-not-lockout: per-account + per-IP counters, exponential backoff
     # after N consecutive failures (never a permanent lock), reset on success.
     throttle_threshold: int = 5

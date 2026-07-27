@@ -72,12 +72,10 @@ prose:
 
 ## §5. Deferred to later stages
 
-- **AuthN** landed Stage B / Increment 2 — see §6. **AuthZ** (RBAC per-route
-  permission checks with the Redis-cached, org-scoped resolver) lands Increment 3;
-  B2 ships only a minimal DB-backed `require_permission` for the admin session /
-  password-reset routes, behind the same dependency signature B3 will reuse.
-  Protected surfaces still without HTTP routes (e.g. the attachments
-  upload/download router) keep their injected authorization hook until B3/B4.
+- **AuthN** landed Stage B / Increment 2 — see §6. **AuthZ** landed Stage B /
+  Increment 3 — see §7. Protected surfaces still without HTTP routes (e.g. the
+  attachments upload/download router) keep their injected authorization hook
+  until they get routes (B4+).
 - **Rate limiting, pagination envelope, WebSocket channels** (Stage D+) as the
   first real read/write endpoints land.
 
@@ -114,3 +112,48 @@ addressed by their `sha256` handle. The id is fresh at login (fixation defense) 
   and MFA-enable changes ride the hash chain via the `core_users` UPDATE (secret
   redacted); logout / session-revoke → `append_auth_event` (a hash-chained
   `core_audit_logs` row, no secret). Never a credential in any log.
+
+## §7. Authorization / RBAC (Stage B / Increment 3)
+
+**Every protected route declares the permission it needs, as a STRING** — never a
+role name (a role rename or a new tenant must never require a code change):
+
+```python
+@router.get("/rbac/roles")
+async def list_roles(_: Principal = Depends(require_permission("rbac.role.read")), ...):
+```
+
+- **Permission strings** are the authorization currency (`module.resource.action`,
+  e.g. `rbac.role.grant`, `audit.verify`, `reimb.claim.approve`). The catalog +
+  the built-in role→permission grants live in `core/seeds/rbac.py`; code checks
+  strings, the DB decides which roles carry them.
+- **`require_permission(perm, scope=OrgUnitScope.GLOBAL)`** — the gate. The default
+  `GLOBAL` scope reads the actor's effective permission set from **Redis** (db 4,
+  the auth keyspace), keyed by `core_users.permissions_version`; a **cache hit takes
+  no DB hit**. `scope=OrgUnitScope.REQUESTER` runs an uncached, org-bounded check
+  (`core.org_units.authorize_scoped`): the actor must hold the permission globally,
+  or via a scoped `core_user_roles.org_unit_id` grant whose unit is an
+  ancestor-or-self of the request's org unit (walk the `parent_org_unit_id` tree).
+- **Invalidation is version-keyed.** A grant/revoke bumps `permissions_version` and
+  stamps it onto the target's live session records, so the change lands on their
+  **next request** (no re-login) — see the RBAC admin routes below. Delegation/OIC
+  windows (`core_user_roles.valid_from`/`valid_to`) are honored in the resolver and
+  the cache TTL is capped at the next window edge, so an expiring grant drops
+  precisely.
+- **RBAC admin** (`/api/v1/rbac/*`): `GET roles` / `GET permissions` / `GET
+  users/{id}/roles` (read perms); `POST users/{id}/roles` (`rbac.role.grant`) and
+  `DELETE users/{id}/roles/{grant_id}` (`rbac.role.revoke`). Grants may be
+  org-scoped (`org_unit_id`) and time-bounded (`valid_from`/`valid_to`, delegation).
+  Grant/revoke emit `rbac.role.granted` / `rbac.role.revoked` hash-chain events.
+- **Maker-checker / SoD** (`core.maker_checker.assert_segregation`): a reusable
+  no-self-approval / distinct-approver-per-DV-Box check (COA 92-389, NGICS) the
+  approval flow calls; the DB-level constraint lands with the approval table
+  (Stage C).
+- **Auditor** (`/api/v1/audit/*`, COA Res. 2020-034): `GET audit/verify`
+  (`audit.verify`) returns a printable HTML chain-verification report (JSON with
+  `Accept: application/json`); `GET audit/records/{table}/{row_pk}` (`audit.read`)
+  is the per-record timeline. The built-in `auditor` role holds only read/verify
+  grants, so it is read-only on every route with no extra mechanism.
+- **New error slugs** (envelope §3): `forbidden` (403 — lacks the permission),
+  `segregation_of_duties` (409 — maker-checker violation), plus `unavailable`
+  (503) if the permission cache / session store is missing (lifespan not run).

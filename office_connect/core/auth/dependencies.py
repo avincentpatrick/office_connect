@@ -8,14 +8,21 @@ that into route-level access control:
   long-lived session can't skip them. This is the default for protected routes.
 - ``require_session_pending_ok`` — 401 if anonymous but skips the gates; used by
   the few routes reachable while pending (logout, me, password/change, mfa setup).
-- ``require_permission(perm)`` — B2's MINIMAL, uncached authorization: one ORM
-  query over live (soft-delete-filtered, valid-window) grants. B3 swaps the
-  internals for the Redis-cached, org-scoped resolver behind this same signature.
+- ``require_permission(perm, scope=...)`` — B3's authorization gate. The default
+  ``scope=GLOBAL`` resolves the actor's effective permission set from the
+  **Redis cache** (keyed by ``permissions_version``; a cache hit takes NO DB hit)
+  and 403s if ``perm`` is absent — same signature the B2 admin routes already use.
+  ``scope=REQUESTER`` runs an uncached, org-scoped check (``authorize_scoped``)
+  against the request's org unit. Authorization is on permission STRINGS, never
+  role names.
 - ``require_reauth`` — re-reads the session's ``last_auth_at`` and 401s if the
   credential proof is stale (high-impact actions).
 """
 
 from __future__ import annotations
+
+from collections.abc import Callable
+from datetime import datetime
 
 from fastapi import Depends, Request
 from sqlalchemy import or_, select
@@ -23,11 +30,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from office_connect.core.api.errors import APIError
 from office_connect.core.auth import policy
+from office_connect.core.auth.permission_cache import PermissionCache
 from office_connect.core.auth.principal import Principal
 from office_connect.core.auth.session_store import SessionStore
 from office_connect.core.config import get_settings
-from office_connect.core.db import get_session
+from office_connect.core.db import SessionLocal
 from office_connect.core.models import Permission, RolePermission, UserRole
+from office_connect.core.org_units import OrgUnitScope, authorize_scoped
 from office_connect.core.time import utc_now
 
 
@@ -36,6 +45,13 @@ def get_session_store(request: Request) -> SessionStore:
     if store is None:  # lifespan didn't run / Redis missing — fail visibly, not 500
         raise APIError(503, "unavailable", "The session store is not available.")
     return store
+
+
+def get_permission_cache(request: Request) -> PermissionCache:
+    cache = getattr(request.app.state, "permission_cache", None)
+    if cache is None:  # lifespan didn't run / Redis missing — fail visibly, not 500
+        raise APIError(503, "unavailable", "The permission cache is not available.")
+    return cache
 
 
 def current_user(request: Request) -> Principal | None:
@@ -85,13 +101,82 @@ async def effective_permissions(session: AsyncSession, user_id: int) -> set[str]
     return set((await session.execute(stmt)).scalars().all())
 
 
-def require_permission(perm: str):
+async def load_permission_entry(
+    session: AsyncSession, user_id: int
+) -> tuple[set[str], datetime | None]:
+    """The cache loader: the user's currently-active permission codes AND the next
+    valid-window edge (soonest ``valid_from``/``valid_to`` in the future) so the
+    cache TTL drops the entry exactly when a delegation/OIC grant opens or closes.
+    Soft-deleted grants/roles/permissions are excluded by the global filter."""
+    now = utc_now()
+    stmt = (
+        select(Permission.code, UserRole.valid_from, UserRole.valid_to)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .join(UserRole, UserRole.role_id == RolePermission.role_id)
+        .where(UserRole.user_id == user_id)
+    )
+    codes: set[str] = set()
+    boundaries: list[datetime] = []
+    for code, valid_from, valid_to in (await session.execute(stmt)).all():
+        if (valid_from is None or valid_from <= now) and (
+            valid_to is None or valid_to > now
+        ):
+            codes.add(code)
+        if valid_from is not None and valid_from > now:
+            boundaries.append(valid_from)
+        if valid_to is not None and valid_to > now:
+            boundaries.append(valid_to)
+    return codes, (min(boundaries) if boundaries else None)
+
+
+def require_permission(
+    perm: str,
+    scope: OrgUnitScope = OrgUnitScope.GLOBAL,
+    *,
+    org_unit_getter: Callable[[Request], int | None] | None = None,
+):
+    """Dependency factory: 403 unless the actor holds ``perm``.
+
+    ``scope=GLOBAL`` (default) — read the effective set from the Redis cache
+    (no DB on a hit; a miss lazily loads via ``load_permission_entry``). Identical
+    semantics to B2 for the existing admin routes. ``scope=REQUESTER`` — the
+    request's target org unit (``org_unit_getter(request)``, else
+    ``request.state.scope_org_unit_id``) is checked against the actor's scoped
+    grants (uncached, fresh DB — approval decisions must never read stale org data).
+    """
+
     async def _dep(
+        request: Request,
         principal: Principal = Depends(require_session),
-        session: AsyncSession = Depends(get_session),
+        cache: PermissionCache = Depends(get_permission_cache),
     ) -> Principal:
-        if perm not in await effective_permissions(session, principal.user_id):
-            raise APIError(403, "forbidden", "You do not have permission to do that.")
+        if scope is OrgUnitScope.GLOBAL:
+
+            async def _loader() -> tuple[set[str], datetime | None]:
+                async with SessionLocal() as session:
+                    return await load_permission_entry(session, principal.user_id)
+
+            codes = await cache.get_or_load(
+                principal.user_id, principal.permissions_version, _loader
+            )
+            if perm not in codes:
+                raise APIError(
+                    403, "forbidden", "You do not have permission to do that."
+                )
+            return principal
+
+        target = (
+            org_unit_getter(request)
+            if org_unit_getter is not None
+            else getattr(request.state, "scope_org_unit_id", None)
+        )
+        async with SessionLocal() as session:
+            if not await authorize_scoped(
+                session, principal.user_id, perm, target
+            ):
+                raise APIError(
+                    403, "forbidden", "You do not have permission to do that."
+                )
         return principal
 
     return _dep

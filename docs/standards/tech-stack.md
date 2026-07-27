@@ -74,9 +74,11 @@ Celery uses the **Redis transport** (already-pinned `redis` package — no
 
 **Redis logical-DB map:** db 0 = app config cache · db 1 = Celery broker · db 2 =
 Celery results · db 3 = GlitchTip (observability profile) · **db 4 = auth sessions
-+ throttle + pending-MFA** (Stage B / Inc 2, `SESSION_REDIS_DB`; a dedicated client
-on `app.state.session_redis`). db 4 was chosen over the brief's db 3 to avoid the
-GlitchTip keyspace when the observability profile runs — no `docker-compose` change.
++ throttle + pending-MFA + the RBAC permission cache** (Stage B / Inc 2–3,
+`SESSION_REDIS_DB`; a dedicated client on `app.state.session_redis`). db 4 was chosen
+over the brief's db 3 to avoid the GlitchTip keyspace when the observability profile
+runs — no `docker-compose` change. The B3 permission cache reuses the same client
+(`app.state.permission_cache`), keys `authz:perm:{uid}:v{permissions_version}`.
 
 Port deconfliction with the coexisting Laragon `dev_pims` app: Laragon owns
 80/3306/8000/5173/6379; Office-Connect uses 8001/5432/6380 (+5174 for Vite later).
