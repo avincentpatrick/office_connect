@@ -34,7 +34,7 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | §4 config pack as constants | `reimb_configs` (effective-dated key rows with legal `source`) + `reimb_dte_clusters` + `reimb_region_clusters`, all seeded (`modules/reimbursement/seeds.py`) | effective-dated + tenant-overridable |
 | (spec silent) | **Physical-document custody states** per attachment (scanned → original to Accounting → forwarded to COA); e-signature decision per artifact with the resident COA auditor (default: printed + wet-ink remains the record) | paper post-audit reality — master plan §3.1 |
 | §8 calculator: per-leg pct; 50-km = strip lodging only (justification unlocks) | **R-2 engine (2026-07-27): per-DAY computation** over the trip span (arrival/full/return/same_day), each day attributed to its **controlling leg** (last of the date by `(seq, id)` — other same-date legs get 0%, so double-claiming is structurally impossible; legless days carry the region forward). Breakdown persisted in `reimb_claims.totals["days"]` JSONB (sanctioned computed-snapshot form, DB standards §11; promote to a day table if R-5 App-45 printing demands rows). **50-km**: within 50 km **without overnight → fare only, 0% DTE** via two attested claim booleans `is_within_50km` + `overnight_stay` (migration `0014`) — supersedes the spec's lodging-only strip. Return-day rate follows the controlling leg's region when set, else the claim destination | research digest (per-day breakdown, commuter = fare only) + COA disallowance patterns |
-| (spec silent: rounding, same-day trips, gov-vehicle fare edge) | **ROUND_HALF_UP** to the centavo via new `core/money.py` (quantize each component after its pct, then sum — printed day rows always re-add exactly); **same-day round trip = 50%** (no night → no lodging component; pending accountant confirmation, §3); a gov-vehicle leg carrying a fare **hard-fails 422** `reimb_gov_vehicle_fare` (fail-closed, never a silent drop); `per_diem_pct` stores the **day-type gross** (100/50/0) — host strips reduce `per_diem_amount`, never the pct; money inside JSONB = 2-dp **strings** | money standards §10 + audit re-performance |
+| (spec silent: rounding, same-day trips, gov-vehicle fare edge) | **ROUND_HALF_UP** to the centavo via new `core/money.py` (quantize each component after its pct, then sum — printed day rows always re-add exactly); **same-day round trip = 50%** (no night → no lodging component; **accountant-confirmed 2026-07-28**, §3); a gov-vehicle leg carrying a fare **hard-fails 422** `reimb_gov_vehicle_fare` (fail-closed, never a silent drop); `per_diem_pct` stores the **day-type gross** (100/50/0) — host strips reduce `per_diem_amount`, never the pct; money inside JSONB = 2-dp **strings** | money standards §10 + audit re-performance |
 
 *(Grows as build proceeds — every divergence from the spec lands here.)*
 
@@ -50,8 +50,9 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
       (shared with Stage B — see `foundation.md` §5)
 - [ ] ~~HUC list~~ **reframed**: seed `reimb_dte_clusters` (EO 77 Annex A
       3 clusters) + PSGC region→cluster map; confirm against the EO text at R-0
-- [ ] **Same-day round trip = 50%** (meals + incidentals, no lodging component —
-      R-2-engine interpretation 2026-07-27) — confirm with the accountant
+- [x] **Same-day round trip = 50%** (meals + incidentals, no lodging component —
+      R-2-engine interpretation 2026-07-27) — **accountant CONFIRMED 2026-07-28**
+      (session-14 kickoff); the engine's config-driven 50% stands
 
 ## 4. R-phase status
 
@@ -60,13 +61,32 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | R-0 | Requirements / author decisions | resolved in the delta register + kickoff (research-backed defaults adopted) | — | 12 |
 | R-1 | Schema + config — `reimb_*` tables (13) + `core_reference_sequences` (#5), migration `0013`, EO 77 3-cluster + PSGC seed, config pack, CA hard-block DB constraint, catalogs. **Computation logic is R-2; approval runtime is the engine.** Fixtures trimmed to the config/catalog seeds (full synthetic trip set → R-2). | **done** (session 12) | pytest 340 (+20), lint 3/3, migration `0013` reversible | 12 |
 | R-2-engine | **Per-diem computation engine** — pure core `services/per_diem.py` + `compute_claim_totals` persist wrapper (writes per-leg `per_diem_pct/per_diem_amount/leg_total` + the `totals` JSONB v1 snapshot); 50-km attestation columns (migration `0014`); `core/money.py` (ROUND_HALF_UP); representative trip factories (R-1 fixture deferral discharged) | **done** (session 13) | pytest 377 (+37), lint 3/3, `0014` reversible; **₱5,500 anchor + cluster switch + 50-km gate green** | 13 |
-| R-2-wizard | Claim wizard — **also delivers the first React surface: app shell + design tokens + component-library seed (TaskList, StatusTag, ErrorSummary, wizard)** per ui-standards §7 fill-trigger (owner decision 2026-07-22) | not started | — | — |
+| R-2-shell | **The first React surface** (the FE-foundation half of R-2-wizard, split 2026-07-28): `web/` Vite SPA — app shell + the 6 layout templates + the **14-component inventory seed** (incl. the ErrorSummary amendment) on the runtime `--oc-*` token pipeline (`@theme inline` + `injectTokens`); full auth flows (login → forced password change → forced MFA setup, session expiry, 429 countdown); NAV_GROUPS seed gated on flags+roles; compose `web` service (:5174, Node 22) with the same-origin `/api` proxy (**no CORS** — api-standards §6); DEV `/ui-foundation` catalog. ui-standards §7/§8 filled; tech-stack §4 filled (rule 9). **Zero backend changes.** | **done** (session 14) | FE gate green (eslint + tsc + vitest 28 + build); pytest 377 unchanged, lint 3/3; live proxy smoke (config 200, CSRF 403) | 14 |
+| R-2-wizard | Claim wizard **on the shell** — the module's first HTTP surface (`/api/v1/reimbursement/…` draft endpoints), GOV.UK task-list-driven wizard (WizardPage/Stepper/FormField), server-side save-and-return, check-your-answers + confirmation, directory prefill, `compute_claim_totals` on the money step | not started | — | — |
 | R-3 | Checklist engine + uploads (checklist grammar built as a **core service** — Rule 10) | not started | — | — |
 | R-4 | Approval chain + work management — **ships the shared core workflow engine** (first consumer). **Engine core shipped 2026-07-27** (session 11, `core_workflow_*`, migration `0012`); R-4-app remaining = author the reimbursement definition (states = spec §6 machine; certify_A/B/C via `step_kind`→gate config), wire `reimb_claims.workflow_instance_id`, the My-Work inbox, and the escalation-notification via `register_sla_enqueuer` | engine core ✅ / R-4-app not started | engine core green | 11 |
 | R-5…R-9 | Per spec §14 (templates/signatures → liquidation → external tracking → insights → hardening/pilot) | not started | — | — |
 
 ## 5. Decisions log
 
+- **2026-07-28 (session 14 — Stage C R-2-shell: the first React surface)** — split
+  R-2-wizard's FE foundation into its own increment (kickoff choice over R-4-app) and
+  shipped it: `web/` (React 19.2.8 + Vite 6.4.3 + Tailwind 4.3.3 + TS 5.9.3, exact-pinned,
+  Node 22 LTS). Decisions: **icon set = Lucide** and **primitives = Radix** (unified
+  `radix-ui`, components-dir only) — both kickoff-confirmed; **dev connectivity = Vite
+  same-origin `/api` proxy, NO CORS** (supersedes the "+ CORS" brief note; cookie
+  `Path=/api` + `X-Requested-With` work unchanged; prod serves the SPA same-origin —
+  recorded in api-standards §6); **Storybook NO** (DEV `/ui-foundation` catalog instead);
+  **breakpoints = Tailwind 4 defaults**, phone-first by convention; **ErrorSummary added
+  as inventory item 14** (ui-standards §3 amendment — page-level, not a Form-field state);
+  data layer = @tanstack/react-query (global 401 → session-expired redirect); UI gating =
+  feature flags + roles (self-permissions endpoint = recorded deferral); tokens =
+  `@theme inline` on `var(--oc-*)` + baked neutral fallback + runtime `injectTokens()`
+  (tenant re-brand with no rebuild — ui-standards §7/§9); `node_modules` on a named
+  volume (Windows bind-mount perf), `npm install`-at-boot. **R-0 closed: same-day round
+  trip = 50% accountant-confirmed** (§3). Deferred: form library (react-hook-form/zod)
+  to the wizard; MFA QR render; bell feed API. Verified: FE gate green (28 tests),
+  pytest 377 unchanged, lint-imports 3/3, live login-path smoke via the proxy.
 - **2026-07-27 (session 13 — Stage C R-2-engine: per-diem computation)** — built the
   computation engine as **pure core + async wrapper** (`services/per_diem.py` no-I/O,
   `services/compute.py` loads/persists in the caller's session, flushes, caller commits;

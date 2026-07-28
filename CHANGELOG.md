@@ -12,6 +12,24 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-2-shell — the first React frontend** (2026-07-28): Office-Connect now has a
+  user interface. A `web/` Vite SPA (React 19 + Tailwind 4 + TypeScript, exact-pinned;
+  Node 22 LTS) served by a new compose **`web` service on :5174** that proxies `/api` to
+  the backend same-origin (no CORS). Ships the **app shell** (top bar, `NAV_GROUPS`
+  navigation gated by feature flags + roles, notification bell, skip-link), all **6 layout
+  templates**, and the **14-component inventory seed** (Button, Form field, Card, Tabs,
+  Status chip, GOV.UK Task list, Stepper, Timeline, Pipeline card, Dialog, Empty state,
+  Skeleton, Toast/bell, GOV.UK Error summary — a new inventory amendment) — all styled
+  exclusively from the tenant design tokens served by `/api/v1/config`, injected at
+  runtime so tenant re-branding needs **no rebuild**. Full sign-in flows work end to end:
+  login → forced password change → forced MFA enrollment (the bootstrap-admin day-one
+  path), session-expiry redirect, rate-limit countdown, actionable GOV.UK-style error
+  summaries. Reimbursement appears as a flag-gated placeholder list (`module.reimbursement`
+  stays OFF); a DEV-only `/ui-foundation` catalog renders every component. **No backend
+  changes** (migration head stays `0014`). New FE dependency set recorded in
+  tech-stack §4; ui-standards §7/§8 filled. Verified: FE gate green (eslint + tsc +
+  vitest 28 + build), pytest **377 unchanged**, lint-imports 3/3, live proxy smoke
+  (config 200 / CSRF 403).
 - **Stage C R-2-engine — the per-diem computation engine** (2026-07-27): a claim's
   money is now computed **server-side** from its itinerary + the seeded EO 77 rules — a
   per-day breakdown (100% arrival/full days, 50% departure/return day and same-day trips,

@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C next increment: the first React/Vite/Tailwind shell (R-2-wizard FE foundation; icon set + Node pin to confirm) OR R-4-app (author the reimbursement workflow definition + wire the claim to the engine + status sync) — confirm at kickoff.**
+> **Resume Office-Connect — Stage C next increment: R-2-wizard (the claim wizard on the new React shell — first `reimb` API endpoints + save-and-return; form-library react-hook-form/zod to confirm) OR R-4-app (author the reimbursement workflow definition + wire the claim to the engine + status sync) — confirm at kickoff.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -11,78 +11,88 @@ expand it into the full task and confirm with you before starting.
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
 - **Phase:** **Stage C IN PROGRESS** — **workflow engine (R-4 core) ✅ + R-1 model+config ✅
-  + R-2-engine per-diem computation ✅**. Stage A (`phase-0-complete`) + Stage B
-  (`phase-2-complete`) remain complete + pushed. **Migration head now `0014`** (R-2-engine:
-  50-km attestation booleans on `reimb_claims`). **Verified: pytest 377/377 (+37 this
-  increment), lint-imports 3/3, migration `0013↔0014` reversible; the spec §8 ₱5,500 worked
-  example is a pinned green test.** **NOT pushed** — push cadence confirmed 2026-07-27:
-  **once at the Stage C QA gate** (local commits per session). Master Plan v1 in force.
-- **Last session:** #13 — 2026-07-27 — **Stage C R-2-engine: the per-diem computation
-  engine** (pure backend; the R-phase table now splits R-2 into R-2-engine ✅ /
-  R-2-wizard pending). Pure core `modules/reimbursement/services/per_diem.py` (no I/O,
-  frozen dataclasses) + `compute.py::compute_claim_totals` (loads claim/legs/rates/configs,
-  writes per-leg `per_diem_pct/per_diem_amount/leg_total` + the claim's `totals` JSONB v1
-  snapshot incl. the per-day breakdown `days[]`; flushes, caller commits) + fail-closed
-  `errors.py` (`reimb_*` APIError codes). **`core/money.py`** establishes the platform
-  rounding convention (ROUND_HALF_UP, quantize-components-then-sum, JSONB money = 2-dp
-  strings — database-standards §10 updated). Trip factories
-  (`tests/reimbursement_trip_factories.py`) discharge the R-1 fixture deferral. 3 new test
-  files (37 tests). **No new dependency.**
-- **Decisions this session:** kickoff chose **R-2 compute** over the shell/R-4-app; **push
-  once at the Stage C gate**. Engine design (module doc §5): **per-DAY computation** with
-  the day attributed to its controlling leg (last of the date — same-date extra legs 0%,
-  legless days carry the region forward; no day table — breakdown in `totals["days"]`,
-  promotion path R-5); **50-km = fare-only without overnight** via attested
-  `is_within_50km`/`overnight_stay` claim columns (migration `0014`) — supersedes spec §8's
-  lodging-only strip; **same-day round trip = 50%** (accountant confirmation added to the
-  R-0 tracker); **gov-vehicle leg with a fare hard-fails 422** (never a silent drop);
-  rates/regions/configs resolve **as-of each day**; settlement `advance − grand` →
-  `to_refund`/`to_reimburse`, no-CA claims → `to_reimburse = grand`.
-- **Blockers / waiting on user:** none. **Kickoff choice for next session:** confirm the
-  next increment — **the React/Vite/Tailwind shell** (R-2-wizard FE foundation; needs the
-  icon-set + Node-version pins) vs **R-4-app** (author the reimbursement workflow
-  definition on the engine + wire `workflow_instance_id` + status sync). Both unblocked;
-  the wizard itself needs the shell first.
+  + R-2-engine per-diem computation ✅ + R-2-shell first React surface ✅**. Stage A
+  (`phase-0-complete`) + Stage B (`phase-2-complete`) remain complete + pushed. **Migration
+  head still `0014`** (R-2-shell touched zero backend code). **Verified: pytest 377/377
+  (unchanged), lint-imports 3/3, and the new FE QA gate green — eslint + `tsc -b` +
+  vitest 28/28 + production build; live smoke through the Vite proxy (config 200, login
+  without the CSRF header 403).** **NOT pushed** — push cadence: **once at the Stage C QA
+  gate** (local commits per session). Master Plan v1 in force.
+- **Last session:** #14 — 2026-07-28 — **Stage C R-2-shell: the first React surface**
+  (the FE-foundation half of R-2-wizard, split out in the R-phase table). New `web/` Vite
+  SPA (React 19.2.8 + Vite 6.4.3 + Tailwind 4.3.3 + TS 5.9.3, exact-pinned; Node 22 LTS)
+  + compose **`web` service on :5174** (node:22-alpine, `node_modules` named volume,
+  same-origin `/api` proxy — **no CORS**). Ships: the runtime token pipeline
+  (`@theme inline` on `var(--oc-*)` + baked neutral fallback + `injectTokens()` after the
+  config fetch — tenant re-brand with no rebuild); the one fetch wrapper
+  (`X-Requested-With` on every non-safe call, typed error envelope, `X-Request-ID`);
+  the app shell + all 6 layout templates; the **14-component inventory seed** (ErrorSummary
+  added by amendment); full auth flows (login → forced password change → forced MFA
+  enroll/confirm — the bootstrap-admin day-one path — plus session-expiry redirect and the
+  429 countdown); `NAV_GROUPS` seed gated on flags+roles; flag-gated `/reimbursement`
+  placeholder; DEV-only `/ui-foundation` catalog. **ui-standards §3/§7/§8/§9 +
+  tech-stack §1/§3/§4/§5 + api-standards §6 filled/updated (rule 9).**
+- **Decisions this session:** kickoff chose **the React shell** over R-4-app; **icon set =
+  Lucide**; **Node pin = 22 LTS**; **primitives = Radix UI** (unified `radix-ui`,
+  components-dir only); **dev connectivity = Vite same-origin proxy, NO CORS** (supersedes
+  the "+ CORS" note — recorded in api-standards §6); **Storybook NO** (DEV catalog
+  instead); **breakpoints = Tailwind 4 defaults** (phone-first by convention);
+  **ErrorSummary = inventory item 14** (ui-standards §3 amendment); data layer =
+  @tanstack/react-query; UI gating = flags + roles (self-permissions endpoint = recorded
+  deferral); **R-0 CLOSED: same-day round trip = 50% — accountant confirmed** (module doc §3).
+- **Blockers / waiting on user:** none. **Kickoff choice for next session:** **R-2-wizard**
+  (the claim wizard on the shell — the module's first HTTP endpoints + save-and-return;
+  confirm the form library react-hook-form/zod) vs **R-4-app** (author the reimbursement
+  workflow definition + wire `workflow_instance_id` + status sync). Both unblocked; doing
+  R-4-app first would let the wizard end at a real submit.
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
 Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS — DONE so far: the shared
-core workflow engine (#11), R-1 reimbursement model+config (#12), and R-2-engine per-diem
-computation (#13), all green. Available to build on (in addition to the Stage A/B
-foundation): the workflow engine core_workflow_* (office_connect/core/workflow/ —
-start_instance/execute_action/available_actions/create_definition/…; contract
-docs/standards/workflow-standards.md); the reimbursement schema
-office_connect/modules/reimbursement/models/ (+ seeds); the per-diem engine
-office_connect/modules/reimbursement/services/ (compute_claim_totals — writes per-leg
-per_diem_pct/per_diem_amount/leg_total + the claim totals JSONB v1 {per_diem, transport,
-other, grand, advance, to_reimburse, to_refund, days[]}; pure core per_diem.py; fail-closed
-errors.py; QA anchor ₱5,500 pinned green); core/money.py (ROUND_HALF_UP, money_str);
-the core reference-number service (allocate_reference_number, RB-/LQ-YYYY-NNNN);
-trip factories tests/reimbursement_trip_factories.py. Migration head 0014.
-pytest 377/377, lint-imports 3/3. Push cadence: once at the Stage C QA gate (confirmed).
+core workflow engine (#11), R-1 model+config (#12), R-2-engine per-diem computation (#13),
+and R-2-shell — the first React surface (#14), all green. Available to build on: the
+workflow engine core_workflow_* (office_connect/core/workflow/ — start_instance/
+execute_action/available_actions/create_definition/…; contract workflow-standards.md);
+the reimbursement schema modules/reimbursement/models/ (+ seeds); the per-diem engine
+modules/reimbursement/services/ (compute_claim_totals — totals JSONB v1 incl. days[];
+₱5,500 anchor pinned green); core/money.py; the core reference-number service
+(allocate_reference_number, RB-/LQ-YYYY-NNNN); trip factories
+tests/reimbursement_trip_factories.py; AND the React shell web/ (Vite :5174 via the
+compose `web` service): 6 layout templates (src/layouts/), the 14-component inventory
+seed (src/components/), the token pipeline (theme/tokens.css @theme inline +
+injectTokens), the fetch wrapper src/api/http.ts (CSRF header + typed envelope),
+react-query providers, NAV_GROUPS (src/app/nav.ts), guards (RequireAuth forced-state
+chain + RequireFlag), DEV /ui-foundation catalog. Auth flows work end-to-end against the
+real backend. Migration head 0014. pytest 377/377, lint-imports 3/3, FE gate green
+(lint+typecheck+vitest 28+build). Push cadence: once at the Stage C QA gate.
 Read CLAUDE.md, then docs/modules/reimbursement.md (delta register + R-phase table —
-engine core + R-1 + R-2-engine DONE), master-plan.md §2 Stage C, and per increment:
-(A) ui-standards.md + tech-stack.md §4 + the FE pins below; (B) workflow-standards.md +
-references/Reimbursement_Module_Build_Spec_v1.md §6 (status machine) + §7 (SLA).
+R-2-shell row = what the shell provides), and per increment:
+(A) ui-standards.md §7/§8 (as-built) + master-plan §2 R-2 (save-and-return,
+    check-your-answers, directory prefill, WCAG 2.2 §3.3.7) + spec §5 (wizard fields) +
+    §8 (calculator UX); (B) workflow-standards.md + spec §6 (status machine) + §7 (SLA).
 Task: continue Stage C with the NEXT increment — CONFIRM at kickoff which:
-  (A) React shell (R-2-wizard FE foundation) — app shell + 6 layout templates +
-      13-component inventory seed wired to /api/v1/config tokens (Tailwind v4 @theme <-
-      --oc-* vars) + auth/session/CSRF (X-Requested-With); add a compose `web` service
-      (Vite :5174) + CORS. FE stack CONFIRMED: React 19 + Vite 6 + Tailwind 4 + TypeScript;
-      headless primitives (Radix/Headless UI) on the tokens; pick the single icon set +
-      Node version; exact-pin package.json (rule 9) + fill ui-standards §7 + tech-stack §4.
-  (B) R-4-app — author the reimbursement workflow DEFINITION on the engine (spec §6 status
-      machine → core_workflow_states/transitions; certify_A/B/C as enforce_segregation
-      gates; amount-tier → required_permission from DOH DO 2019-0225), wire reimb_claims.
-      workflow_instance_id at submit (allocate the RB-/LQ- ref number + compute_claim_totals
-      there too) + sync the denormalized claim status from instance events, register the
-      escalation notifier via core.workflow.register_sla_enqueuer.
+  (A) R-2-wizard — the claim wizard on the shell. Backend: the module's FIRST HTTP
+      surface /api/v1/reimbursement/… (draft-claim CRUD + legs + the money step calling
+      compute_claim_totals; permission strings via require_permission; feature-flag
+      module.reimbursement gate). Frontend: GOV.UK task-list-driven wizard on
+      WizardPage/Stepper/FormField (one thing per page), server-side save-and-return
+      (drafts persist, resume from the task list), check-your-answers + confirmation
+      pages, directory prefill of claimant fields, money displayed from the server totals
+      (never computed client-side). Extend FormField (Select/Textarea/date) per
+      ui-standards §8 as needed. CONFIRM at kickoff: form library (react-hook-form + zod
+      vs plain controlled forms — record in tech-stack §4 either way).
+  (B) R-4-app — author the reimbursement workflow DEFINITION on the engine (spec §6
+      status machine → core_workflow_states/transitions; certify_A/B/C as
+      enforce_segregation gates; amount-tier → required_permission from DOH DO 2019-0225),
+      wire reimb_claims.workflow_instance_id at submit (allocate the RB- ref number +
+      compute_claim_totals there too) + sync the denormalized claim status from instance
+      events, register the escalation notifier via core.workflow.register_sla_enqueuer.
+      Doing (B) first lets the wizard end at a real submit.
 Rule 10 throughout — check the core-services registry before adding any table/service.
 Everything auditable + soft-deleted + connected; money server-computed, UI displays.
-Open questions for the user (confirm at kickoff): (a) which increment next (React shell /
-R-4-app); (b) if the shell — the single icon library + Node version pin; (c) R-0 tracker
-item to close when convenient: same-day round trip = 50% (accountant confirmation).
+Open questions for the user (confirm at kickoff): (a) which increment next (R-2-wizard /
+R-4-app); (b) if the wizard — the form-library choice (react-hook-form/zod recommended).
 ```
 
 ---
@@ -95,7 +105,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (engine core ✅ + R-1 ✅ + R-2-engine ✅) | 11–13 | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (engine core ✅ + R-1 ✅ + R-2-engine ✅ + R-2-shell ✅) | 11–14 | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
@@ -116,6 +126,57 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 14 — 2026-07-28 — Stage C R-2-shell: the first React surface
+
+- **Phase(s):** C (R-2-shell — the FE-foundation half of R-2-wizard, split in the R-phase
+  table) · **Commit:** `session(2026-07-28)` — **local only** (push at the Stage C gate).
+- **Done:**
+  - **`web/` — the first frontend** (React 19.2.8 + Vite 6.4.3 + Tailwind 4.3.3 +
+    TS 5.9.3; exact pins via `.npmrc save-exact` + `engine-strict`; Node **22 LTS**).
+    Compose **`web` service** (node:22-alpine, :5174, `node_modules` on the
+    `web_node_modules` named volume, `CHOKIDAR_USEPOLLING`, `npm install`-at-boot) with
+    the **same-origin `/api` Vite proxy → app:8001 — NO CORS** (api-standards §6 records
+    the contract + the CORS-knob deferral). Zero backend/Python changes; head stays `0014`.
+  - **Token pipeline** — `theme/tokens.css`: baked neutral `:root` mirror of
+    `NEUTRAL_TOKENS` + **`@theme inline`** mapping every Tailwind namespace to
+    `var(--oc-*)` (stock palette/type/radius/shadow wiped — tokens-only is structural);
+    `theme/tokens.ts` ports `to_css_variables()` and injects the served tree onto `<html>`
+    after the config fetch (blocked first paint behind a neutral skeleton; fail-safe =
+    neutral tokens + all flags OFF). Tenant re-brand needs no rebuild.
+  - **API layer** — `api/http.ts` (the ONE wrapper: `X-Requested-With` on every non-safe
+    method incl. login, `credentials: same-origin`, typed `ApiError` from the envelope,
+    `Retry-After` + `X-Request-ID` surfaced) + typed clients (`auth.ts`, `config.ts`).
+  - **Component inventory seed (14)** in `src/components/<Name>/` — Button, FormField,
+    Card, Tabs (Radix), StatusChip, TaskList (GOV.UK), Stepper, Timeline, PipelineCard,
+    Dialog (Radix), EmptyState, Skeleton, Toast/bell (Radix + `toast-bus`), ErrorSummary
+    (GOV.UK — **added as inventory item 14 by ui-standards §3 amendment**). All 6 layout
+    templates in `src/layouts/` (AppShell with `minimal` mode for auth screens).
+  - **Auth flows end-to-end** — login (`mfa_token` via navigation state only) → guards
+    (`RequireAuth` forced-state chain mirroring `require_session_pending_ok`) → forced
+    password change → forced MFA enroll/confirm → home; global 401 → session-expired
+    toast + redirect; 429 countdown from `Retry-After`; `password_policy` details mapped
+    to actionable field messages. `NAV_GROUPS` seed (flags + roles; intent keywords for
+    Stage D); flag-gated `/reimbursement` placeholder (ListPage + EmptyState); DEV-only
+    `/ui-foundation` catalog (Storybook = recorded NO).
+  - **Docs filled (rule 9 + session-end checklist):** ui-standards §3 (amendment) +
+    **§7 FILLED** (structure, Tailwind mapping, Storybook-no, breakpoints, **Lucide**,
+    FE QA gate, gating deferral) + §8 (as-built specs) + §9 (rendering half);
+    tech-stack §1 (TS/React/Node rows) + §3 (`web` row) + **§4 FILLED** (exact pins,
+    prod 6 / dev 23) + §5 (FE gate); api-standards §6 (SPA contract, no-CORS);
+    reimbursement.md §2/§3/§4/§5; README (ports, commands, layout); .env.example.
+- **Decisions:** kickoff chose the shell over R-4-app; **Lucide** icon set; **Node 22
+  LTS**; **Radix UI** primitives (components-dir only); **proxy-not-CORS** (honest
+  rationale recorded — CORS could work on localhost same-site, the proxy is simpler +
+  production-parity); Storybook NO; Tailwind-default breakpoints; ErrorSummary inventory
+  amendment; react-query data layer; roles+flags UI gating (self-permissions deferral);
+  **R-0 closed: same-day round trip = 50% (accountant confirmed)**. Deferred: form
+  library (wizard session), MFA QR render, bell feed API, pagination envelope (Stage D).
+- **Verified:** FE gate green — eslint, `tsc -b`, **vitest 28/28** (incl. axe a11y smokes
+  + the guard chain), production build; **pytest 377/377 unchanged**, lint-imports 3/3;
+  live smoke via the proxy: `/` 200, `/api/v1/config` 200 (neutral tokens + 3 flags),
+  login POST without `X-Requested-With` → **403 csrf_failed**. HMR + named-volume boot
+  verified (`docker compose up -d web` → Vite ready in ~400 ms).
 
 ### Session 13 — 2026-07-27 — Stage C R-2-engine: the per-diem computation engine
 

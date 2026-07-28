@@ -112,6 +112,22 @@ addressed by their `sha256` handle. The id is fresh at login (fixation defense) 
   redacted); logout / session-revoke → `append_auth_event` (a hash-chained
   `core_audit_logs` row, no secret). Never a credential in any log.
 
+> **SPA client contract — R-2-shell (2026-07-28).** The fetch wrapper this
+> section anticipated now exists: **`web/src/api/http.ts`** is the ONE path for
+> every API call — it sets `X-Requested-With` on every non-safe method
+> (including `POST /auth/login`), sends `credentials: "same-origin"`, and
+> raises the §3 envelope as a typed `ApiError` (`status/code/message/details/
+> requestId/retryAfter`), surfacing `X-Request-ID` for support.
+>
+> **Dev connectivity is same-origin by design — NO CORS middleware exists.**
+> The Vite dev server (:5174) proxies `/api` → the app container, so the
+> browser origin is always the SPA origin and the `oc_session` cookie
+> (`Path=/api`, `SameSite=Lax`) plus the CSRF header work unchanged; production
+> serves the built SPA from the same origin as the API (on-prem reverse proxy).
+> This supersedes the earlier "+ CORS" planning note: a `CORS_ALLOW_ORIGINS`
+> knob is a **recorded deferral** until a genuine cross-origin consumer exists
+> — do not add CORS "just in case".
+
 ## §7. Authorization / RBAC (Stage B / Increment 3)
 
 **Every protected route declares the permission it needs, as a STRING** — never a

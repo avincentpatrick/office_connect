@@ -9,7 +9,7 @@ plans, and notes live in [`docs/`](docs/) (index: [`docs/README.md`](docs/README
 top of [`PROGRESS.md`](PROGRESS.md) (current status + next-session prompt).
 Binding conventions live in [`docs/standards/`](docs/standards/).
 
-- **Stack:** FastAPI · PostgreSQL · Redis · Celery · React/Vite (later phases)
+- **Stack:** FastAPI · PostgreSQL · Redis · Celery · React 19/Vite 6/Tailwind 4 (`web/`, since Stage C R-2-shell)
 - **Dev host:** Docker Desktop on Windows
 - **Production host:** on-prem **Windows Server** (post-development) —
   see [`references/Hosting_Target_Clarification.md`](references/Hosting_Target_Clarification.md).
@@ -35,10 +35,17 @@ Nothing here changes your existing Laragon / `dev_pims` environment.
 ## Daily development
 
 ```powershell
-docker compose up -d --build     # start db + redis + api
+docker compose up -d --build     # start db + redis + api + worker/beat + web (Vite)
 docker compose logs -f app       # tail the API
+docker compose logs -f web       # tail the Vite dev server
 docker compose down              # stop (keeps the DB volume)
 docker compose down -v           # stop and wipe the DB volume
+```
+
+Frontend QA gate (mirrors the backend pytest/lint-imports gates):
+
+```powershell
+docker compose run --rm web sh -c "npm run lint && npm run typecheck && npm run test && npm run build"
 ```
 
 Verify everything is wired correctly:
@@ -52,6 +59,7 @@ A healthy stack responds at:
 | Service | Host URL | Notes |
 |---|---|---|
 | API | http://localhost:8001 | interactive docs at `/docs`, health at `/health` |
+| Frontend (Vite) | http://localhost:5174 | proxies `/api` to the app container (same-origin — no CORS) |
 | PostgreSQL | localhost:5432 | db `office_connect`, user `oc_dev` |
 | Redis | localhost:6380 | container port 6379 published to host 6380 |
 
@@ -64,7 +72,7 @@ Ports are deliberately chosen so both projects run side by side. Nothing overlap
 | Web | `php artisan serve` **:8000**, Apache 80/443 | API **:8001** |
 | Database | MySQL **:3306** | PostgreSQL **:5432** |
 | Redis | configured **:6379** | **:6380** |
-| Frontend | Vite **:5173** | Vite **:5174** (later) |
+| Frontend | Vite **:5173** | Vite **:5174** |
 
 MySQL vs PostgreSQL and PHP vs Python don't interact — the two stacks are fully
 isolated. You rarely need both running at once; this machine's 32 GB RAM handles
@@ -80,9 +88,12 @@ office_connect/
                      (UTC/Manila), audit (hash chain), soft_delete (global
                      filter), models/ (core_* tables), api/
   modules/           feature modules (reimbursement, ...) — import core only
+web/                 React SPA (Vite :5174) — src/{components,layouts,pages,
+                     app,api,theme,lib}; exact-pinned package.json (rule 9);
+                     FE QA gate via the `web` compose service
 alembic/             single migration chain (0001 = core spine + roles/grants)
 tests/               Phase-0 QA gates (run: docker compose exec app pytest -q)
-docker-compose.yml   db (postgres:16) + redis + app
+docker-compose.yml   db (postgres:16) + redis + app + worker/beat + web (node:22)
 Dockerfile           python:3.12 API image
 pyproject.toml       import-linter contracts + pytest config
 requirements.txt     runtime + QA deps

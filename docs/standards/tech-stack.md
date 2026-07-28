@@ -14,7 +14,8 @@ the same session** (session-end checklist step 3).
 | Python | 3.12 | Backend (FastAPI API, workers, CLI) | `Dockerfile` (`python:3.12-slim`) |
 | SQL (PostgreSQL dialect) | PG 16 | Schema, migrations, grants | `docker-compose.yml` (`postgres:16-alpine`) |
 | PowerShell | 5.1+ | Windows ops scripts | `scripts/*.ps1` |
-| TypeScript / React | — | Frontend — **DEFERRED**, filled the session the React scaffold lands | — |
+| TypeScript / React | TS 5.9.3 · React 19.2.8 | Frontend (`web/` Vite SPA — R-2-shell, 2026-07-28) | `web/package.json` (exact pins, `.npmrc save-exact`) |
+| Node.js | **22 LTS** | FE toolchain runtime (Vite dev server + build) | `docker-compose.yml` (`node:22-alpine`) + `web/package.json` `engines` (`>=22 <23`, `engine-strict`) |
 
 ## 2. Backend dependencies (`requirements.txt`)
 
@@ -63,6 +64,7 @@ at `office_connect/core/security/blocklists/top-100000.txt.gz` (~432 KB; provena
 | `beat` | same image | — | Celery beat scheduler — **single instance only** (never scale; duplicate schedulers = duplicate backups); schedule state on volume `beatdata`. Inc-4 adds the `scan-pending-attachments` beat task |
 | `clamav` | clamav/clamav:1.4 | — (internal) | **Profile `clamav`** (not in default `up`/CI). Attachments malware scan; `mem_limit ~3g`; signature DB on volume `clamdb`; no host port (prod publishes only 443). Enable: `CLAMAV_HOST=clamav docker compose --profile clamav up -d` |
 | `glitchtip` (+ `glitchtip-db`, `glitchtip-worker`) | glitchtip/glitchtip:v4.0, postgres:16-alpine | 8080 (dev only) | **Profile `observability`** (not in default stack). Self-hosted error tracker (Sentry-SDK compatible); own PG volume `glitchtip_pg`, Redis db 3. App/worker emit only when `SENTRY_DSN` is set. Full hardening = Stage C |
+| `web` | node:22-alpine | **5174** | Vite dev server (R-2-shell, default profile). `npm install` at boot (no-op when the lockfile is unchanged — exact pins); `node_modules` on named volume `web_node_modules` (never the Windows bind mount); `CHOKIDAR_USEPOLLING` for HMR through the bind mount; proxies `/api` → `app:8001` (same-origin contract — **no CORS by design**, api-standards §6) |
 
 Increment-4 env (app + worker): `ATTACHMENT_SCANNER`/`CLAMAV_HOST`/`CLAMAV_PORT`
 (empty host → fail-closed `NullScanner`), `NOTIFICATIONS_DISPATCH` (`inline`|
@@ -82,7 +84,8 @@ runs — no `docker-compose` change. The B3 permission cache reuses the same cli
 (`app.state.permission_cache`), keys `authz:perm:{uid}:v{permissions_version}`.
 
 Port deconfliction with the coexisting Laragon `dev_pims` app: Laragon owns
-80/3306/8000/5173/6379; Office-Connect uses 8001/5432/6380 (+5174 for Vite later).
+80/3306/8000/5173/6379; Office-Connect uses 8001/5432/6380/**5174 (Vite, active
+since R-2-shell)**.
 
 **Image system dependencies** (`Dockerfile`, beyond `requirements.txt`):
 
@@ -90,19 +93,63 @@ Port deconfliction with the coexisting Laragon `dev_pims` app: Laragon owns
 |---|---|---|
 | `postgresql-client-16` | PGDG apt (suite = base image codename) | `pg_dump`/`pg_restore`/`createdb`/`dropdb` for backup + restore drill. Client MAJOR must **match** the PG16 server (a newer client emits SET commands PG16 rejects on restore). Bump with the `db` image tag. |
 
-## 4. Frontend stack — DEFERRED
+## 4. Frontend stack (`web/package.json`) — FILLED (R-2-shell, 2026-07-28)
 
-Locked by the execution plan: **React + Vite (:5174) + Tailwind**, tokens-only
-styling per [`ui-standards.md`](ui-standards.md). This section is filled with
-exact versions and libraries **the session the frontend scaffold lands**.
+**React 19 + Vite 6 + Tailwind 4 + TypeScript**, tokens-only styling per
+[`ui-standards.md`](ui-standards.md) §7. Every dependency exact-pinned
+(`.npmrc`: `save-exact=true`, `engine-strict=true`); Node pinned to **22 LTS**
+(§1). All npm commands run via the `web` container — no host Node required.
+
+**Runtime dependencies:**
+
+| Package | Version | Purpose |
+|---|---|---|
+| react / react-dom | 19.2.8 | UI runtime |
+| react-router | 7.18.1 | Routing (library mode — `createBrowserRouter`; no SSR/framework mode) |
+| @tanstack/react-query | 5.101.4 | Server-state layer: config/me caching, mutation states, global 401 handling; carries the wizard's save-and-return next session |
+| radix-ui | 1.6.7 | Headless a11y primitives (Dialog, Tabs, Toast) — the ONE primitive library; allowed only inside `web/src/components/` |
+| lucide-react | 1.27.0 | **The** platform icon set (ui-standards §7); per-icon imports |
+
+**Dev dependencies:**
+
+| Package | Version | Purpose |
+|---|---|---|
+| vite | 6.4.3 | Dev server (:5174, `/api` proxy) + production bundler |
+| @vitejs/plugin-react | 4.7.0 | React fast-refresh + JSX transform |
+| typescript | 5.9.3 | Strict type checking (`tsc -b`) |
+| tailwindcss + @tailwindcss/vite | 4.3.3 | Utility CSS on the `--oc-*` tokens (v4 CSS-first `@theme inline`) |
+| @types/react / @types/react-dom | 19.2.17 / 19.2.3 | React typings |
+| @types/node | 22.20.1 | Node typings (vite.config) |
+| vitest | 3.2.7 | FE test runner (jsdom env) |
+| jsdom | 30.0.0 | DOM for tests |
+| @testing-library/react | 16.3.2 | Component testing |
+| @testing-library/jest-dom | 7.0.0 | DOM matchers |
+| @testing-library/user-event | 14.6.1 | Interaction simulation |
+| axe-core | 4.12.1 | A11y assertions in component tests (`src/test/a11y.ts`; color-contrast covered server-side by `tests/test_tokens.py`) |
+| eslint + @eslint/js | 9.39.5 | Lint (flat config) |
+| typescript-eslint | 8.65.0 | TS lint rules |
+| eslint-plugin-react-hooks | 7.1.1 | Hooks + React-compiler-era rules |
+| eslint-plugin-react-refresh | 0.5.3 | HMR-safety (only-export-components) |
+| eslint-plugin-jsx-a11y | 6.10.2 | Static a11y lint |
+| eslint-config-prettier | 10.1.8 | Disables style rules Prettier owns |
+| prettier | 3.9.6 | Formatting |
+| globals | 17.8.0 | Browser globals for the lint config |
+
+**Deliberate exclusions (recorded deferrals):** no axios (native `fetch` via
+the one wrapper `web/src/api/http.ts`); no Storybook (`/ui-foundation` DEV
+catalog instead — ui-standards §7); no state library; no form library
+(react-hook-form/zod decision belongs to the wizard session); no QR renderer
+for MFA enrollment (manual secret entry until the admin finds it painful).
 
 ## 5. Dev & QA tooling
 
 | Tool | Purpose |
 |---|---|
 | Docker Desktop + WSL2 | Dev containers on Windows 11 |
-| pytest (+ pytest-asyncio, asgi-lifespan, httpx) | Phase QA gates |
+| pytest (+ pytest-asyncio, asgi-lifespan, httpx) | Phase QA gates (backend) |
 | import-linter (`lint-imports`) | Architecture contract enforcement |
+| **FE QA gate** (`web/` npm scripts) | `docker compose run --rm web sh -c "npm run lint && npm run typecheck && npm run test && npm run build"` — eslint + `tsc -b` + vitest + production build; paired with the backend gates |
+| Prettier (`npm run format` / `format:check`) | FE formatting |
 | Alembic CLI | Migrations (runs as `oc_dev` via `MIGRATION_DATABASE_URL`) |
 | `scripts/setup-windows.ps1` | One-time elevated prerequisites installer |
 | `scripts/smoke-test.ps1` | Build + health-check the stack |

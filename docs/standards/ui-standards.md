@@ -4,7 +4,7 @@ Binding rules for every user-facing surface (standing rule 1: **all buttons,
 text, forms, titles, tabs, icons, cards, etc. are uniform and templated —
 every page uses the shared layout/component system**).
 
-No frontend exists yet, so each section is tagged:
+Each section is tagged:
 
 - **LOCKED** — binding now; violating it later is a defect.
 - **DEFERRED** — placeholder with an explicit **fill-trigger** so this doc
@@ -12,6 +12,11 @@ No frontend exists yet, so each section is tagged:
   surface", **not** "Phase 3"* — the build order puts the Reimbursement R-2
   wizard before the Phase 3 landing shell, so whichever lands first triggers
   the fill (sequencing decision is the user's; see `docs/modules/landing.md`).
+
+> **The first React surface landed 2026-07-28 (Stage C R-2-shell, session 14)**
+> — the `web/` Vite SPA: app shell, the 6 layout templates, the component
+> inventory seed, and the token pipeline. §7 and §8 are filled below; §9's
+> token-rendering half is filled.
 
 ---
 
@@ -75,6 +80,12 @@ first**. Required states in parentheses.
 | **Empty state** | mandatory on every list — explains what will appear and the next action. |
 | **Skeleton loader** | mandatory on every list/detail while loading. |
 | **Toast / notification bell** | transient success/info; persistent items go to the bell. |
+| **Error summary** (GOV.UK) | page-level `role=alert` that receives focus on mount and anchor-links to each failing field; wording **identical** to the inline validation messages. |
+
+> **Inventory amendment 2026-07-28 (R-2-shell):** **Error summary** added as
+> the fourteenth component. master-plan §2 R-2 names it as a deliverable; it is
+> page-level (coordinates many fields), not a Form-field state, so it needed
+> its own inventory row — added via this amendment per the rule above.
 
 ## 4. Layout templates — LOCKED
 
@@ -106,18 +117,84 @@ this doc first.
 - Status conveyed by text + color, never color alone; lists are semantic and
   screen-reader announced.
 
-## 7. Implementation choices — DEFERRED · *fill-trigger: first React surface*
+## 7. Implementation choices — FILLED (R-2-shell, 2026-07-28)
 
-To decide the session the React scaffold lands (and record here):
-component-library structure, Tailwind config mapping the §2 tokens,
-Storybook yes/no, exact breakpoints, and the icon set.
-**Locked already:** exactly **one** icon library platform-wide — which one is
-the deferred choice.
+Decided the session the React scaffold landed (Stage C session 14). Exact
+dependency pins live in [`tech-stack.md`](tech-stack.md) §4.
 
-## 8. Per-component visual specs — DEFERRED · *fill-trigger: first build of each component*
+- **Component-library structure** — `web/src/components/<Name>/<Name>.tsx`
+  with colocated `<Name>.test.tsx`; layout templates in `web/src/layouts/`;
+  pages in `web/src/pages/` compose templates + inventory components only.
+  Contexts/hooks/non-component exports live in sibling non-component files
+  (`auth-context.ts`, `config-context.ts`, `toast-bus.ts`) so HMR fast-refresh
+  stays sound. Headless primitives (**Radix UI**, the unified `radix-ui`
+  package) are allowed **only inside `web/src/components/`** — pages and
+  layouts consume the inventory, never a primitive.
+- **Tailwind config mapping the §2 tokens** — Tailwind v4 CSS-first config in
+  `web/src/theme/tokens.css`: a baked `:root` block mirrors `NEUTRAL_TOKENS`
+  (styles the pre-fetch paint; kept in sync same-session on any token change),
+  then an **`@theme inline`** block maps every Tailwind namespace to
+  `var(--oc-*)` so **runtime token injection re-themes every generated utility
+  without a rebuild** (`injectTokens()` in `web/src/theme/tokens.ts` — the TS
+  port of `to_css_variables()` — runs after the `/api/v1/config` fetch and sets
+  the vars inline on `<html>`). The stock palette / type scale / weights /
+  radii / shadows are wiped (`--color-*: initial` …) so **tokens-only (§1.5) is
+  structural**: `bg-red-500` does not compile to anything. Utility ↔ token map:
+  `bg-brand`, `text-brand-contrast`, `bg-bg`, `bg-surface`, `border-border`,
+  `text-text`, `text-text-muted`, `text-link`,
+  `*-status-{done,warn,blocked,waiting}`; `--spacing` = `--oc-space-1` (4-px
+  base multiplier — discipline: steps 1–8 for §2 spacing, larger multiples for
+  sizing only, e.g. `min-h-11` = the 44-px touch target); `text-xs…text-3xl`;
+  `font-regular/medium/bold`; `rounded-sm/md/lg`; `shadow-sm/md`.
+- **Storybook: NO** (recorded; revisit at Stage D if the consumer count grows)
+  — the living catalog is the **DEV-only `/ui-foundation` route** (Admin
+  template; registered only in development builds, statically eliminated from
+  production bundles).
+- **Breakpoints** — Tailwind 4 defaults: `sm` 40rem · `md` 48rem · `lg` 64rem
+  · `xl` 80rem · `2xl` 96rem (rem-based → tracks user font-size settings).
+  Phone-first by convention (§6): unprefixed utilities ARE the phone layout;
+  the App-shell nav collapses below `md`; the wizard task-list sidebar stacks
+  below `lg`.
+- **Icon set: Lucide** (`lucide-react`) — the ONE platform icon library
+  (kickoff decision 2026-07-28). Per-icon imports (tree-shaken); decorative
+  icons always `aria-hidden`.
+- **FE QA gate** — `npm run lint && npm run typecheck && npm run test &&
+  npm run build`, run via the `web` container (tech-stack §5); paired with the
+  backend pytest / lint-imports gates.
+- **Nav/permission gating — recorded deferral** — `NAV_GROUPS`
+  (`web/src/app/nav.ts`) filters on feature flags (absent = OFF) + role codes
+  from `/auth/me`. `/auth/me` exposes roles, not permission strings; a
+  self-permissions endpoint is deferred until a surface needs finer gating.
 
-Each §3 component gets its visual spec (spacing, states, exact markup)
-appended here the session it is first implemented.
+## 8. Per-component visual specs — SEEDED (R-2-shell, 2026-07-28) · *deepens as each component grows*
+
+As-built seed specs. Common to all: tokens-only styling, ≥44-px touch targets
+(`min-h-11`), visible `focus-visible` outline, status by text + color. Files
+under `web/src/components/<Name>/`.
+
+| Component | As-built seed (states · markup · a11y) |
+|---|---|
+| Button | primary `bg-brand/text-brand-contrast` · secondary `bg-surface + border-border` · danger `bg-status-blocked`; disabled 50 % opacity + not-allowed; loading = spinning Lucide `Loader2` + `aria-busy`, label kept, interaction blocked. Defaults `type="button"`. |
+| Form field | label above (`htmlFor`), help below label (`aria-describedby`), error below input (`aria-invalid` + id-linked, border `status-blocked`); required = red asterisk (`aria-hidden`) + `required` attr. Seed ships the text input; Select/Textarea/date arrive with the wizard. |
+| Card | `<section>` `rounded-lg border-border bg-bg shadow-sm`; header = `h2` title + status-chip slot; body; footer action row. |
+| Tabs | Radix Tabs (roving tabindex); active = `border-b-2 border-brand + text-text font-medium`. |
+| Status chip | outline style: `border + text` in the semantic status color on `bg` (AA-verified pair); text label required. |
+| Task list | numbered `<ol>` sections (`h3` "n. Title"), items in a divided `<ul>`: link (`text-link` underline) or inert muted name + hint, StatusChip right ("Cannot start yet" = `waiting` + no link). |
+| Stepper | `<nav aria-label="Progress">`; visible "Step n of m: label"; per-step bars (done `status-done` / active `brand` / upcoming `border`) + `aria-current="step"`. |
+| Timeline | `<ol>`; dot + connector rail; description then `actor · Manila datetime` muted line. |
+| Pipeline-board card | `<article>` compact: ref-no (muted xs) + StatusChip row, title, one meta line. |
+| Dialog | Radix Dialog (portal, focus trap, Esc); overlay `bg-text/50`; centered `max-w-md` panel: title, plain-language consequence, Cancel (secondary) + confirm (danger when destructive). |
+| Empty state | centered on `bg-surface` dashed-free panel: Lucide icon (`aria-hidden`), "what will appear" title, description, next-action slot. |
+| Skeleton | `animate-pulse bg-surface` blocks (`row`/`block` variants), `aria-hidden`; `PageSkeleton` wraps in `role="status"` + sr-only label. |
+| Toast / bell | Radix Toast provider/viewport (bottom-right, 5 s); success `CheckCircle2 status-done` / info `Info link`; `toast()` bus is callable outside React (`toast-bus.ts`). Bell = top-bar icon button, `aria-label` includes unread count; badge in-memory (feed API deferred). |
+| Error summary | `role="alert"`, `tabIndex=-1` + focused on mount; "There is a problem" heading; list of anchor links (`#field-id`) with wording identical to inline errors; `border-2 border-status-blocked`. |
+
+**Template notes (§4 as-built):** all six templates exist in
+`web/src/layouts/`. The **App shell** takes a `minimal` mode (brand bar only)
+— the login / MFA-verify screens render inside it with a centered Card, so no
+extra template exists for auth. List page enforces §3's mandatory
+empty/skeleton states via required `loading`/`isEmpty`/`emptyState` props;
+the pagination slot awaits the Stage-D envelope.
 
 ## 9. Theming / multi-tenant branding — PARTIALLY FILLED (Increment 3) · *remaining fill-trigger: tenant theming UI (Phase 3)*
 
@@ -127,6 +204,13 @@ fallback are now concrete — tenant `branding.tokens` (nested, same shape as
 and served via `GET /api/v1/config` (§2 note). Unknown keys are ignored; a
 tenant that sets nothing gets the neutral Office-Connect defaults.
 
-**Still deferred (Phase 3, first React surface):** the tenant-facing theming UI
-(logo/name/brand-color editor + preview), the Tailwind config that renders the
-served tokens into a `:root` block (§7), and per-tenant asset (logo) storage.
+**Filled (R-2-shell, 2026-07-28):** the token *rendering* pipeline — baked
+neutral `:root` fallback + `@theme inline` mapping + runtime `injectTokens()`
+after the config fetch (§7). A tenant `branding.tokens` change re-brands the
+whole UI on reload with **no rebuild**; a failed config fetch degrades to the
+neutral tokens + all flags OFF (mirrors the backend fail-safe). The first
+paint is blocked on the config fetch behind a neutral skeleton, so a branded
+tenant never flashes the neutral theme.
+
+**Still deferred (Phase 3):** the tenant-facing theming UI (logo/name/
+brand-color editor + preview) and per-tenant asset (logo) storage.
