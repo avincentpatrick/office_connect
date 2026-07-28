@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/*
+ * Design-token contract (ui-standards §2 + §7).
+ *
+ * 1) BAKED NEUTRAL FALLBACK — manual mirror of NEUTRAL_TOKENS
+ *    (office_connect/core/ui/tokens.py). Any token change there updates this
+ *    block the same session; drift is self-healing at runtime because
+ *    injectTokens() (src/theme/tokens.ts) overwrites these with the values
+ *    served by GET /api/v1/config — this block only styles the pre-fetch paint.
+ */
+:root {
+  --oc-color-brand: #0b5cad;
+  --oc-color-brand-contrast: #ffffff;
+  --oc-color-bg: #ffffff;
+  --oc-color-surface: #f6f8fa;
+  --oc-color-border: #d0d7de;
+  --oc-color-text: #1a1a1a;
+  --oc-color-text-muted: #5c6570;
+  --oc-color-link: #0b5cad;
+
+  --oc-status-done: #1a7f37;
+  --oc-status-warn: #b45309;
+  --oc-status-blocked: #b42318;
+  --oc-status-waiting: #5c6570;
+
+  --oc-space-1: 4px;
+  --oc-space-2: 8px;
+  --oc-space-3: 12px;
+  --oc-space-4: 16px;
+  --oc-space-5: 20px;
+  --oc-space-6: 24px;
+  --oc-space-7: 28px;
+  --oc-space-8: 32px;
+
+  --oc-font-family:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --oc-font-size-xs: 0.75rem;
+  --oc-font-size-sm: 0.875rem;
+  --oc-font-size-base: 1rem;
+  --oc-font-size-lg: 1.125rem;
+  --oc-font-size-xl: 1.25rem;
+  --oc-font-size-2xl: 1.5rem;
+  --oc-font-size-3xl: 1.875rem;
+  --oc-font-weight-regular: 400;
+  --oc-font-weight-medium: 500;
+  --oc-font-weight-bold: 700;
+
+  --oc-radius-sm: 2px;
+  --oc-radius-md: 6px;
+  --oc-radius-lg: 12px;
+
+  --oc-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --oc-shadow-md: 0 4px 8px rgba(16, 24, 40, 0.1);
+}
+
+/*
+ * 2) TAILWIND MAPPING — `@theme inline` is REQUIRED (not plain @theme): inline
+ *    makes utilities emit var(--oc-*) directly, so the runtime :root injection
+ *    re-themes every generated utility without a rebuild.
+ *
+ *    `--color-*: initial` wipes the stock palette — tokens-only (§1 principle
+ *    5) becomes structural: bg-red-500 does not compile to anything. Same for
+ *    the type scale, weights, radii and shadows.
+ */
+@theme inline {
+  --color-*: initial;
+  --color-brand: var(--oc-color-brand);
+  --color-brand-contrast: var(--oc-color-brand-contrast);
+  --color-bg: var(--oc-color-bg);
+  --color-surface: var(--oc-color-surface);
+  --color-border: var(--oc-color-border);
+  --color-text: var(--oc-color-text);
+  --color-text-muted: var(--oc-color-text-muted);
+  --color-link: var(--oc-color-link);
+  --color-status-done: var(--oc-status-done);
+  --color-status-warn: var(--oc-status-warn);
+  --color-status-blocked: var(--oc-status-blocked);
+  --color-status-waiting: var(--oc-status-waiting);
+
+  /* 4-px base multiplier: p-2 = calc(var(--oc-space-1) * 2) = 8px. Spacing
+     discipline: steps 1–8 for §2 spacing by convention; larger multiples for
+     SIZING only (e.g. min-h-11 = 44px touch target). */
+  --spacing: var(--oc-space-1);
+
+  --font-sans: var(--oc-font-family);
+  --text-*: initial;
+  --text-xs: var(--oc-font-size-xs);
+  --text-sm: var(--oc-font-size-sm);
+  --text-base: var(--oc-font-size-base);
+  --text-lg: var(--oc-font-size-lg);
+  --text-xl: var(--oc-font-size-xl);
+  --text-2xl: var(--oc-font-size-2xl);
+  --text-3xl: var(--oc-font-size-3xl);
+  --font-weight-*: initial;
+  --font-weight-regular: var(--oc-font-weight-regular);
+  --font-weight-medium: var(--oc-font-weight-medium);
+  --font-weight-bold: var(--oc-font-weight-bold);
+
+  --radius-*: initial;
+  --radius-sm: var(--oc-radius-sm);
+  --radius-md: var(--oc-radius-md);
+  --radius-lg: var(--oc-radius-lg);
+
+  --shadow-*: initial;
+  --shadow-sm: var(--oc-shadow-sm);
+  --shadow-md: var(--oc-shadow-md);
+}
+
+body {
+  background-color: var(--oc-color-bg);
+  color: var(--oc-color-text);
+  font-family: var(--oc-font-family);
+}

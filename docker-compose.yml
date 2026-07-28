@@ -128,6 +128,29 @@ services:
       - ./office_connect:/app/office_connect
       - beatdata:/var/run/celery
 
+  # React/Vite dev server (Stage C R-2-shell). First-class dev service (default
+  # profile). node_modules lives on a NAMED VOLUME (Linux-VM filesystem) — never
+  # on the Windows bind mount (10-50x slower + file-lock trouble). `npm install`
+  # (not `npm ci`) at boot: a no-op when the lockfile is unchanged (exact pins —
+  # rule 9 — make drift a non-issue; any lockfile rewrite shows in git diff via
+  # the bind mount). Browser talks same-origin to :5174; Vite proxies /api to
+  # the app container (no CORS by design — see api-standards §6).
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    depends_on:
+      app:
+        condition: service_started
+    environment:
+      VITE_API_PROXY_TARGET: http://app:8001   # container-to-container; host runs default to localhost:8001
+      CHOKIDAR_USEPOLLING: "true"              # Windows bind mounts emit no inotify events
+    command: sh -c "npm install --no-audit --no-fund && exec npm run dev -- --host 0.0.0.0 --port 5174"
+    ports:
+      - "${VITE_PORT:-5174}:5174"
+    volumes:
+      - ./web:/app
+      - web_node_modules:/app/node_modules
+
   # ClamAV daemon for the attachments scan pipeline (Increment 4). Opt-in via the
   # `clamav` profile — the default stack + CI use the fail-closed NullScanner, so
   # they skip ClamAV's ~1 GB signature DB + warm-up. Internal network only (no
@@ -201,3 +224,4 @@ volumes:
   beatdata:
   clamdb:
   glitchtip_pg:
+  web_node_modules:

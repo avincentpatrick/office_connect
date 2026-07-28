@@ -10,9 +10,10 @@ venv/
 .env
 .session_secret
 
-# Node / frontend (added later)
+# Node / frontend
 node_modules/
 dist/
+*.tsbuildinfo
 
 # Local Docker data volume (if bind-mounted)
 pgdata/
