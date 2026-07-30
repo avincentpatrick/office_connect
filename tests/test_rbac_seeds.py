@@ -64,6 +64,35 @@ async def test_system_admin_carries_every_permission(app_session):
     assert granted == set(ROLE_GRANTS["system_admin"])
 
 
+async def test_r4app_reimb_catalog_and_admin_officer(app_session):
+    """R-4-app additions: the two gate permissions + the Admin Officer role
+    (spec §5.5 'Admin Officer review' + §6.1 FMS handoff)."""
+    await _seed(app_session)
+    codes = set(
+        (await app_session.execute(select(Permission.code))).scalars().all()
+    )
+    assert {"reimb.claim.review", "reimb.claim.fms_update"} <= codes
+
+    role = (
+        await app_session.execute(select(Role).where(Role.code == "admin_officer"))
+    ).scalar_one()
+    granted = set(
+        (
+            await app_session.execute(
+                select(Permission.code)
+                .join(RolePermission, RolePermission.permission_id == Permission.id)
+                .where(
+                    RolePermission.role_id == role.id,
+                    RolePermission.deleted_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert granted == set(ROLE_GRANTS["admin_officer"])
+
+
 async def test_reseed_restores_a_revoked_grant(app_session):
     await _seed(app_session)
     role = (

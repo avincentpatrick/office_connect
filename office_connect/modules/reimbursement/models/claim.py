@@ -38,6 +38,14 @@ class ReimbClaim(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
         Index("ix_reimb_claims_claimant_id", "claimant_id"),
         Index("ix_reimb_claims_activity_id", "activity_id"),
         Index("ix_reimb_claims_workflow_instance_id", "workflow_instance_id"),
+        # One live instance per claim (R-4-app): the submit service's claim-row
+        # lock is the race fix; this is the DB belt behind it (migration 0015).
+        Index(
+            "uq_reimb_claims_workflow_instance_id",
+            "workflow_instance_id",
+            unique=True,
+            postgresql_where=text("workflow_instance_id IS NOT NULL"),
+        ),
         Index("ix_reimb_claims_cash_advance_id", "cash_advance_id"),
         Index("ix_reimb_claims_status", "status"),
         Index("ix_reimb_claims_kind", "kind"),

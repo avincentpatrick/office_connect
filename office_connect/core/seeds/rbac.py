@@ -30,8 +30,8 @@ _ALL = ("all",)
 
 # --- Permission catalog: (code, human label, category) -------------------
 # Code is the stable authorization string checked in code; the DB decides which
-# roles carry it. ``reimb.*`` is a placeholder proving the cross-module pattern —
-# it is not wired to any endpoint until Stage C.
+# roles carry it. ``reimb.*`` gates the reimbursement workflow definition's
+# states/transitions (Stage C R-4-app); HTTP endpoints follow at R-2-wizard.
 _PERMISSION_CATALOG: tuple[tuple[str, str, str], ...] = (
     # user lifecycle (admin-only provisioning; no self-registration)
     ("user.create", "Create user accounts", "auth"),
@@ -76,11 +76,13 @@ _PERMISSION_CATALOG: tuple[tuple[str, str, str], ...] = (
     ("workflow.definition.publish", "Publish a workflow definition version", "workflow"),
     ("workflow.instance.read", "View workflow instances", "workflow"),
     ("workflow.delegation.manage", "Manage OIC / delegations", "workflow"),
-    # reimbursement (placeholder — pattern only, wired at Stage C)
+    # reimbursement (wired to the reimbursement.claim definition at R-4-app)
     ("reimb.claim.create", "Create a reimbursement claim", "reimb"),
     ("reimb.claim.read", "View reimbursement claims", "reimb"),
     ("reimb.claim.submit", "Submit a reimbursement claim", "reimb"),
     ("reimb.claim.approve", "Approve a reimbursement claim", "reimb"),
+    ("reimb.claim.review", "Perform the admin review of a reimbursement claim", "reimb"),
+    ("reimb.claim.fms_update", "Record FMS handoff and updates for a reimbursement claim", "reimb"),
 )
 
 _ALL_PERMISSION_CODES: tuple[str, ...] = tuple(c for c, _, _ in _PERMISSION_CATALOG)
@@ -91,6 +93,8 @@ _ROLE_CATALOG: tuple[tuple[str, str, bool], ...] = (
     ("auditor", "Auditor (read-only)", True),
     ("approver", "Approver", False),
     ("staff", "Staff", False),
+    # Stage C R-4-app: the spec §5.5 "Admin Officer review" gate + FMS handoff.
+    ("admin_officer", "Admin Officer", False),
 )
 
 # --- Default role → permission grants ------------------------------------
@@ -119,6 +123,13 @@ ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "approver": (
         "reimb.claim.read",
         "reimb.claim.approve",
+        "attachment.read",
+        "attachment.download",
+    ),
+    "admin_officer": (
+        "reimb.claim.read",
+        "reimb.claim.review",
+        "reimb.claim.fms_update",
         "attachment.read",
         "attachment.download",
     ),

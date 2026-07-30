@@ -16,6 +16,10 @@ Subcommands:
 - ``seed-rbac``     — seed the permission + role catalogs and the default
                       role→permission grants (idempotent; any environment — RBAC
                       config is public). Run before ``promote-admin``.
+- ``seed-workflows`` — author + publish the module workflow definitions
+                      (``reimbursement.claim``). Idempotent: keyed on "a
+                      published version exists" — a re-run never mints a new
+                      version. Run after ``seed-rbac``.
 - ``promote-admin`` — promote ``settings.bootstrap_admin`` into a real break-glass
                       ``core_users`` login (Stage B): Argon2id temp password
                       (forced change on first login) + global ``system_admin``
@@ -72,6 +76,15 @@ from office_connect.core.seeds.rbac import (
 from office_connect.core.security import generate_temp_password, hash_password
 from office_connect.core.session import OCSession, set_audit_context
 from office_connect.core.time import utc_now
+from office_connect.core.workflow import get_published_version
+
+# ops is the composition root: it may import modules (import-linter forbids only
+# core→modules / core→ops; module seeds live in the module, wiring lives here).
+from office_connect.modules.reimbursement.seeds import apply_reimbursement_seeds
+from office_connect.modules.reimbursement.workflow import (
+    DEFINITION_CODE as REIMB_DEFINITION_CODE,
+    ensure_claim_definition,
+)
 
 # Canonical module flags (mirrors migration 0001 seeds — kept in sync on rename).
 DEFAULT_FLAGS: tuple[tuple[str, str], ...] = (
@@ -297,10 +310,35 @@ async def _promote_admin(session: AsyncSession) -> dict[str, Any]:
 async def _load_reference(
     session: AsyncSession, app_env: str, only: set[str] | None
 ) -> dict[str, Any]:
-    """Idempotent, environment-aware upsert of the reference datasets."""
+    """Idempotent, environment-aware upsert of the reference datasets.
+
+    A full run (no ``--dataset`` filter) also applies the module-owned
+    reference seeds (R-4-app closed the "module seeds only run from tests"
+    gap): reimbursement DTE rates / region clusters / config pack — public
+    legal config, safe in any environment."""
     results = await apply_all(session, app_env=app_env, only=only)
+    module_results: dict[str, Any] = {}
+    if only is None:
+        module_results["reimbursement"] = await apply_reimbursement_seeds(session)
     await session.commit()
-    return {"app_env": app_env, "datasets": results}
+    return {"app_env": app_env, "datasets": results, "module_datasets": module_results}
+
+
+# ------------------------------------------------------------ seed-workflows
+async def _seed_workflows(session: AsyncSession) -> dict[str, Any]:
+    """Idempotently author + publish the module workflow definitions (today:
+    ``reimbursement.claim``). A re-run NEVER mints a new version — a chain
+    change is an explicit authored v2 (e.g. the DO 2019-0225 tiered chain).
+    Canonical sequence: init → load-reference → seed-rbac → seed-workflows →
+    promote-admin."""
+    before = await get_published_version(session, REIMB_DEFINITION_CODE)
+    version = await ensure_claim_definition(session)
+    await session.commit()
+    return {
+        "definition": REIMB_DEFINITION_CODE,
+        "version_no": version.version_no,
+        "created": before is None,
+    }
 
 
 # --------------------------------------------------------- ingest-directory
@@ -367,6 +405,11 @@ def main(argv: list[str] | None = None) -> int:
         help="seed the permission/role catalogs + default grants (idempotent)",
     )
     sub.add_parser(
+        "seed-workflows",
+        help="author + publish the module workflow definitions (idempotent; "
+        "a re-run never mints a new version)",
+    )
+    sub.add_parser(
         "promote-admin",
         help="promote the recorded bootstrap admin into a break-glass login",
     )
@@ -414,6 +457,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     elif args.command == "seed-rbac":
         result = asyncio.run(_with_app_session(settings, _seed_rbac))
+    elif args.command == "seed-workflows":
+        result = asyncio.run(_with_app_session(settings, _seed_workflows))
     elif args.command == "promote-admin":
         result = asyncio.run(_with_app_session(settings, _promote_admin))
     elif args.command == "ingest-directory":

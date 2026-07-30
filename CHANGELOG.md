@@ -12,6 +12,25 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-4-app — claims now run on the approval workflow** (2026-07-29): the
+  reimbursement chain is live on the shared engine as its first real definition
+  (`reimbursement.claim`: Division Chief approve → Admin Officer review → hand to FMS →
+  Paid/Closed, with return loops and owner cancellation; no reject — returns are the
+  spec's only loop-back). **Submitting a claim is now one atomic action**: the server
+  computes the money, allocates the permanent `RB-YYYY-NNNN` reference, starts the
+  workflow, and stamps status/holder/next-action — a claim always shows exactly one
+  holder and one plain-language next step (work-management non-negotiables), and every
+  move lands in the append-only status history. Approvals enforce segregation of duties
+  (you can never clear your own claim, even as the Division Chief) and org scoping (a
+  chief approves only their own division). SLA: each human gate is due in 3 WORKING
+  days (Manila calendar, holidays honored); the overdue holder gets one nudge and then
+  a repeat every 2 working days — **to the holder only, never superiors** — all
+  idempotent. New `admin_officer` role + `reimb.claim.review`/`reimb.claim.fms_update`
+  permissions; new bootstrap `seed-workflows` step and `load-reference` now installs
+  the module's reference data too. Migration `0015` (one live workflow instance per
+  claim, DB-enforced). The `module.reimbursement` flag stays OFF (fail-safe) — flag ON
+  blocks nothing in-flight, only new submissions. Verified: **pytest 413 (+36),
+  lint-imports 3/3**, migration `0015` reversible, seeders re-run as no-ops.
 - **Stage C R-2-shell — the first React frontend** (2026-07-28): Office-Connect now has a
   user interface. A `web/` Vite SPA (React 19 + Tailwind 4 + TypeScript, exact-pinned;
   Node 22 LTS) served by a new compose **`web` service on :5174** that proxies `/api` to

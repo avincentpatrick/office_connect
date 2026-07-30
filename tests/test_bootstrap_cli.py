@@ -61,6 +61,55 @@ async def test_load_fixtures_creates_and_is_idempotent(app_session):
     assert present == titles
 
 
+async def test_seed_workflows_is_idempotent(app_session):
+    """R-4-app: ``seed-workflows`` authors + publishes ``reimbursement.claim``
+    once; a re-run NEVER mints a new version (a chain change is an explicit
+    authored v2)."""
+    settings = get_settings()
+    first = await bootstrap._with_app_session(settings, bootstrap._seed_workflows)
+    second = await bootstrap._with_app_session(settings, bootstrap._seed_workflows)
+    assert first["definition"] == "reimbursement.claim"
+    assert second["created"] is False
+    assert second["version_no"] == first["version_no"]
+
+    from office_connect.core.models import (
+        WorkflowDefinition,
+        WorkflowDefinitionVersion,
+    )
+
+    published = (
+        await app_session.execute(
+            select(WorkflowDefinitionVersion)
+            .join(
+                WorkflowDefinition,
+                WorkflowDefinition.id == WorkflowDefinitionVersion.definition_id,
+            )
+            .where(
+                WorkflowDefinition.code == "reimbursement.claim",
+                WorkflowDefinitionVersion.is_published.is_(True),
+            )
+        )
+    ).scalars().all()
+    assert len(published) == 1
+
+
+async def test_load_reference_applies_module_seeds(app_session):
+    """R-4-app closed the 'module seeds only run from tests' gap: a full
+    load-reference also applies the reimbursement config pack (idempotently);
+    a filtered run skips module seeds."""
+    settings = get_settings()
+    full = await bootstrap._with_app_session(
+        settings, lambda s: bootstrap._load_reference(s, settings.app_env, None)
+    )
+    assert "reimbursement" in full["module_datasets"]
+
+    filtered = await bootstrap._with_app_session(
+        settings,
+        lambda s: bootstrap._load_reference(s, settings.app_env, {"holidays_2026"}),
+    )
+    assert filtered["module_datasets"] == {}
+
+
 async def test_load_fixtures_refused_in_production(monkeypatch, capsys):
     monkeypatch.setattr(bootstrap, "get_settings", lambda: Settings(app_env="production"))
     rc = bootstrap.main(["load-fixtures"])

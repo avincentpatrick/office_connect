@@ -93,10 +93,17 @@ Steps get `sla_due_at` at activation (from the gate state's `sla_hours`). The Ce
 `ops.sweep_workflow_sla` calls `core/workflow/sla.py::sweep_due_steps`, which appends one
 `escalation` event per overdue step (`SELECT … FOR UPDATE SKIP LOCKED`; partial-unique
 `(step_id, escalation_level)` guards at-least-once double-fire) **without** moving the
-step or instance. First cut escalates once; the recurring reminder ladder + notification
-delivery are deferred to R-4-app, which registers a notifier via `register_sla_enqueuer`
-(the ops→core seam). Escalation is a nudge to the holder — superiors are never
-auto-rerouted (work-management non-negotiable: holder-only SLA ladder).
+step or instance. The engine escalates once; **delivery + the recurring ladder are the
+consuming module's** (delivered for reimbursement at R-4-app, 2026-07-29):
+`ops/reimbursement_tasks.py` registers the notifier via `register_sla_enqueuer` (the
+ops→core seam — NOTE: the enqueuer fires after flush INSIDE the sweep transaction,
+before commit, so the enqueued task must re-read committed state defensively) and runs
+the repeating working-day ladder as its own beat task (`ops.reimb_sla_reminders`),
+idempotent via notification-outbox dedup keys. Working-day due dates are stamped by the
+module wrapper (gate states authored `sla_hours=None`; the engine column is calendar
+hours) until the holiday-calendar core service (#6) grows an engine-side seam.
+Escalation is a nudge to the holder — superiors are never auto-rerouted
+(work-management non-negotiable: holder-only SLA ladder).
 
 ## 9. Feature-flag semantics
 

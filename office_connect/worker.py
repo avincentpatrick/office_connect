@@ -51,6 +51,14 @@ celery_app.conf.update(
             "schedule": crontab(minute="*/5"),
             "options": {"expires": 240},
         },
+        # The reimbursement holder-only SLA reminder ladder (spec §7.4: repeat
+        # every `sla.reminder_repeat_days` WORKING days — day-granular, so a
+        # daily morning run is the right cadence; dedup keys make it idempotent).
+        "reimb-sla-reminders": {
+            "task": "ops.reimb_sla_reminders",
+            "schedule": crontab(minute=30, hour=8),  # 08:30 Asia/Manila
+            "options": {"expires": 3600},
+        },
     },
 )
 

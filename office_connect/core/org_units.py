@@ -22,7 +22,13 @@ from datetime import datetime
 from sqlalchemy import literal, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from office_connect.core.models import OrgUnit, Permission, RolePermission, UserRole
+from office_connect.core.models import (
+    OrgUnit,
+    Permission,
+    RolePermission,
+    User,
+    UserRole,
+)
 from office_connect.core.time import utc_now
 
 _MAX_ANCESTRY_DEPTH = 64
@@ -47,7 +53,8 @@ async def ancestors_or_self(
     session: AsyncSession, org_unit_id: int | None
 ) -> list[int]:
     """Return ``org_unit_id`` and every ancestor id, walking ``parent_org_unit_id``
-    to the root. Empty for ``None``. Soft-deleted nodes stop the walk."""
+    to the root, ordered nearest-first (self, parent, …, root). Empty for
+    ``None``. Soft-deleted nodes stop the walk."""
     if org_unit_id is None:
         return []
     ou = OrgUnit.__table__
@@ -67,7 +74,7 @@ async def ancestors_or_self(
     cte = base.union_all(step)
     # Core-table select: the ORM soft-delete listener does not apply here, so the
     # deleted_at filter is stated explicitly in the CTE above; skip the listener.
-    stmt = select(cte.c.id).execution_options(include_deleted=True)
+    stmt = select(cte.c.id).order_by(cte.c.depth).execution_options(include_deleted=True)
     return list((await session.execute(stmt)).scalars().all())
 
 
@@ -94,6 +101,50 @@ async def scoped_org_units(
         )
     )
     return set((await session.execute(stmt)).scalars().all())
+
+
+async def permission_holders(
+    session: AsyncSession,
+    perm: str,
+    target_org_unit_id: int | None,
+    *,
+    now: datetime | None = None,
+) -> list[tuple[int, int | None]]:
+    """The inverse of :func:`authorize_scoped`: ``(user_id, grant_org_unit_id)``
+    pairs of live, active users who currently hold ``perm`` covering
+    ``target_org_unit_id``. A scoped grant qualifies when its unit sits on the
+    target's ancestry path; global grants are returned with ``None`` as the unit
+    (callers decide whether global holders count — work-management holder
+    resolution ignores them so ``system_admin`` never becomes "the" holder).
+    Honors the grant validity window and ``core_users.is_active``. Ranking is
+    caller policy; pairs come back deduplicated, ordered by ``user_id``."""
+    now = now or utc_now()
+    covered = (
+        await ancestors_or_self(session, target_org_unit_id)
+        if target_org_unit_id is not None
+        else []
+    )
+    scope_clause = UserRole.org_unit_id.is_(None)
+    if covered:
+        scope_clause = or_(
+            UserRole.org_unit_id.is_(None), UserRole.org_unit_id.in_(covered)
+        )
+    stmt = (
+        select(UserRole.user_id, UserRole.org_unit_id)
+        .join(RolePermission, RolePermission.role_id == UserRole.role_id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .join(User, User.id == UserRole.user_id)
+        .where(
+            Permission.code == perm,
+            User.is_active.is_(True),
+            or_(UserRole.valid_from.is_(None), UserRole.valid_from <= now),
+            or_(UserRole.valid_to.is_(None), UserRole.valid_to > now),
+            scope_clause,
+        )
+        .distinct()
+        .order_by(UserRole.user_id, UserRole.org_unit_id)
+    )
+    return [(uid, unit) for uid, unit in (await session.execute(stmt)).all()]
 
 
 async def authorize_scoped(

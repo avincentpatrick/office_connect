@@ -32,4 +32,5 @@ def backup_database(self) -> dict:
 # ``office_connect.ops.tasks`` registers every task (Increment 4).
 from office_connect.ops import attachments_tasks  # noqa: E402,F401
 from office_connect.ops import notification_tasks  # noqa: E402,F401
+from office_connect.ops import reimbursement_tasks  # noqa: E402,F401
 from office_connect.ops import workflow_tasks  # noqa: E402,F401

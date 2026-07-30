@@ -137,9 +137,16 @@ since R-2-shell)**.
 
 **Deliberate exclusions (recorded deferrals):** no axios (native `fetch` via
 the one wrapper `web/src/api/http.ts`); no Storybook (`/ui-foundation` DEV
-catalog instead — ui-standards §7); no state library; no form library
-(react-hook-form/zod decision belongs to the wizard session); no QR renderer
+catalog instead — ui-standards §7); no state library; no QR renderer
 for MFA enrollment (manual secret entry until the admin finds it painful).
+
+**Form library — DECIDED 2026-07-29 (R-4-app kickoff): react-hook-form + zod.**
+Installed at the R-2-wizard session (exact-pinned like everything else), not
+before — schema-per-wizard-step validation, minimal re-renders, and clean
+integration with the FormField/ErrorSummary inventory components. Client-side
+zod schemas validate SHAPE only; money and all business rules stay
+server-computed (hard prohibition — the wizard displays `totals`, never
+computes it).
 
 ## 5. Dev & QA tooling
 

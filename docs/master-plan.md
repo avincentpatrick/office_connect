@@ -215,8 +215,14 @@ ledger (§5) and research hardening — full detail in `docs/modules/reimburseme
   reimbursement chain becomes its first definition. Sequential now; `join_type`
   ready for DTWIS parallel routing. **Engine CORE shipped 2026-07-27 (session 11**,
   ahead of R-4-app — pure `core_workflow_*`, migration `0012`, `docs/standards/workflow-standards.md`);
-  R-4-app remaining = author the reimbursement definition + wire
-  `reimb_claims.workflow_instance_id` + the My-Work inbox + escalation delivery.
+  **R-4-app shipped 2026-07-29 (session 15)** — the `reimbursement.claim` definition v1
+  (spec §5.5 role chain; amount tiers deferred to an authored v2 pending DOH DO
+  2019-0225 — module doc delta register), the claim lifecycle service (atomic submit:
+  totals + `RB-` ref + instance + denormalized status/holder/next-action sync),
+  working-day SLA stamping + escalation delivery + the repeating holder-only ladder
+  via `register_sla_enqueuer` + `ops.reimb_sla_reminders`, bootstrap `seed-workflows`,
+  migration `0015`. **Scope note (2026-07-29): the My-Work inbox moved to R-2-wizard**
+  — it is an HTTP/UI surface and the wizard owns the module's first HTTP surface.
   **Delegation decision (2026-07-27):** on-behalf-of uses a dedicated
   `core_workflow_delegations` table — this refines the Stage-B B3 "no RBAC delegation
   table" note (a role-window grants a ROLE; a workflow delegation records one PERSON

@@ -122,6 +122,39 @@ async def permission_cache(session_redis):
 
 
 @pytest.fixture
+async def reimb_flag_on(app_session):
+    """Flip ``module.reimbursement`` ON for the test, restoring the prior state
+    after (the dev DB seeds it OFF in migration 0001 — fail-safe default)."""
+    from office_connect.core.models import FeatureFlag
+
+    row = (
+        await app_session.execute(
+            select(FeatureFlag).where(FeatureFlag.key == "module.reimbursement")
+        )
+    ).scalar_one_or_none()
+    created = row is None
+    prev_enabled = None if created else row.enabled
+    prev_active = None if created else row.is_active
+    if created:
+        row = FeatureFlag(
+            key="module.reimbursement", enabled=True, is_active=True,
+            description="Local Travel Reimbursement module",
+        )
+        app_session.add(row)
+    else:
+        row.enabled = True
+        row.is_active = True
+    await app_session.commit()
+    yield row
+    if created:
+        row.enabled = False  # no hard deletes — park it back OFF
+    else:
+        row.enabled = prev_enabled
+        row.is_active = prev_active
+    await app_session.commit()
+
+
+@pytest.fixture
 async def seed_rbac(app_session):
     """Idempotently seed the permission/role catalogs + default grants."""
     from office_connect.core.seeds import apply_dataset
