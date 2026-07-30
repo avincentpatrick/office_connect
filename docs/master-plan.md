@@ -211,6 +211,16 @@ ledger (§5) and research hardening — full detail in `docs/modules/reimburseme
   (ui-standards §7 fill-trigger). Claimant flows one-thing-per-page; approver/admin
   screens denser (GOV.UK internal-use guidance). Check-your-answers + confirmation
   pages; server-side save-and-return; directory prefill (WCAG 2.2 §3.3.7).
+  **R-2-shell shipped 2026-07-28 (session 14)** — the `web/` SPA, 6 templates, the
+  inventory seed, the token pipeline. **R-2-wizard shipped 2026-07-30 (session 16)**
+  — the module's FIRST HTTP surface (9 endpoints under `/api/v1/reimbursement`
+  behind the new `require_feature`→404 gate; conventions = api-standards §9), the
+  4-step claim wizard (Documents step → R-3, module-doc delta) with submit-per-step
+  save-and-return + check-your-answers + RB- confirmation, server-side directory
+  prefill, and the **My-Work inbox** as the module landing; inventory grew to 17
+  (Form-field family, SummaryList, ConfirmationPanel, WorkItemRow). The claimant
+  journey is live end to end; the approver surface (approval screen + return dialog
+  + action endpoints) completes R-4's UI half next.
 - **R-4**: the **shared core workflow engine** ships here (owner decision) and the
   reimbursement chain becomes its first definition. Sequential now; `join_type`
   ready for DTWIS parallel routing. **Engine CORE shipped 2026-07-27 (session 11**,

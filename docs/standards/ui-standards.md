@@ -68,7 +68,7 @@ first**. Required states in parentheses.
 | Component | Contract |
 |---|---|
 | **Button** | primary / secondary / danger / disabled / loading. Exactly one primary per screen-moment. |
-| **Form field** | label above, help text below, validation message states *what to do next* (never just "invalid"). Required marker uniform. |
+| **Form field** (family) | label above, help text below, validation message states *what to do next* (never just "invalid"). Required marker uniform. The family: text/date input (`FormField`), `SelectField`, `TextareaField`, `CheckboxField`, `RadioGroupField` (fieldset + legend) — one shared label/help/error/aria contract via the internal `FieldChrome` (plumbing, NOT page-usable). |
 | **Card** | title + optional status chip + body + optional action row. |
 | **Tabs** | horizontal, keyboard-navigable; active state via tokens. |
 | **Status chip / badge** | semantic status colors only (§2). |
@@ -76,16 +76,33 @@ first**. Required states in parentheses.
 | **Stepper / wizard shell** | linear steps, progress indicator, back-safe. |
 | **Timeline / tracker** | chronological events with actor + timestamp (Manila display). |
 | **Pipeline-board card** | compact card for kanban-style boards. |
-| **Dialog / confirm sheet** | destructive confirms state consequences in plain language. |
+| **Dialog / confirm sheet** | destructive confirms state consequences in plain language; controlled mode (`open`/`onOpenChange`, optional trigger) for router-driven prompts. |
 | **Empty state** | mandatory on every list — explains what will appear and the next action. |
 | **Skeleton loader** | mandatory on every list/detail while loading. |
 | **Toast / notification bell** | transient success/info; persistent items go to the bell. |
 | **Error summary** (GOV.UK) | page-level `role=alert` that receives focus on mount and anchor-links to each failing field; wording **identical** to the inline validation messages. |
+| **Summary list** (GOV.UK check-your-answers) | `<dl>` of key/value rows with an optional per-row "Change" link (accessible-name context suffix, e.g. "Change purpose"); empty values render "Not provided", never blank. |
+| **Confirmation panel** | transaction-complete panel: title (focused on mount), reference label + the reference number rendered large; used once per completed transaction. |
+| **Work-item row** | linked inbox/list row: reference + title, StatusChip right, one muted meta line; the My-Work rendering (NOT the Pipeline-board card — that is a board `<article>`, no link affordance). |
 
 > **Inventory amendment 2026-07-28 (R-2-shell):** **Error summary** added as
 > the fourteenth component. master-plan §2 R-2 names it as a deliverable; it is
 > page-level (coordinates many fields), not a Form-field state, so it needed
 > its own inventory row — added via this amendment per the rule above.
+
+> **Inventory amendment 2026-07-30 (R-2-wizard):** the **Form field** row
+> becomes a family — §8 pre-authorized "Select/Textarea/date arrive with the
+> wizard"; checkbox + radio-group (fieldset/legend) join for the wizard's
+> attestations + fund-source questions. New rows 15–17: **Summary list**
+> (check-your-answers), **Confirmation panel** (the RB- reference view), and
+> **Work-item row** (the My-Work inbox rendering). **Dialog** gains a
+> controlled mode for the unsaved-changes router prompt. All native-element
+> based (no new Radix surface); zod + react-hook-form wire in per tech-stack §4
+> (schemas validate SHAPE only — money/business rules stay server-side).
+> **Recorded deferral:** the Review page's per-diem day breakdown renders as
+> page-local semantic `<table>` markup (tokens-only, `overflow-x-auto`) — a
+> reusable **Table** inventory item is deferred until a second consumer
+> appears (amend §3 first when it does).
 
 ## 4. Layout templates — LOCKED
 
@@ -125,11 +142,14 @@ dependency pins live in [`tech-stack.md`](tech-stack.md) §4.
 - **Component-library structure** — `web/src/components/<Name>/<Name>.tsx`
   with colocated `<Name>.test.tsx`; layout templates in `web/src/layouts/`;
   pages in `web/src/pages/` compose templates + inventory components only.
-  Contexts/hooks/non-component exports live in sibling non-component files
-  (`auth-context.ts`, `config-context.ts`, `toast-bus.ts`) so HMR fast-refresh
-  stays sound. Headless primitives (**Radix UI**, the unified `radix-ui`
-  package) are allowed **only inside `web/src/components/`** — pages and
-  layouts consume the inventory, never a primitive.
+  Module page groups may nest one level (`web/src/pages/reimbursement/` —
+  R-2-wizard convention extension); module display logic (status maps, wizard
+  step derivation, zod schemas, hooks) lives in non-component sibling files in
+  that directory. Contexts/hooks/non-component exports live in sibling
+  non-component files (`auth-context.ts`, `config-context.ts`, `toast-bus.ts`)
+  so HMR fast-refresh stays sound. Headless primitives (**Radix UI**, the
+  unified `radix-ui` package) are allowed **only inside `web/src/components/`**
+  — pages and layouts consume the inventory, never a primitive.
 - **Tailwind config mapping the §2 tokens** — Tailwind v4 CSS-first config in
   `web/src/theme/tokens.css`: a baked `:root` block mirrors `NEUTRAL_TOKENS`
   (styles the pre-fetch paint; kept in sync same-session on any token change),
@@ -175,7 +195,14 @@ under `web/src/components/<Name>/`.
 | Component | As-built seed (states · markup · a11y) |
 |---|---|
 | Button | primary `bg-brand/text-brand-contrast` · secondary `bg-surface + border-border` · danger `bg-status-blocked`; disabled 50 % opacity + not-allowed; loading = spinning Lucide `Loader2` + `aria-busy`, label kept, interaction blocked. Defaults `type="button"`. |
-| Form field | label above (`htmlFor`), help below label (`aria-describedby`), error below input (`aria-invalid` + id-linked, border `status-blocked`); required = red asterisk (`aria-hidden`) + `required` attr. Seed ships the text input; Select/Textarea/date arrive with the wizard. |
+| Form field | label above (`htmlFor`), help below label (`aria-describedby`), error below input (`aria-invalid` + id-linked, border `status-blocked`); required = red asterisk (`aria-hidden`) + `required` attr. R-2-wizard: props widened to `ComponentPropsWithRef<"input">` so react-hook-form's `register()` spreads (React 19 ref-as-prop); `type="date"` is the documented date variant; the label/help/error chrome extracted into the internal `FieldChrome` shared by the family below. |
+| SelectField | native `<select>` inside FieldChrome; `options: {value,label}[]` + optional disabled `""` placeholder option; same aria contract as Form field. |
+| TextareaField | native `<textarea>` inside FieldChrome; `min-h` via spacing tokens. |
+| CheckboxField | native checkbox left, label right, 44-px row; hint/error id-linked via `aria-describedby`. |
+| RadioGroupField | `<fieldset>` + `<legend>` (label-weight), one native radio per option (option hints allowed), error inside the fieldset; RHF wiring = the same `register()` spread on every radio. Used for yes/no attestations and fund source. |
+| Summary list | `<dl>`; each row `dt` muted key / `dd` value / optional `dd` "Change" router-Link (`text-link` underline) with an sr-only context suffix; empty value renders muted "Not provided". |
+| Confirmation panel | `border-2 border-status-done` outline panel on `bg-surface`: `h1` title (`tabIndex=-1`, focused on mount — the post-submit announce), reference label, reference `text-3xl font-bold`. |
+| Work-item row | `<li>` row in a divided list: router-Link (ref + title) left, StatusChip right, one muted meta line below (holder · days-in-state · next action, composed by the page). |
 | Card | `<section>` `rounded-lg border-border bg-bg shadow-sm`; header = `h2` title + status-chip slot; body; footer action row. |
 | Tabs | Radix Tabs (roving tabindex); active = `border-b-2 border-brand + text-text font-medium`. |
 | Status chip | outline style: `border + text` in the semantic status color on `bg` (AA-verified pair); text label required. |
@@ -194,7 +221,13 @@ under `web/src/components/<Name>/`.
 — the login / MFA-verify screens render inside it with a centered Card, so no
 extra template exists for auth. List page enforces §3's mandatory
 empty/skeleton states via required `loading`/`isEmpty`/`emptyState` props;
-the pagination slot awaits the Stage-D envelope.
+the pagination slot awaits the Stage-D envelope. **R-2-wizard amendments:**
+the **Wizard page** gains an optional `asideExtra` slot rendered inside the
+existing `<aside>` below the task list (the spec §9.3 running-totals rail —
+Money/Review pass a compact "Claim totals" Card); the wizard's **post-submit
+confirmation renders as a plain content page inside the App shell**
+(ConfirmationPanel; precedent: HomePage/auth screens) — no stepper/task list
+because the transaction is complete.
 
 ## 9. Theming / multi-tenant branding — PARTIALLY FILLED (Increment 3) · *remaining fill-trigger: tenant theming UI (Phase 3)*
 

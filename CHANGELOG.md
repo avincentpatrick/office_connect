@@ -12,6 +12,28 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-2-wizard — file a travel claim end to end** (2026-07-30): the
+  reimbursement module opened its first screens and API. From **My Work** (the module
+  landing: "Waiting on you" above "Your claims in flight", each row with holder,
+  days-in-state, and the next action) a claimant starts a claim and walks a GOV.UK-style
+  **4-step wizard** — Trip → Itinerary → Money → Review & submit — with the task-list
+  sidebar always showing progress. **Every Continue saves to the server**, so you can
+  leave and resume any time from the task list (a returned claim re-opens fully
+  editable); claimant identity (name, position, division, JO/COS status) is prefilled
+  from the directory and never re-typed. The money step sends your inputs and the
+  **server computes every total** (EO 77 per-diem breakdown by day, transport, other
+  expenses) — the browser never does money math. Check-your-answers shows the whole
+  packet with per-row Change links; submitting is the real atomic submit and lands on a
+  confirmation page with your permanent **RB- reference**. New other-expenses field is
+  now remembered across returns/resubmits (migration `0016` fixed a latent reset-to-zero
+  bug). Claims are **not bureau-public**: reads are owner-or-scoped (your chief sees the
+  division, the Admin Officer the office). The whole surface sits behind the
+  `module.reimbursement` flag (OFF = indistinguishable from absent; a new audited
+  `bootstrap set-flag` command flips dev on). UI inventory grew to 17 components
+  (Select/Textarea/Checkbox/RadioGroup fields, Summary list, Confirmation panel,
+  Work-item row) — form validation via react-hook-form + zod, shape-only, with GOV.UK
+  error summaries. Verified: **pytest 442 (+29), lint-imports 3/3, FE gate green (75
+  tests)**, migration `0016` reversible, live end-to-end smoke through :5174.
 - **Stage C R-4-app — claims now run on the approval workflow** (2026-07-29): the
   reimbursement chain is live on the shared engine as its first real definition
   (`reimbursement.claim`: Division Chief approve → Admin Officer review → hand to FMS →

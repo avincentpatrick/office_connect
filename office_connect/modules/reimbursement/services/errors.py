@@ -144,3 +144,58 @@ def unsupported_claim_action(action: str) -> APIError:
         f"'{action}' is not a claim action (submit via submit_claim; "
         "approve/return/resubmit/cancel via claim_action).",
     )
+
+
+# --- R-2-wizard draft/API errors --------------------------------------------
+
+
+def no_staff_link() -> APIError:
+    return APIError(
+        422,
+        "reimb_no_staff_link",
+        "Your login is not linked to a staff record — claims are filed "
+        "against the directory. Ask an administrator to link your account.",
+    )
+
+
+def claim_not_editable() -> APIError:
+    return APIError(
+        409,
+        "reimb_claim_not_editable",
+        "This claim is in the approval workflow and can no longer be edited — "
+        "wait for it to be returned, or cancel and start again.",
+    )
+
+
+def leg_unknown(leg_id: int) -> APIError:
+    return APIError(
+        422,
+        "reimb_leg_unknown",
+        f"Itinerary leg id {leg_id} does not belong to this claim.",
+    )
+
+
+def unknown_activity(activity_id: int) -> APIError:
+    return APIError(
+        422,
+        "reimb_unknown_activity",
+        f"Activity {activity_id} does not exist — pick one from the "
+        "activity spine or leave the claim unlinked.",
+    )
+
+
+def invalid_trip_dates() -> APIError:
+    return APIError(
+        422,
+        "reimb_invalid_trip_dates",
+        "The return date is before the departure date — fix the trip dates.",
+    )
+
+
+def claim_cancelled() -> APIError:
+    return APIError(
+        409,
+        "reimb_claim_cancelled",
+        "This claim was cancelled — cancelled claims cannot be revived. "
+        "Start a new claim instead.",
+    )

@@ -1,0 +1,186 @@
+/** ClaimDetail / My-Work fixtures for the reimbursement page tests. */
+
+import type {
+  ClaimDetail,
+  ClaimTotals,
+  MyWorkResponse,
+  WorkItem,
+} from "../api/reimbursement";
+
+export function makeClaim(overrides: Partial<ClaimDetail> = {}): ClaimDetail {
+  return {
+    id: 7,
+    ref_no: null,
+    kind: "reimbursement",
+    status: "draft",
+    status_label: "Draft",
+    next_action: "Complete your packet",
+    holder_kind: "user",
+    holder_display: "You",
+    holder_since: "2026-07-30T00:00:00Z",
+    claimant: {
+      staff_id: 3,
+      employee_no: "E-0001",
+      full_name: "Test Claimant",
+      position_title: "Nurse II",
+      employment_status: "permanent",
+      division: { id: 1, name: "Finance Division" },
+      section: null,
+    },
+    is_jo_cos: false,
+    activity_id: null,
+    dpo_no: null,
+    dpo_date: null,
+    purpose: null,
+    destination: null,
+    destination_region_code: null,
+    date_depart: null,
+    date_return: null,
+    is_within_50km: false,
+    overnight_stay: false,
+    fund_source: null,
+    other_total: "0.00",
+    totals: null,
+    legs: [],
+    created_at: "2026-07-30T00:00:00Z",
+    updated_at: "2026-07-30T00:00:00Z",
+    ...overrides,
+  };
+}
+
+export function makeTotals(overrides: Partial<ClaimTotals> = {}): ClaimTotals {
+  return {
+    version: 1,
+    per_diem: "5500.00",
+    transport: "1000.00",
+    other: "250.00",
+    grand: "6750.00",
+    advance: "0.00",
+    to_reimburse: "6750.00",
+    to_refund: "0.00",
+    computed_at: "2026-07-30T00:00:00Z",
+    days: [
+      {
+        date: "2026-07-01",
+        day_type: "arrival",
+        leg_id: 11,
+        region_code: "13",
+        cluster: "III",
+        daily_rate: "2200.00",
+        pct: 100,
+        components: {},
+        deductions: {},
+        amount: "2200.00",
+        gated_50km: false,
+      },
+      {
+        date: "2026-07-02",
+        day_type: "full",
+        leg_id: null,
+        region_code: "13",
+        cluster: "III",
+        daily_rate: "2200.00",
+        pct: 100,
+        components: {},
+        deductions: {},
+        amount: "2200.00",
+        gated_50km: false,
+      },
+      {
+        date: "2026-07-03",
+        day_type: "return",
+        leg_id: 12,
+        region_code: "13",
+        cluster: "III",
+        daily_rate: "2200.00",
+        pct: 50,
+        components: {},
+        deductions: {},
+        amount: "1100.00",
+        gated_50km: false,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+/** A claim with every wizard step complete — Review renders fully. */
+export function completeClaim(overrides: Partial<ClaimDetail> = {}): ClaimDetail {
+  return makeClaim({
+    dpo_no: "DPO-2026-077",
+    dpo_date: "2026-06-20",
+    purpose: "Regional immunization review",
+    destination: "Manila",
+    destination_region_code: "13",
+    date_depart: "2026-07-01",
+    date_return: "2026-07-03",
+    fund_source: "GF_ORS",
+    other_total: "250.00",
+    totals: makeTotals(),
+    legs: [
+      {
+        id: 11,
+        seq: 1,
+        leg_date: "2026-07-01",
+        place: "To Manila",
+        destination_region_code: "13",
+        time_depart: "08:00",
+        time_arrive: "12:00",
+        transport_mode: "bus",
+        fare: "500.00",
+        per_diem_pct: 100,
+        per_diem_amount: "2200.00",
+        leg_total: "2700.00",
+        lodging_provided: false,
+        meals_provided: false,
+      },
+      {
+        id: 12,
+        seq: 2,
+        leg_date: "2026-07-03",
+        place: "Return",
+        destination_region_code: null,
+        time_depart: "15:00",
+        time_arrive: "19:00",
+        transport_mode: "bus",
+        fare: "500.00",
+        per_diem_pct: 50,
+        per_diem_amount: "1100.00",
+        leg_total: "1600.00",
+        lodging_provided: false,
+        meals_provided: false,
+      },
+    ],
+    ...overrides,
+  });
+}
+
+export function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
+  return {
+    id: 7,
+    ref_no: "RB-2026-0001",
+    purpose: "Regional immunization review",
+    destination: "Manila",
+    status: "division_approval",
+    status_label: "For Approval",
+    next_action: "Approve or return",
+    holder_kind: "user",
+    holder_display: "Maria Santos",
+    holder_since: "2026-07-28T00:00:00Z",
+    days_in_state: 2,
+    grand: "6750.00",
+    updated_at: "2026-07-30T00:00:00Z",
+    ...overrides,
+  };
+}
+
+export function makeMyWork(overrides: Partial<MyWorkResponse> = {}): MyWorkResponse {
+  return {
+    waiting_on_you: [
+      makeWorkItem({ id: 5, ref_no: null, status: "draft", status_label: "Draft",
+        next_action: "Complete your packet", holder_display: "You", days_in_state: 0 }),
+    ],
+    in_flight: [makeWorkItem()],
+    ...overrides,
+  };
+}

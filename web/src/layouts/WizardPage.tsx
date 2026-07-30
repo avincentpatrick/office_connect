@@ -10,11 +10,21 @@ export interface WizardPageProps {
   back?: ReactNode;
   /** Task-list sidebar (§3.6) — stacks below lg. */
   taskList: ReactNode;
+  /** Extra rail content below the task list (spec §9.3 running-totals card). */
+  asideExtra?: ReactNode;
   children: ReactNode;
 }
 
 /** ui-standards §4.3 — Wizard page: stepper shell + one step's form + task-list sidebar. */
-export function WizardPage({ title, steps, current, back, taskList, children }: WizardPageProps) {
+export function WizardPage({
+  title,
+  steps,
+  current,
+  back,
+  taskList,
+  asideExtra,
+  children,
+}: WizardPageProps) {
   return (
     <div className="flex flex-col gap-4">
       {back}
@@ -24,7 +34,10 @@ export function WizardPage({ title, steps, current, back, taskList, children }: 
           <Stepper steps={steps} current={current} />
           <div>{children}</div>
         </div>
-        <aside aria-label="Progress checklist">{taskList}</aside>
+        <aside aria-label="Progress checklist" className="flex flex-col gap-6">
+          {taskList}
+          {asideExtra}
+        </aside>
       </div>
     </div>
   );

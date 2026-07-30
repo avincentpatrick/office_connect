@@ -30,7 +30,6 @@ is an Admin dashboard filter, not a notification).
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta
-from decimal import Decimal
 from typing import Sequence
 
 from sqlalchemy import select
@@ -60,8 +59,8 @@ from office_connect.modules.reimbursement.workflow import (
 )
 from office_connect.core.money import to_money
 
-_ZERO = Decimal("0.00")
 _CLAIM_ACTIONS = frozenset({"approve", "return", "resubmit", "cancel"})
+_JO_COS_STATUSES = frozenset({"job_order", "contract_of_service"})
 _SLA_WD_KEY = "sla.approval_working_days"
 _SLA_WD_DEFAULT = 3
 _SLA_DUE_LOCAL_TIME = time(17, 0)  # end of the Manila working day
@@ -270,12 +269,61 @@ async def _stamp_sla(
 # --------------------------------------------------------------------------
 
 
+async def create_draft_claim(
+    session: AsyncSession,
+    *,
+    actor_user_id: int,
+    now: datetime | None = None,
+) -> ReimbClaim:
+    """Create a draft claim for the actor's own staff record, stamping the
+    §6.1 row-1 read-model at birth: status ``draft``, holder = the claimant's
+    login, next action "Complete your packet" — spec §7 rule 1 (one holder,
+    always) holds from the first row, and My-Work's "waiting on you" includes
+    drafts with no OR-branch. ``is_jo_cos`` derives from the directory
+    employment status (spec §5.1). Business-field prefill belongs to
+    ``services/drafts.py`` — this function is only the status/holder writer.
+    Flushes; the caller owns the commit."""
+    now = now or utc_now()
+    set_audit_context(session, actor_id=actor_user_id)
+
+    actor = await session.get(User, actor_user_id)
+    staff = (
+        await session.get(Staff, actor.staff_id)
+        if actor is not None and actor.staff_id is not None
+        else None
+    )
+    if staff is None or staff.deleted_at is not None:
+        raise errors.no_staff_link()
+
+    claim = ReimbClaim(
+        kind="reimbursement",
+        claimant_id=staff.id,
+        is_jo_cos=staff.employment_status in _JO_COS_STATUSES,
+        status=st.DRAFT,
+        holder_kind="user",
+        holder_id=actor_user_id,
+        holder_since=now,
+        next_action=st.NEXT_ACTION[st.DRAFT],
+    )
+    session.add(claim)
+    await session.flush()
+    session.add(
+        ReimbStatusHistory(
+            claim_id=claim.id,
+            from_status=None,
+            to_status=st.DRAFT,
+            actor_id=actor_user_id,
+        )
+    )
+    await session.flush()
+    return claim
+
+
 async def submit_claim(
     session: AsyncSession,
     *,
     claim_id: int,
     actor_user_id: int,
-    other_total: Decimal = _ZERO,
     idempotency_key: str | None = None,
     now: datetime | None = None,
 ) -> ReimbClaim:
@@ -295,15 +343,22 @@ async def submit_claim(
         raise errors.claim_already_submitted()
     if not await _is_owner(session, claim, actor_user_id):
         raise errors.not_claim_owner()
+    # Cancelled is terminal even pre-submit (no instance exists to make the
+    # engine refuse) — without this, a cancelled draft would resurrect here and
+    # burn a never-reused RB number. Checked under the row lock, so a
+    # cancel↔submit race resolves to exactly one winner.
+    if (claim.status or st.DRAFT) == st.CANCELLED:
+        raise errors.claim_cancelled()
 
     staff = await session.get(Staff, claim.claimant_id)
     org_unit_id = staff.section_id or staff.division_id if staff else None
     if org_unit_id is None:
         raise errors.claimant_no_org_unit()
 
+    # Totals read the persisted ``other_total`` column (0016) — the wizard's
+    # money step wrote it via PATCH, and resubmit recomputes with it too.
     await compute_claim_totals(
-        session, claim_id=claim.id, other_total=other_total,
-        actor_user_id=actor_user_id,
+        session, claim_id=claim.id, actor_user_id=actor_user_id
     )
     # Flag gate fires inside start_instance — BEFORE a reference number is
     # burned (numbers are never reused, so order matters).
@@ -453,6 +508,10 @@ async def cancel_draft_claim(
         raise errors.not_claim_owner()
     if not comment:
         raise wf.errors.comment_required()
+    # Idempotence belt: a double-cancel must not append a no-op
+    # cancelled→cancelled row to the append-only history.
+    if (claim.status or st.DRAFT) == st.CANCELLED:
+        raise errors.claim_cancelled()
 
     from_status = claim.status or st.DRAFT
     claim.status = st.CANCELLED

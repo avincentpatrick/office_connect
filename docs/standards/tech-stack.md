@@ -106,9 +106,12 @@ since R-2-shell)**.
 |---|---|---|
 | react / react-dom | 19.2.8 | UI runtime |
 | react-router | 7.18.1 | Routing (library mode — `createBrowserRouter`; no SSR/framework mode) |
-| @tanstack/react-query | 5.101.4 | Server-state layer: config/me caching, mutation states, global 401 handling; carries the wizard's save-and-return next session |
+| @tanstack/react-query | 5.101.4 | Server-state layer: config/me caching, mutation states, global 401 handling; carries the wizard's save-and-return (R-2-wizard) |
 | radix-ui | 1.6.7 | Headless a11y primitives (Dialog, Tabs, Toast) — the ONE primitive library; allowed only inside `web/src/components/` |
 | lucide-react | 1.27.0 | **The** platform icon set (ui-standards §7); per-icon imports |
+| react-hook-form | 7.83.0 | Wizard form state (R-2-wizard) — `register()`-based, minimal re-renders; all-native inputs, zero `Controller` |
+| @hookform/resolvers | 5.5.7 | `zodResolver` bridge (zod-v4-aware) |
+| zod | 4.4.3 | SHAPE-only client schemas (money/business rules stay server-side — hard prohibition); pinned exactly 4.4.3 to dedupe with the eslint-chain transitive copy |
 
 **Dev dependencies:**
 
@@ -140,13 +143,15 @@ the one wrapper `web/src/api/http.ts`); no Storybook (`/ui-foundation` DEV
 catalog instead — ui-standards §7); no state library; no QR renderer
 for MFA enrollment (manual secret entry until the admin finds it painful).
 
-**Form library — DECIDED 2026-07-29 (R-4-app kickoff): react-hook-form + zod.**
-Installed at the R-2-wizard session (exact-pinned like everything else), not
-before — schema-per-wizard-step validation, minimal re-renders, and clean
-integration with the FormField/ErrorSummary inventory components. Client-side
-zod schemas validate SHAPE only; money and all business rules stay
-server-computed (hard prohibition — the wizard displays `totals`, never
-computes it).
+**Form library — DECIDED 2026-07-29 (R-4-app kickoff), INSTALLED 2026-07-30
+(R-2-wizard): react-hook-form 7.83.0 + zod 4.4.3 + @hookform/resolvers 5.5.7**
+(runtime-deps table above) — schema-per-wizard-step validation, minimal
+re-renders, and clean integration with the FormField/ErrorSummary inventory
+components. Client-side zod schemas validate SHAPE only; money and all
+business rules stay server-computed (hard prohibition — the wizard displays
+`totals`, never computes it). Wiring conventions: `register()` everywhere
+(all-native inputs, zero `Controller`), zod v4 idioms (`z.iso.date()`), and
+schemas in non-component sibling files (react-refresh rule).
 
 ## 5. Dev & QA tooling
 

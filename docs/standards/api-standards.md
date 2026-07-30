@@ -205,3 +205,43 @@ async def list_roles(_: Principal = Depends(require_permission("rbac.role.read")
   renders `[redacted]` for excluded person fields (`core_staff` names/email,
   notification recipient/body/payload) **by design** — the immutable chain records the
   field name, not the value; the current value is read from the live row.
+
+## §9. Module routers & the feature-flag surface gate (Stage C R-2-wizard, 2026-07-30)
+
+The reimbursement wizard shipped the codebase's **first module router** — these
+are now the binding conventions for every module HTTP surface:
+
+- **Mounting** — a module router lives in
+  `office_connect/modules/<module>/api/` and self-prefixes its full path
+  (`APIRouter(prefix="/api/v1/<area>")`). It is mounted from
+  **`office_connect/main.py`** (the composition root), never from
+  `core/api/router.py`: import-linter's "core never imports modules" contract
+  forbids the latter. App → module imports are legal (same reasoning as the
+  ops import in the lifespan).
+- **Feature-flag gate → 404** — the whole module router declares
+  `dependencies=[Depends(require_feature("<flag key>"))]`
+  (`core/auth/dependencies.py`; core-legal — it takes a plain string).
+  Flag OFF or missing → `404 not_found` on every route, **before** auth, so an
+  OFF module is indistinguishable from absent (fail-safe OFF, rule of the
+  house). Two ordering facts, both pinned by tests: the CSRF middleware wall
+  fires even earlier (a header-less POST 403s `csrf_failed` with the flag
+  OFF), and with the flag ON the normal 401/403 gates take over.
+  **Caveat (workflow-standards §9):** the flag blocks NEW work, never strands
+  in-flight work — when approval-ACTION endpoints land they must NOT sit
+  behind this 404 gate. The gate reads the DB per request (indexed
+  single-row select); a Redis-cached variant is a recorded deferral.
+- **Read scoping is the module's job** — coarse `require_permission` cannot
+  express "owner sees own; scoped roles see their unit" when a role's grant is
+  global (the `staff` role's `reimb.claim.read` is). Reimbursement's rule
+  (`api/deps.py::can_read_claim`): owner, or `authorize_scoped` on any of the
+  module's gate permissions against the claim's org unit. Claims are NOT
+  bureau-public (spec §3.2) — future module list/read endpoints must make the
+  same server-side choice explicitly.
+- **Money on the wire** = 2-dp strings, server-computed (§2 reaffirmed): the
+  wizard's money step PATCHes inputs and calls `POST …/compute`, which returns
+  the recomputed claim — the client never does arithmetic.
+- **Recorded deferrals** — the pagination envelope stays Stage D (`/my-work`
+  hard-caps at 100 rows; `/regions` is a bounded reference list); an
+  `Idempotency-Key` request-header convention is deferred (the claim-row
+  `FOR UPDATE` lock + 409s + the engine's server-derived keys already make
+  double-submit burn exactly one reference number).

@@ -34,4 +34,19 @@ describe("FormField", () => {
     );
     await expectNoA11yViolations(container);
   });
+
+  it("forwards a callback ref to the input (the react-hook-form register contract)", () => {
+    let received: HTMLInputElement | null = null;
+    render(
+      <FormField
+        id="dpo_no"
+        label="DPO number"
+        ref={(el) => {
+          received = el;
+        }}
+      />,
+    );
+    expect(received).toBeInstanceOf(HTMLInputElement);
+    expect((received as HTMLInputElement | null)?.id).toBe("dpo_no");
+  });
 });

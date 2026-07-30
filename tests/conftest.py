@@ -34,6 +34,33 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # Shared default for auth fixtures (long + not blocklisted → passes the policy).
 DEFAULT_TEST_PASSWORD = "correct-horse-battery-staple"
 
+# The CSRF custom-header contract (api-standards §6) — any non-empty value works.
+CSRF = {"X-Requested-With": "1"}
+
+
+async def login(client, user, password, mfa_secret=None):
+    """Log ``user`` in over HTTP (handles the MFA hop when enabled). Promoted
+    at R-2-wizard so new HTTP test modules import it (``from tests.conftest
+    import CSRF, login``) instead of re-declaring a per-file copy; the six
+    pre-existing duplicates are left untouched (zero churn on a green suite)."""
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={"identifier": user.email, "password": password},
+        headers=CSRF,
+    )
+    if resp.json().get("status") == "mfa_required":
+        import pyotp
+
+        resp = await client.post(
+            "/api/v1/auth/mfa/verify",
+            json={
+                "mfa_token": resp.json()["mfa_token"],
+                "code": pyotp.TOTP(mfa_secret).now(),
+            },
+            headers=CSRF,
+        )
+    return resp
+
 
 @pytest.fixture(scope="session", autouse=True)
 def migrated_db():

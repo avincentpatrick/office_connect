@@ -1,0 +1,169 @@
+"""Wire schemas for the reimbursement HTTP surface (api-standards §3).
+
+Plain pydantic models, hand-mapped in ``api/deps.py`` (house style — no
+``model_validate``). Money crosses the wire as 2-dp STRINGS, server-computed —
+the client never does arithmetic (api-standards §2); ``totals`` is the compute
+snapshot verbatim. Request models are the wire whitelist: field names mirror
+``services/drafts.py::EDITABLE_FIELDS`` exactly.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+TransportMode = Literal[
+    "plane", "bus", "boat", "taxi", "ride_hail", "gov_vehicle", "other"
+]
+FundSource = Literal["GF_ORS", "TF_BUR"]
+
+_TIME_RE = r"^\d{2}:\d{2}$"
+
+
+# --- Requests ---------------------------------------------------------------
+
+
+class ClaimDraftIn(BaseModel):
+    """Optional prefill accepted at draft creation (same whitelist as PATCH).
+    The router applies ``model_dump(exclude_unset=True)``, so an omitted field
+    is not a write; explicit null on a NOT NULL column means "no change"."""
+
+    activity_id: int | None = None
+    dpo_no: str | None = Field(default=None, max_length=100)
+    dpo_date: date | None = None
+    purpose: str | None = Field(default=None, max_length=2000)
+    destination: str | None = Field(default=None, max_length=2000)
+    destination_region_code: str | None = Field(default=None, max_length=10)
+    date_depart: date | None = None
+    date_return: date | None = None
+    is_within_50km: bool | None = None
+    overnight_stay: bool | None = None
+    fund_source: FundSource | None = None
+    other_total: Decimal | None = Field(default=None, ge=0)
+
+
+class ClaimPatch(ClaimDraftIn):
+    """Partial update of a claimant-held claim — identical whitelist."""
+
+
+class LegIn(BaseModel):
+    """One itinerary row. ``id`` present = update that leg of THIS claim;
+    absent = insert. ``per_diem_*``/``leg_total`` are server-written and not
+    accepted here."""
+
+    id: int | None = None
+    leg_date: date | None = None
+    place: str | None = Field(default=None, max_length=500)
+    destination_region_code: str | None = Field(default=None, max_length=10)
+    time_depart: str | None = Field(default=None, pattern=_TIME_RE)
+    time_arrive: str | None = Field(default=None, pattern=_TIME_RE)
+    transport_mode: TransportMode | None = None
+    fare: Decimal | None = Field(default=None, ge=0)
+    lodging_provided: bool = False
+    meals_provided: bool = False
+
+
+class LegsReplaceIn(BaseModel):
+    legs: list[LegIn] = Field(max_length=50)
+
+
+class CancelIn(BaseModel):
+    comment: str = Field(min_length=1, max_length=2000)
+
+
+# --- Responses ---------------------------------------------------------------
+
+
+class OrgUnitRef(BaseModel):
+    id: int
+    name: str
+
+
+class ClaimantOut(BaseModel):
+    """Directory prefill block (WCAG 2.2 §3.3.7 — the FE displays, never
+    re-asks; ``/auth/me`` carries no staff identity by design)."""
+
+    staff_id: int
+    employee_no: str | None = None
+    full_name: str | None = None
+    position_title: str | None = None
+    employment_status: str | None = None
+    division: OrgUnitRef | None = None
+    section: OrgUnitRef | None = None
+
+
+class LegOut(BaseModel):
+    id: int
+    seq: int
+    leg_date: date | None = None
+    place: str | None = None
+    destination_region_code: str | None = None
+    time_depart: str | None = None
+    time_arrive: str | None = None
+    transport_mode: str | None = None
+    fare: str | None = None
+    per_diem_pct: int | None = None
+    per_diem_amount: str | None = None
+    leg_total: str | None = None
+    lodging_provided: bool
+    meals_provided: bool
+
+
+class ClaimDetail(BaseModel):
+    id: int
+    ref_no: str | None = None
+    kind: str
+    status: str  # legacy NULL rows coalesce to "draft" in the mapper
+    status_label: str
+    next_action: str | None = None
+    holder_kind: str | None = None
+    holder_display: str | None = None
+    holder_since: datetime | None = None
+    claimant: ClaimantOut
+    is_jo_cos: bool
+    activity_id: int | None = None
+    dpo_no: str | None = None
+    dpo_date: date | None = None
+    purpose: str | None = None
+    destination: str | None = None
+    destination_region_code: str | None = None
+    date_depart: date | None = None
+    date_return: date | None = None
+    is_within_50km: bool
+    overnight_stay: bool
+    fund_source: str | None = None
+    other_total: str
+    totals: dict[str, Any] | None = None  # compute snapshot verbatim; {} → None
+    legs: list[LegOut]
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkItemOut(BaseModel):
+    id: int
+    ref_no: str | None = None
+    purpose: str | None = None
+    destination: str | None = None
+    status: str
+    status_label: str
+    next_action: str | None = None
+    holder_kind: str | None = None
+    holder_display: str | None = None
+    holder_since: datetime | None = None
+    days_in_state: int
+    grand: str | None = None
+    updated_at: datetime
+
+
+class MyWorkOut(BaseModel):
+    waiting_on_you: list[WorkItemOut]
+    in_flight: list[WorkItemOut]
+
+
+class RegionOut(BaseModel):
+    region_code: str
+    region_name: str | None = None
+    cluster: str

@@ -2,10 +2,17 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "../components/Button/Button";
 import { Card } from "../components/Card/Card";
+import { CheckboxField } from "../components/CheckboxField/CheckboxField";
+import { ConfirmationPanel } from "../components/ConfirmationPanel/ConfirmationPanel";
 import { ConfirmDialog } from "../components/Dialog/Dialog";
 import { EmptyState } from "../components/EmptyState/EmptyState";
 import { ErrorSummary } from "../components/ErrorSummary/ErrorSummary";
 import { FormField } from "../components/FormField/FormField";
+import { RadioGroupField } from "../components/RadioGroupField/RadioGroupField";
+import { SelectField } from "../components/SelectField/SelectField";
+import { SummaryList } from "../components/SummaryList/SummaryList";
+import { TextareaField } from "../components/TextareaField/TextareaField";
+import { WorkItemRow } from "../components/WorkItemRow/WorkItemRow";
 import { PipelineCard } from "../components/PipelineCard/PipelineCard";
 import { Skeleton } from "../components/Skeleton/Skeleton";
 import { StatusChip } from "../components/StatusChip/StatusChip";
@@ -199,6 +206,74 @@ export function UiFoundationPage() {
             { message: "Enter the fare amount from your official receipt", fieldId: "demo-error" },
           ]}
         />
+      </AdminSection>
+
+      <AdminSection
+        title="15. Form-field family (R-2-wizard)"
+        description="Select / Textarea / Checkbox / RadioGroup share FormField's label/help/error contract via the internal FieldChrome."
+      >
+        <div className="flex max-w-md flex-col gap-4">
+          <SelectField
+            id="demo-select"
+            label="Destination region"
+            help="Sets the EO 77 per-diem cluster."
+            placeholder="Select a region"
+            options={[
+              { value: "13", label: "NCR (13)" },
+              { value: "01", label: "Region I (01)" },
+            ]}
+          />
+          <TextareaField id="demo-textarea" label="Purpose of travel" />
+          <CheckboxField
+            id="demo-checkbox"
+            label="Lodging was provided by the host"
+            hint="EO 77: strips 50% of the day's rate."
+          />
+          <RadioGroupField
+            id="demo-radio"
+            name="demo-radio"
+            legend="Fund source"
+            options={[
+              { value: "GF_ORS", label: "General Fund (ORS)" },
+              { value: "TF_BUR", label: "Trust Fund (BUR)" },
+            ]}
+            error="Select the fund source."
+          />
+        </div>
+      </AdminSection>
+
+      <AdminSection title="16. Summary list (check your answers)">
+        <SummaryList
+          rows={[
+            {
+              key: "Purpose",
+              value: "Regional immunization review",
+              action: { label: "Change", to: "#", visuallyHidden: "purpose" },
+            },
+            { key: "DPO number", value: "" },
+          ]}
+        />
+      </AdminSection>
+
+      <AdminSection title="17. Confirmation panel">
+        <ConfirmationPanel
+          title="Claim submitted"
+          referenceLabel="Your reference number"
+          reference="RB-2026-0001"
+        />
+      </AdminSection>
+
+      <AdminSection title="18. Work-item row (My Work)">
+        <ul className="divide-y divide-border border-t border-b border-border">
+          <WorkItemRow
+            refNo="RB-2026-0001"
+            title="Regional immunization review"
+            status="waiting"
+            statusLabel="For Approval"
+            to="#"
+            meta={`Holder: Maria Santos · 3 days in this step · ${formatPeso("6750.00")}`}
+          />
+        </ul>
       </AdminSection>
 
       <AdminSection

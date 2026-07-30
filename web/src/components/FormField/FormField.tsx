@@ -1,7 +1,8 @@
-import type { InputHTMLAttributes } from "react";
+import type { ComponentPropsWithRef } from "react";
 import { cx } from "../../lib/cx";
+import { FieldChrome } from "./FieldChrome";
 
-export interface FormFieldProps extends InputHTMLAttributes<HTMLInputElement> {
+export interface FormFieldProps extends ComponentPropsWithRef<"input"> {
   id: string;
   label: string;
   help?: string;
@@ -10,48 +11,43 @@ export interface FormFieldProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 /**
- * ui-standards §3.2 — label above, help below the label, actionable validation
- * message below the input. Seed ships a text input; Select/Textarea/date land
- * with the wizard. Pair page-level errors with ErrorSummary (same wording).
+ * ui-standards §3.2 — the text/date input of the Form-field family (chrome in
+ * FieldChrome; SelectField/TextareaField/CheckboxField/RadioGroupField are the
+ * siblings). Props are `ComponentPropsWithRef` so react-hook-form's
+ * `register()` spread — including its callback ref — typechecks (React 19
+ * ref-as-prop). Pair page-level errors with ErrorSummary (same wording).
  */
-export function FormField({ id, label, help, error, required, className, ...input }: FormFieldProps) {
-  const helpId = help ? `${id}-help` : undefined;
-  const errorId = error ? `${id}-error` : undefined;
-  const describedBy = [helpId, errorId].filter(Boolean).join(" ") || undefined;
-
+export function FormField({
+  id,
+  label,
+  help,
+  error,
+  required,
+  className,
+  ...input
+}: FormFieldProps) {
   return (
-    <div className={cx("flex flex-col gap-1", className)}>
-      <label htmlFor={id} className="text-sm font-medium text-text">
-        {label}
-        {required ? (
-          <span aria-hidden="true" className="text-status-blocked">
-            {" "}
-            *
-          </span>
-        ) : null}
-      </label>
-      {help ? (
-        <p id={helpId} className="text-sm text-text-muted">
-          {help}
-        </p>
-      ) : null}
-      <input
-        id={id}
-        required={required}
-        aria-describedby={describedBy}
-        aria-invalid={error ? true : undefined}
-        className={cx(
-          "min-h-11 rounded-md border bg-bg px-3 text-base text-text",
-          error ? "border-status-blocked" : "border-border",
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
-        )}
-        {...input}
-      />
-      {error ? (
-        <p id={errorId} className="text-sm font-medium text-status-blocked">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    <FieldChrome
+      id={id}
+      label={label}
+      help={help}
+      error={error}
+      required={required}
+      className={className}
+    >
+      {(aria) => (
+        <input
+          id={id}
+          required={required}
+          {...aria}
+          className={cx(
+            "min-h-11 rounded-md border bg-bg px-3 text-base text-text",
+            error ? "border-status-blocked" : "border-border",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+          )}
+          {...input}
+        />
+      )}
+    </FieldChrome>
   );
 }

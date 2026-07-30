@@ -17,6 +17,9 @@ that into route-level access control:
   role names.
 - ``require_reauth`` — re-reads the session's ``last_auth_at`` and 401s if the
   credential proof is stale (high-impact actions).
+- ``require_feature(flag_key)`` — the module-surface gate (R-2-wizard): 404
+  unless the feature flag is ON. Declared at router level on module routers so
+  an OFF module is indistinguishable from absent (fail-safe OFF).
 """
 
 from __future__ import annotations
@@ -35,7 +38,12 @@ from office_connect.core.auth.principal import Principal
 from office_connect.core.auth.session_store import SessionStore
 from office_connect.core.config import get_settings
 from office_connect.core.db import SessionLocal
-from office_connect.core.models import Permission, RolePermission, UserRole
+from office_connect.core.models import (
+    FeatureFlag,
+    Permission,
+    RolePermission,
+    UserRole,
+)
 from office_connect.core.org_units import OrgUnitScope, authorize_scoped
 from office_connect.core.time import utc_now
 
@@ -178,6 +186,29 @@ def require_permission(
                     403, "forbidden", "You do not have permission to do that."
                 )
         return principal
+
+    return _dep
+
+
+def require_feature(flag_key: str):
+    """Dependency factory: 404 unless the ``flag_key`` feature flag is ON
+    (``enabled AND is_active`` on a live row — the same rule as the workflow
+    engine's flag gate and ``/api/v1/config``). Fail-safe OFF: a missing row
+    404s too, so a gated module surface is indistinguishable from absent
+    (api-standards §9). Takes a plain string so core stays module-agnostic.
+    Uncached — one indexed select per request; a Redis-backed variant is a
+    recorded deferral. Note the flag blocks the SURFACE only; the workflow
+    engine separately lets in-flight instances finish (workflow-standards §9)."""
+
+    async def _dep() -> None:
+        async with SessionLocal() as session:
+            row = (
+                await session.execute(
+                    select(FeatureFlag).where(FeatureFlag.key == flag_key)
+                )
+            ).scalar_one_or_none()
+        if not (row and row.enabled and row.is_active):
+            raise APIError(404, "not_found", "Not found.")
 
     return _dep
 

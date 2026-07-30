@@ -83,6 +83,12 @@ class ReimbClaim(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     cash_advance_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("reimb_cash_advances.id")
     )
+    # "Other expenses" total (spec §9.3 step 3) — persisted so resubmit recomputes
+    # with it instead of silently resetting to zero (migration 0016). Itemized
+    # expense lines arrive with the R-3 checklist engine.
+    other_total: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), server_default=text("0")
+    )
     # Denormalized read-model of the workflow current state (synced at R-4-app).
     status: Mapped[str | None]
     holder_kind: Mapped[str | None] = mapped_column(HolderKind)

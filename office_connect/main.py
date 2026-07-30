@@ -25,6 +25,11 @@ from office_connect.core.db import engine
 from office_connect.core.logging import configure_logging, request_id_ctx
 from office_connect.core.observability import init_error_tracking
 
+# Module routers mount HERE, the composition root — core/api/router.py may not
+# include them (import-linter: core never imports modules; app → modules is
+# legal, same reasoning as the ops import in lifespan). api-standards §9.
+from office_connect.modules.reimbursement.api import router as reimbursement_router
+
 settings = get_settings()
 
 
@@ -55,6 +60,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, version=APP_VERSION, lifespan=lifespan)
 app.include_router(api_router)
+app.include_router(reimbursement_router)
 
 # Structured error envelope for every raised HTTPException/APIError/validation
 # error (api-standards §3) — the first exception handlers in the app.

@@ -32,6 +32,9 @@ Subcommands:
 - ``ingest-directory`` — ingest a CSS-IS-shaped directory CSV feed (``--org-units``
                       / ``--staff`` paths) via the shared ``core.directory`` ingest
                       service; ``--full`` prunes staff absent from the feed.
+- ``set-flag``      — flip a module feature flag ON/OFF (R-2-wizard; audited
+                      UPDATE through ``oc_app``; the dev-walkthrough + go-live
+                      switch — migration/seed defaults stay fail-safe OFF).
 - ``send-test-email`` — send a test email through the selected driver (or log in
                       dev) to prove the notification seam is wired.
 
@@ -341,6 +344,39 @@ async def _seed_workflows(session: AsyncSession) -> dict[str, Any]:
     }
 
 
+# ------------------------------------------------------------------ set-flag
+async def _set_flag(session: AsyncSession, key: str, enabled: bool) -> dict[str, Any]:
+    """Flip a module feature flag (dev walkthroughs / go-live). Refuses keys
+    that neither exist nor appear in ``DEFAULT_FLAGS`` (typo guard). The write
+    rides the audited ``oc_app`` session (hash-chained UPDATE); the fail-safe
+    OFF defaults in migrations/seeds are untouched. ``/api/v1/config``'s 30 s
+    Redis TTL picks the change up on its own — no cache invalidation here."""
+    row = (
+        await session.execute(select(FeatureFlag).where(FeatureFlag.key == key))
+    ).scalar_one_or_none()
+    known = dict(DEFAULT_FLAGS)
+    if row is None and key not in known:
+        raise RuntimeError(
+            f"unknown flag '{key}' — pass an existing key or one of "
+            f"{sorted(known)}"
+        )
+    was = bool(row and row.enabled and row.is_active)
+    if row is None:
+        row = FeatureFlag(key=key, enabled=enabled, description=known[key])
+        session.add(row)
+    else:
+        row.enabled = enabled
+        if enabled and not row.is_active:
+            row.is_active = True
+    await session.commit()
+    return {
+        "key": key,
+        "was": was,
+        "now": bool(row.enabled and row.is_active),
+        "note": "the /api/v1/config cache TTL is 30 s — clients see it within that",
+    }
+
+
 # --------------------------------------------------------- ingest-directory
 def _read_directory_csv(path: str | None) -> list[dict[str, Any]]:
     """Parse a directory CSV file into row mappings (transport-only; the core
@@ -424,6 +460,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="prune: soft-delete live staff absent from the feed (default: off)",
     )
+    flag = sub.add_parser(
+        "set-flag",
+        help="flip a module feature flag (e.g. set-flag module.reimbursement --on)",
+    )
+    flag.add_argument("key", help="feature flag key, e.g. module.reimbursement")
+    onoff = flag.add_mutually_exclusive_group(required=True)
+    onoff.add_argument("--on", action="store_true", help="enable the flag")
+    onoff.add_argument("--off", action="store_true", help="disable the flag")
     mail = sub.add_parser(
         "send-test-email", help="send a test email via the selected driver"
     )
@@ -461,6 +505,10 @@ def main(argv: list[str] | None = None) -> int:
         result = asyncio.run(_with_app_session(settings, _seed_workflows))
     elif args.command == "promote-admin":
         result = asyncio.run(_with_app_session(settings, _promote_admin))
+    elif args.command == "set-flag":
+        result = asyncio.run(
+            _with_app_session(settings, lambda s: _set_flag(s, args.key, args.on))
+        )
     elif args.command == "ingest-directory":
         result = asyncio.run(
             _with_app_session(

@@ -51,15 +51,18 @@ async def compute_claim_totals(
     session: AsyncSession,
     *,
     claim_id: int,
-    other_total: Decimal = _ZERO,
+    other_total: Decimal | None = None,
     actor_user_id: int | None = None,
 ) -> PerDiemResult:
     """Compute and persist a claim's per-diem breakdown + totals.
 
     Writes ``per_diem_pct``/``per_diem_amount``/``leg_total`` on every live leg and
     the ``totals`` JSONB on the claim, then flushes; the caller owns the commit.
+    ``other_total=None`` (the default) uses the claim's persisted ``other_total``
+    column; an explicit value is persisted to the column first — one source of
+    truth either way, so resubmit's recompute can never lose "other" (R-2-wizard).
     Raises ``services.errors`` factories on any data problem (fail-closed)."""
-    if other_total < 0:
+    if other_total is not None and other_total < 0:
         raise ValueError("other_total cannot be negative")
     set_audit_context(session, actor_id=actor_user_id)
 
@@ -162,7 +165,9 @@ async def compute_claim_totals(
         if ca is not None:
             advance = ca.amount
 
-    other = to_money(other_total)
+    if other_total is not None:
+        claim.other_total = to_money(other_total)
+    other = to_money(claim.other_total)
     grand = to_money(result.per_diem_total + result.transport_total + other)
     to_reimburse, to_refund = settle(grand=grand, advance=advance)
 
