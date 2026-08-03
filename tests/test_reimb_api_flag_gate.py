@@ -61,6 +61,14 @@ async def test_flag_off_404s_the_whole_surface_even_authenticated(
         ("GET", "/api/v1/reimbursement/claims/1/timeline", {}),
         ("GET", "/api/v1/reimbursement/regions", {}),
         ("GET", "/api/v1/reimbursement/return-reasons", {}),
+        # R-3: the documentary packet is claimant-facing work, so it is gated
+        # like the rest of the wizard — only the two decision POSTs are exempt.
+        ("GET", "/api/v1/reimbursement/claims/1/checklist", {}),
+        (
+            "DELETE",
+            "/api/v1/reimbursement/claims/1/checklist/1/attachments/1",
+            {"headers": CSRF},
+        ),
         ("POST", "/api/v1/reimbursement/claims", {"json": {}, "headers": CSRF}),
         # /submit stays gated on purpose: start_instance already refuses new
         # instances flag-OFF, and its resubmit branch is claimant-editing work

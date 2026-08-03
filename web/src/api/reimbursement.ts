@@ -92,6 +92,112 @@ export interface ClaimTotals {
   days: TotalsDay[];
 }
 
+// --- R-3: the documentary packet -------------------------------------------
+
+export type ChecklistGroup =
+  | "authority"
+  | "itinerary"
+  | "proof_of_travel"
+  | "transport"
+  | "lodging_meals"
+  | "report"
+  | "financial";
+
+export type ChecklistEvidence =
+  | "upload"
+  | "generated_doc"
+  | "external_wet_sign"
+  | "data_only";
+
+export type ChecklistItemStatus =
+  | "missing"
+  | "attached"
+  | "generated"
+  | "auto_passed"
+  | "auto_flagged"
+  | "waived";
+
+/** core_attachments.scan_status — a fresh upload lands `pending`. */
+export type ScanStatus = "pending" | "clean" | "infected" | "error";
+
+export interface ChecklistFile {
+  /** reimb_attachments.id — the join row; what DELETE addresses. */
+  id: number;
+  /** core_attachments.id — display only; the client never builds the URL. */
+  attachment_id: number;
+  filename: string;
+  byte_size: number;
+  scan_status: ScanStatus;
+  uploaded_at: string;
+  /** Null until the scan is clean — never offer a link that would 409. */
+  download_path: string | null;
+}
+
+export interface ChecklistItem {
+  catalog_id: number;
+  /** Null until the row is materialized by the first write against it. */
+  item_id: number | null;
+  code: string;
+  label: string;
+  group: ChecklistGroup;
+  evidence: ChecklistEvidence;
+  /** The evaluated `required_rule` — server-side, always. */
+  required: boolean;
+  /** Why this applies, in plain language. Null for unconditional items. */
+  required_because: string | null;
+  status: ChecklistItemStatus;
+  /** Populated when an auto-check flagged; rendered verbatim. */
+  flag_reason: string | null;
+  waiver_reason: string | null;
+  sort: number;
+  files: ChecklistFile[];
+}
+
+export interface ChecklistBlocker {
+  catalog_id: number;
+  item_id: number | null;
+  code: string;
+  label: string;
+  group: ChecklistGroup;
+  evidence: ChecklistEvidence;
+  reason: string;
+}
+
+export interface ChecklistFlag {
+  catalog_id: number;
+  code: string;
+  label: string;
+  check_type: string;
+  reason: string;
+  message: string;
+  detail: Record<string, unknown>;
+  remedy: string | null;
+}
+
+/**
+ * The submit gate + the approver's flags (spec §5.3/§9.4). Always present on
+ * `ClaimDetail` — an engine with nothing to say answers zeroes, so there is one
+ * shape to render, not two.
+ */
+export interface ChecklistSummary {
+  required_total: number;
+  required_done: number;
+  complete: boolean;
+  blocking: ChecklistBlocker[];
+  flags: ChecklistFlag[];
+  /**
+   * VERBATIM the sentence the submit 422 carries. The client authors no gate
+   * wording at all, so there is nothing to drift (ui-standards §3.14).
+   */
+  gate_message: string | null;
+}
+
+/** One shape for the GET and for every mutation — one cache write, no divergence. */
+export interface ChecklistResponse {
+  items: ChecklistItem[];
+  summary: ChecklistSummary;
+}
+
 export interface ClaimDetail {
   id: number;
   ref_no: string | null;
@@ -129,6 +235,13 @@ export interface ClaimDetail {
   row_version: number | null;
   sla_due_at: string | null;
   sla_state: SlaState | null;
+  /**
+   * The submit gate + the approver's flags, embedded for the same reason
+   * `available_actions` is: the button and the reason it is absent must refresh
+   * in ONE response. The item LIST is a sibling query (too big to ride every
+   * claim read). Optional only defensively — the server always answers.
+   */
+  checklist?: ChecklistSummary;
   created_at: string;
   updated_at: string;
 }
@@ -228,6 +341,9 @@ export const reimbKeys = {
   myWork: () => [...reimbKeys.all, "my-work"] as const,
   claim: (id: number) => [...reimbKeys.all, "claim", id] as const,
   timeline: (id: number) => [...reimbKeys.all, "claim", id, "timeline"] as const,
+  // Nested under the claim(id) prefix on purpose: one invalidate after a 409
+  // sweeps the claim, its timeline AND its checklist together.
+  checklist: (id: number) => [...reimbKeys.all, "claim", id, "checklist"] as const,
   regions: () => [...reimbKeys.all, "regions"] as const,
   returnReasons: () => [...reimbKeys.all, "return-reasons"] as const,
 };
@@ -320,4 +436,39 @@ export function fetchTimeline(id: number): Promise<TimelineEvent[]> {
 
 export function fetchReturnReasons(): Promise<ReturnReason[]> {
   return api<ReturnReason[]>("/reimbursement/return-reasons");
+}
+
+// --- R-3: the documentary packet -------------------------------------------
+
+export function fetchChecklist(id: number): Promise<ChecklistResponse> {
+  return api<ChecklistResponse>(`/reimbursement/claims/${id}/checklist`);
+}
+
+/**
+ * The one multipart call in the app. `api()` leaves Content-Type unset for a
+ * FormData body so the browser writes its own boundary.
+ */
+export function uploadChecklistFile(
+  id: number,
+  catalogId: number,
+  file: File,
+): Promise<ChecklistResponse> {
+  const body = new FormData();
+  body.append("file", file);
+  return api<ChecklistResponse>(
+    `/reimbursement/claims/${id}/checklist/${catalogId}/attachments`,
+    { method: "POST", body },
+  );
+}
+
+/** `fileId` is the reimb_attachments join row, not the core attachment id. */
+export function removeChecklistFile(
+  id: number,
+  catalogId: number,
+  fileId: number,
+): Promise<ChecklistResponse> {
+  return api<ChecklistResponse>(
+    `/reimbursement/claims/${id}/checklist/${catalogId}/attachments/${fileId}`,
+    { method: "DELETE" },
+  );
 }

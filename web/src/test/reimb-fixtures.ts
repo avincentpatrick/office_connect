@@ -1,6 +1,9 @@
 /** ClaimDetail / My-Work fixtures for the reimbursement page tests. */
 
 import type {
+  ChecklistItem,
+  ChecklistResponse,
+  ChecklistSummary,
   ClaimDetail,
   ClaimTotals,
   MyWorkResponse,
@@ -48,6 +51,9 @@ export function makeClaim(overrides: Partial<ClaimDetail> = {}): ClaimDetail {
     row_version: null,
     sla_due_at: null,
     sla_state: null,
+    // A fresh draft has no checklist yet — the required SET is unknowable
+    // before Money computes (the rules read totals.other and the legs).
+    checklist: makeChecklistSummary(),
     created_at: "2026-07-30T00:00:00Z",
     updated_at: "2026-07-30T00:00:00Z",
     ...overrides,
@@ -123,6 +129,12 @@ export function completeClaim(overrides: Partial<ClaimDetail> = {}): ClaimDetail
     fund_source: "GF_ORS",
     other_total: "250.00",
     totals: makeTotals(),
+    // Money is computed here, so the packet exists — and is satisfied, so
+    // every pre-R-3 Review test still sees an enabled Submit.
+    checklist: makeChecklistSummary({
+      required_total: 2,
+      required_done: 2,
+    }),
     legs: [
       {
         id: 11,
@@ -251,3 +263,104 @@ export const RETURN_REASONS = [
   { id: 1, code: "MISSING_OR", label: "Missing official receipt", category: "missing_doc" },
   { id: 2, code: "PER_DIEM_CALC", label: "Per-diem miscomputed", category: "wrong_amount" },
 ];
+
+// --- R-3: the documentary packet -------------------------------------------
+
+export function makeChecklistSummary(
+  overrides: Partial<ChecklistSummary> = {},
+): ChecklistSummary {
+  const summary: ChecklistSummary = {
+    required_total: 0,
+    required_done: 0,
+    complete: true,
+    blocking: [],
+    flags: [],
+    gate_message: null,
+    ...overrides,
+  };
+  // Keep the fixture self-consistent with the server's own invariant:
+  // blocking is empty IFF required_done === required_total.
+  if (overrides.blocking === undefined) {
+    const missing = summary.required_total - summary.required_done;
+    summary.blocking = Array.from({ length: Math.max(missing, 0) }, (_, i) => ({
+      catalog_id: i + 1,
+      item_id: null,
+      code: i === 0 ? "TO-01" : "CTC-47",
+      label:
+        i === 0
+          ? "Approved Travel Order / Authority to Travel"
+          : "Certificate of Travel Completed (GAM App 47)",
+      group: "authority" as const,
+      evidence: "upload" as const,
+      reason: "missing",
+    }));
+  }
+  summary.complete = summary.blocking.length === 0;
+  if (!summary.complete && overrides.gate_message === undefined) {
+    summary.gate_message =
+      "2 required documents still missing: TO-01 (Approved Travel Order / " +
+      "Authority to Travel), CTC-47 (Certificate of Travel Completed (GAM App " +
+      "47)). Attach them on the Documents step, then submit again.";
+  }
+  return summary;
+}
+
+export function makeChecklistItem(
+  overrides: Partial<ChecklistItem> = {},
+): ChecklistItem {
+  return {
+    catalog_id: 1,
+    item_id: null,
+    code: "TO-01",
+    label: "Approved Travel Order / Authority to Travel",
+    group: "authority",
+    evidence: "upload",
+    required: true,
+    required_because: null,
+    status: "missing",
+    flag_reason: null,
+    waiver_reason: null,
+    sort: 1,
+    files: [],
+    ...overrides,
+  };
+}
+
+/** One item per evidence kind, plus the summary that matches them. */
+export function makeChecklist(
+  overrides: Partial<ChecklistResponse> = {},
+): ChecklistResponse {
+  return {
+    items: [
+      makeChecklistItem(),
+      makeChecklistItem({
+        catalog_id: 3,
+        code: "IOT-45",
+        label: "Itinerary of Travel (GAM App 45)",
+        group: "itinerary",
+        evidence: "generated_doc",
+        sort: 3,
+      }),
+      makeChecklistItem({
+        catalog_id: 4,
+        code: "CTC-47",
+        label: "Certificate of Travel Completed (GAM App 47)",
+        group: "proof_of_travel",
+        evidence: "external_wet_sign",
+        sort: 4,
+      }),
+    ],
+    summary: makeChecklistSummary({ required_total: 2, required_done: 0 }),
+    ...overrides,
+  };
+}
+
+/** A claim whose Documents step is outstanding — the submit gate's fixture. */
+export function documentsPending(
+  overrides: Partial<ClaimDetail> = {},
+): ClaimDetail {
+  return completeClaim({
+    checklist: makeChecklistSummary({ required_total: 2, required_done: 0 }),
+    ...overrides,
+  });
+}

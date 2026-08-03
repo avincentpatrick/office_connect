@@ -6,9 +6,27 @@ mutation path onto the shared workflow engine (submit / act / status sync /
 holder resolution); ``drafts`` mutates the claimant-held business fields
 (R-2-wizard — never status/holder); ``notify`` delivers the holder-only SLA
 nudges; ``status`` is the claim-status vocabulary (engine state codes + labels
-+ next-action copy).
++ next-action copy); ``checklist`` + ``checklist_facts`` + ``attachments``
+materialize the documentary packet over core-service #7 and take uploads
+through core-service #2 (R-3).
 """
 
+from office_connect.modules.reimbursement.services.checklist import (
+    ChecklistRow,
+    ChecklistView,
+    assert_packet_complete,
+    assert_persisted_packet_complete,
+    attach_evidence,
+    checklist_summary,
+    checklist_view,
+    detach_evidence,
+    persisted_packet_complete,
+    refresh_checklist,
+)
+from office_connect.modules.reimbursement.services.checklist_facts import (
+    FACTS_VERSION,
+    build_claim_facts,
+)
 from office_connect.modules.reimbursement.services.compute import (
     TOTALS_VERSION,
     compute_claim_totals,
@@ -44,21 +62,33 @@ from office_connect.modules.reimbursement.services.per_diem import (
 
 __all__ = [
     "EDITABLE_FIELDS",
+    "FACTS_VERSION",
     "TOTALS_VERSION",
+    "ChecklistRow",
+    "ChecklistView",
     "ConfigRow",
     "DayBreakdown",
     "LegInput",
     "PerDiemResult",
     "RateRow",
     "RegionRow",
+    "assert_packet_complete",
+    "assert_persisted_packet_complete",
+    "attach_evidence",
+    "build_claim_facts",
     "cancel_draft_claim",
+    "checklist_summary",
+    "checklist_view",
     "claim_action",
     "compute_claim_totals",
     "compute_per_diem",
     "config_working_days",
     "create_draft_claim",
+    "detach_evidence",
     "notify_escalation",
+    "persisted_packet_complete",
     "recompute_totals",
+    "refresh_checklist",
     "replace_legs",
     "resolve_holder",
     "settle",

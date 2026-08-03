@@ -31,7 +31,15 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (!SAFE_METHODS.has(method)) headers.set("X-Requested-With", "fetch");
-  if (init.body != null && !headers.has("Content-Type")) {
+  // FormData is exempt: only the browser knows the multipart boundary it is
+  // about to generate, so a hand-set Content-Type breaks the upload. FormData is
+  // the only non-JSON body this app sends — a speculative Blob/URLSearchParams
+  // allowlist would be untested code (api-standards §6).
+  if (
+    init.body != null &&
+    !headers.has("Content-Type") &&
+    !(init.body instanceof FormData)
+  ) {
     headers.set("Content-Type", "application/json");
   }
 

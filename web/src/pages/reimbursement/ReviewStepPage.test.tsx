@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ClaimDetail } from "../../api/reimbursement";
 import { renderRoutes, stubFetch } from "../../test/harness";
-import { completeClaim } from "../../test/reimb-fixtures";
+import { completeClaim, documentsPending } from "../../test/reimb-fixtures";
 import { ClaimConfirmationPage } from "./ClaimConfirmationPage";
 import { ReviewStepPage } from "./ReviewStepPage";
 
@@ -86,5 +86,71 @@ describe("ReviewStepPage", () => {
     );
     expect(screen.getByText("RB-2026-0001")).toBeInTheDocument();
     expect(screen.getByText(/Maria Santos/)).toBeInTheDocument();
+  });
+});
+
+describe("the documentary submit gate (spec §2 / §9.3 step 5)", () => {
+  it("disables submit and lists every blocking document inline", async () => {
+    const claim = documentsPending();
+    stubFetch({ "GET /api/v1/reimbursement/claims/7": () => ({ body: claim }) });
+    renderRoutes(ROUTES, "/reimbursement/claims/7/review");
+
+    const button = await screen.findByRole("button", { name: "Submit claim" });
+    // Visible, so the goal stays legible; disabled, per the spec's wording.
+    expect(button).toBeDisabled();
+
+    // The reason is the SERVER's sentence, verbatim, and is id-linked to the
+    // button so it is not lost to a disabled control's missing focus.
+    const heading = screen.getByText(claim.checklist!.gate_message!);
+    expect(button).toHaveAttribute("aria-describedby", heading.id);
+
+    // Every blocker links to its own fix on the Documents step.
+    const link = screen.getByRole("link", {
+      name: "Approved Travel Order / Authority to Travel",
+    });
+    expect(link).toHaveAttribute(
+      "href",
+      "/reimbursement/claims/7/documents#checklist-item-1",
+    );
+  });
+
+  it("enables submit once the packet is clear", async () => {
+    stubFetch({
+      "GET /api/v1/reimbursement/claims/7": () => ({ body: completeClaim() }),
+    });
+    renderRoutes(ROUTES, "/reimbursement/claims/7/review");
+    expect(await screen.findByRole("button", { name: "Submit claim" })).toBeEnabled();
+  });
+
+  it("surfaces a 422 from the gate verbatim and re-reads the claim", async () => {
+    let reads = 0;
+    stubFetch({
+      "GET /api/v1/reimbursement/claims/7": () => {
+        reads += 1;
+        return { body: completeClaim() };
+      },
+      "POST /api/v1/reimbursement/claims/7/submit": () => ({
+        status: 422,
+        body: {
+          error: {
+            code: "reimb_packet_incomplete",
+            message:
+              "1 required document still missing: TO-01 (Approved Travel Order). Attach them on the Documents step, then submit again.",
+          },
+        },
+      }),
+    });
+    renderRoutes(ROUTES, "/reimbursement/claims/7/review");
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Submit claim" }),
+    );
+
+    expect(
+      await screen.findByText(/1 required document still missing/),
+    ).toBeInTheDocument();
+    // The panel may be empty precisely because we believed it was clear —
+    // refetching is what makes the path appear.
+    await waitFor(() => expect(reads).toBeGreaterThan(1));
   });
 });

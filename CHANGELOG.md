@@ -12,6 +12,32 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-3 — the checklist decides what a complete claim is** (2026-08-03):
+  the wizard gains a fifth step, **Documents**, and it is the packet screen the
+  whole module was built around. Your required documents are generated from the
+  COA checklist **and from your own claim**: pick taxi on a leg and the
+  reimbursement expense receipt appears; enter other expenses and the lodging
+  receipt appears; a job-order claimant is asked for the head-of-office
+  certification and nobody else is. Each one says why it applies, in plain
+  language. Upload a scan or a photo — drag it in, or take it with your phone
+  camera — and the item ticks over, with an always-visible line telling you where
+  you are ("2 of 3 required items done"). **A claim can no longer be submitted
+  with a required document missing.** Submit names exactly what is absent and
+  links you straight to it, and a refused submit costs you nothing: no reference
+  number is burned and nothing enters the approval chain. Files are checked for
+  viruses in the background; yours counts towards the packet the moment it is
+  saved, and we say so rather than pretending it is ready to open. **Approvers
+  now see the automatic checks.** A fare over the ₱300 no-receipt limit raises an
+  amber callout above the decision buttons, with the reason spelled out — you can
+  still approve, and the confirmation says plainly that approving past a flag is
+  recorded against your name. You can never approve past a *missing* document:
+  the button is withheld and a red callout explains why, with **Return** always
+  available. Claim files are readable only by people who may read that claim, and
+  are filed under the 10-year records-retention class. Verified: **pytest 616
+  (+146) on a clean database, lint-imports 3/3, migration `0017` reversible, FE
+  gate green (137 tests, +41)**, and a 19-check live smoke driving the whole
+  journey — refused submit, upload, submit, holder-scoped download, approve past
+  a flag.
 - **Stage C R-4-screens — approvers can now clear their queue, from a phone**
   (2026-08-03): the other half of the claim's life. A claim waiting on you shows
   **Approve** and **Return** on the claim page itself, pinned to the bottom of the

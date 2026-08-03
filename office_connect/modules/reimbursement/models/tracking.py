@@ -37,7 +37,11 @@ class ReimbAttachment(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
         BigInteger, ForeignKey("reimb_checklist_items.id")
     )
     custody: Mapped[str] = mapped_column(AttachmentCustody, server_default="scanned")
-    retention_class: Mapped[str] = mapped_column(server_default="financial_10yr")
+    # MUST be a key of core.attachments.retention.RETENTION_CLASSES — an unknown
+    # class makes retain_until() fail safe to None forever, so the shipped
+    # 'financial_10yr' default silently made every claim file permanently
+    # non-disposable and mislabeled in the disposal report (fixed in 0017).
+    retention_class: Mapped[str] = mapped_column(server_default="financial_dv_10y")
     notes: Mapped[str | None] = mapped_column(Text)
 
 

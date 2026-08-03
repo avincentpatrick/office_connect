@@ -69,15 +69,28 @@ export function actionLabel(action: ClaimAction, status: ClaimStatus): string {
 }
 
 /** The plain-language consequence the approve confirm states (ui-standards §3.10). */
-export function approveConsequence(status: ClaimStatus): string {
-  switch (status) {
-    case "admin_review":
-      return "The packet leaves the bureau and goes to FMS for payment processing. You cannot pull it back.";
-    case "handed_to_fms":
-      return "This closes the claim as paid. It becomes read-only for everyone.";
-    default:
-      return "The claim moves to the next approver and leaves your queue.";
-  }
+export function approveConsequence(
+  status: ClaimStatus,
+  flagCount = 0,
+): string {
+  const base = (() => {
+    switch (status) {
+      case "admin_review":
+        return "The packet leaves the bureau and goes to FMS for payment processing. You cannot pull it back.";
+      case "handed_to_fms":
+        return "This closes the claim as paid. It becomes read-only for everyone.";
+      default:
+        return "The claim moves to the next approver and leaves your queue.";
+    }
+  })();
+  if (flagCount === 0) return base;
+  // Spec §9.4's "(logged)" turned into informed consent: the confirm sheet is
+  // where §3.10's "state the consequence in plain language" meets it.
+  const subject =
+    flagCount === 1
+      ? "1 automatic check is"
+      : `${flagCount} automatic checks are`;
+  return `${subject} flagged on this claim. Approving past a flag is recorded against your name. ${base}`;
 }
 
 export function workItemTitle(item: WorkItem): string {

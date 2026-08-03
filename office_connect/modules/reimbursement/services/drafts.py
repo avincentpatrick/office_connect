@@ -99,9 +99,16 @@ def _assert_editable(claim: ReimbClaim) -> None:
         raise errors.claim_not_editable()
 
 
-async def _owned_editable_claim(
+async def owned_editable_claim(
     session: AsyncSession, *, claim_id: int, actor_user_id: int
 ) -> ReimbClaim:
+    """Lock a claim the actor owns and may still edit, or raise.
+
+    Public since R-3: the checklist router needs exactly this guard for uploads
+    (editing the packet IS editing the claim), and the FOR UPDATE lock it takes
+    is also what serializes concurrent materialization behind the new
+    ``(claim_id, catalog_id)`` unique index.
+    """
     claim = await _locked_claim(session, claim_id)
     # Ownership BEFORE editability: the 409-vs-403 distinction would otherwise
     # hand any staff user (global reimb.claim.create grant) an existence-plus-
@@ -126,7 +133,7 @@ async def update_draft_fields(
     ownership/state/reference problems; unknown field names are a programmer
     error (the schema is the wire whitelist) and raise ``ValueError``."""
     set_audit_context(session, actor_id=actor_user_id)
-    claim = await _owned_editable_claim(
+    claim = await owned_editable_claim(
         session, claim_id=claim_id, actor_user_id=actor_user_id
     )
 
@@ -181,7 +188,7 @@ async def replace_legs(
     them. A gov-vehicle leg with a fare is stored permissively and fail-closes
     at compute (``reimb_gov_vehicle_fare``)."""
     set_audit_context(session, actor_id=actor_user_id)
-    claim = await _owned_editable_claim(
+    claim = await owned_editable_claim(
         session, claim_id=claim_id, actor_user_id=actor_user_id
     )
 
@@ -240,7 +247,7 @@ async def recompute_totals(
     """The money step's refresh: the same owner+editable guard as every draft
     write, then delegate to ``compute_claim_totals`` (which reads the persisted
     ``other_total`` column). Flushes; the caller owns the commit."""
-    claim = await _owned_editable_claim(
+    claim = await owned_editable_claim(
         session, claim_id=claim_id, actor_user_id=actor_user_id
     )
     await compute_claim_totals(

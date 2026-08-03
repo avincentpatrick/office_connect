@@ -67,12 +67,12 @@ first**. Required states in parentheses.
 
 | Component | Contract |
 |---|---|
-| **Button** | primary / secondary / danger / disabled / loading. Exactly one primary per screen-moment. |
+| **Button** | primary / secondary / danger / disabled / loading. Exactly one primary per screen-moment. A **gate-disabled** primary must be accompanied by an always-visible, `aria-describedby`-linked explanation of exactly what unblocks it, with a link to each blocker — never a bare disabled button (a disabled control is not focusable, so its description can be skipped). |
 | **Form field** (family) | label above, help text below, validation message states *what to do next* (never just "invalid"). Required marker uniform. The family: text/date input (`FormField`), `SelectField`, `TextareaField`, `CheckboxField`, `RadioGroupField` (fieldset + legend) — one shared label/help/error/aria contract via the internal `FieldChrome` (plumbing, NOT page-usable). |
 | **Card** | title + optional status chip + body + optional action row. |
 | **Tabs** | horizontal, keyboard-navigable; active state via tokens. |
 | **Status chip / badge** | semantic status colors only (§2). |
-| **Task list** (GOV.UK pattern) | the canonical checklist rendering: numbered sections, per-item status tag; drives every checklist screen. |
+| **Task list** (GOV.UK pattern) | the canonical checklist rendering: numbered sections, per-item status tag; drives every checklist screen. Items may carry an optional `detail` line, an in-place `action` slot (for a task completed on the checklist itself rather than on another page), and a DOM `id` for cross-page deep links; `to` and `action` are **mutually exclusive** — an item either navigates or acts. |
 | **Stepper / wizard shell** | linear steps, progress indicator, back-safe. |
 | **Timeline / tracker** | chronological events with actor + timestamp (Manila display). |
 | **Pipeline-board card** | compact card for kanban-style boards. |
@@ -86,6 +86,8 @@ first**. Required states in parentheses.
 | **Work-item row** | linked inbox/list row: reference + title, StatusChip right, one muted meta line; the My-Work rendering (NOT the Pipeline-board card — that is a board `<article>`, no link affordance). |
 | **Chip group** | multi-select picker over a SHORT closed taxonomy: fieldset + legend, chip-styled labels over real checkboxes, selected / unselected / error states. |
 | **Form dialog** | dialog whose body is a form — a decision that needs input before it can be made. Submit does NOT close the dialog; the caller closes it on success. |
+| **File upload** | a real, label-associated `<input type="file">` with a keyboard-reachable drop zone as its `<label>`; drag-and-drop is a mouse-only enhancement over that one control (never a drop-only affordance). States: idle / dragging / busy / error / disabled. Announces completion in a polite live region; resets its value after every emit so the same file can be re-picked. `capture` is opt-in only — on mobile it FORCES the camera and removes the gallery option. |
+| **Callout** | inline, status-coloured aside (§2 semantics) explaining a condition next to the decision it affects. `<section aria-labelledby>`; the status word is `sr-only` text so meaning never rides colour alone (§6). **Does not take focus and is not `role=alert`** — that is Error summary's job. |
 
 > **Inventory amendment 2026-07-28 (R-2-shell):** **Error summary** added as
 > the fourteenth component. master-plan §2 R-2 names it as a deliverable; it is
@@ -122,6 +124,36 @@ first**. Required states in parentheses.
 > wrong, FormDialog for a decision you can.** Both live in
 > `components/Dialog/`. Validation wording inside a FormDialog must match the
 > server's message for the same rule verbatim (§14).
+
+> **Inventory amendment 2026-08-03 (R-3):** rows 20–21 for the documentary
+> packet. **File upload** — the wizard's Documents step needs per-item upload
+> controls, and nothing in the inventory covered a file input. Deliberately no
+> upload percentage: `fetch` exposes no upload progress and forking the one API
+> wrapper onto `XMLHttpRequest` to draw a bar is not worth it; a spinner plus a
+> live region is the honest state. **Callout** — spec §9.4 asks for amber
+> callouts above the approve button. **Error summary was NOT stretched to cover
+> this**: it is `role=alert`, focuses itself on mount, is red, and is headed
+> "There is a problem" — all four are wrong for a non-blocking warning that is
+> present on load, and it would re-steal focus from the decision bar on every
+> render. Card was rejected too (no semantic colour). Rule of thumb: **Error
+> summary for a problem you caused and must fix now; Callout for a condition you
+> should know about while deciding.**
+>
+> **Task list was AMENDED rather than forked.** The §3 row says it "drives every
+> checklist screen", and the reimbursement packet is the module's flagship
+> checklist — building a second component for it would have made the one screen
+> that most needs the pattern the one screen not using it. Passing `ReactNode`
+> into a data-shaped props object follows `SummaryListRow.action`,
+> `Card.actions` and `DetailPage.actions`.
+>
+> **Citation fix (same amendment):** two call sites cited a non-existent
+> "ui-standards §14" for the client/server wording-parity rule. This document
+> has nine sections; the rule is the **Error summary row of §3** — cite it as
+> **§3.14**, as `ErrorSummary.tsx` already did. R-3 strengthens it: where a
+> rule's wording can drift, TRANSPORT the server's sentence on the record
+> (`gate_message` rides `ClaimDetail`) rather than duplicating it client-side. A
+> client-side constant is a fallback only, and must name the backend symbol it
+> mirrors in a comment.
 
 ## 4. Layout templates — LOCKED
 

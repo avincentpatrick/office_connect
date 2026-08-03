@@ -21,6 +21,12 @@ from office_connect.core.models import OrgUnit, Staff, User, WorkflowInstance
 from office_connect.core.money import money_str
 from office_connect.core.org_units import authorize_scoped
 from office_connect.modules.reimbursement.api.schemas import (
+    ChecklistBlockerOut,
+    ChecklistFileOut,
+    ChecklistFlagOut,
+    ChecklistItemOut,
+    ChecklistOut,
+    ChecklistSummaryOut,
     ClaimantOut,
     ClaimDetail,
     LegOut,
@@ -30,7 +36,7 @@ from office_connect.modules.reimbursement.models import (
     ReimbClaim,
     ReimbItineraryLeg,
 )
-from office_connect.modules.reimbursement.services import actions, errors
+from office_connect.modules.reimbursement.services import actions, checklist, errors
 from office_connect.modules.reimbursement.services import status as st
 
 _SCOPED_READ_PERMS = (
@@ -161,6 +167,106 @@ def _leg_out(leg: ReimbItineraryLeg) -> LegOut:
     )
 
 
+# --- R-3: the documentary packet -------------------------------------------
+
+#: Why an item applies, in the claimant's language. The grammar hands back a
+#: machine slug; turning it into prose is a display concern, and it lives here
+#: (not in core) because only the module knows what its own facts MEAN.
+_RULE_PROSE = {
+    "condition_met": "Required because of what you entered on this claim.",
+    "any_satisfied": "Required because of what you entered on this claim.",
+    "all_satisfied": "Required because of what you entered on this claim.",
+}
+
+
+def _blocker_out(item) -> ChecklistBlockerOut:
+    return ChecklistBlockerOut(
+        catalog_id=item.catalog_id,
+        item_id=item.item_id,
+        code=item.code,
+        label=item.label,
+        group=item.group,
+        evidence=item.evidence,
+        reason=item.reason,
+    )
+
+
+def checklist_summary_out(
+    status, *, catalog_labels: dict[int, tuple[str, str]] | None = None
+) -> ChecklistSummaryOut:
+    """Map the engine's ``PacketStatus`` onto the wire.
+
+    ``gate_message`` is built from the SAME error factory the refused submit
+    raises, so the sentence the Review step shows before you press the button
+    and the sentence the 422 carries afterwards are literally one string
+    (ui-standards §3.14 — the client authors no gate wording at all).
+    """
+    labels = catalog_labels or {}
+    return ChecklistSummaryOut(
+        required_total=status.required_total,
+        required_done=status.required_done,
+        complete=status.complete,
+        blocking=[_blocker_out(item) for item in status.blocking],
+        flags=[
+            ChecklistFlagOut(
+                catalog_id=catalog_id,
+                code=labels.get(catalog_id, ("", ""))[0],
+                label=labels.get(catalog_id, ("", ""))[1],
+                check_type=check.type,
+                reason=check.reason,
+                message=check.message,
+                detail=dict(check.detail),
+                remedy=check.remedy,
+            )
+            for catalog_id, check in status.flags
+        ],
+        gate_message=(
+            None
+            if status.complete
+            else errors.packet_incomplete(status.blocking).message
+        ),
+    )
+
+
+def checklist_out(view: checklist.ChecklistView) -> ChecklistOut:
+    """The Documents step's payload — rows plus the gate over them."""
+    labels = {
+        row.plan.catalog.catalog_id: (row.plan.catalog.code, row.plan.catalog.label)
+        for row in view.rows
+    }
+    return ChecklistOut(
+        items=[
+            ChecklistItemOut(
+                catalog_id=row.plan.catalog.catalog_id,
+                item_id=row.item_id,
+                code=row.plan.catalog.code,
+                label=row.plan.catalog.label,
+                group=row.plan.catalog.group,
+                evidence=row.plan.catalog.evidence,
+                required=row.plan.required,
+                required_because=_RULE_PROSE.get(row.plan.rule_reason),
+                status=row.plan.derived_status,
+                flag_reason=(
+                    " ".join(check.message for check in row.plan.flags) or None
+                ),
+                waiver_reason=row.waiver_reason,
+                sort=row.plan.catalog.sort,
+                files=[ChecklistFileOut(**file) for file in row.files],
+            )
+            for row in view.rows
+        ],
+        summary=checklist_summary_out(view.status, catalog_labels=labels),
+    )
+
+
+async def claim_checklist_summary(
+    session: AsyncSession, claim: ReimbClaim
+) -> ChecklistSummaryOut:
+    """The summary embedded on ``ClaimDetail``. Read-only — never materializes."""
+    view = await checklist.checklist_view(session, claim=claim)
+    return checklist_out(view).summary
+
+
 async def claim_detail(
     session: AsyncSession, claim: ReimbClaim, *, actor_user_id: int
 ) -> ClaimDetail:
@@ -217,6 +323,7 @@ async def claim_detail(
         row_version=await actions.instance_row_version(session, claim),
         sla_due_at=sla_due_at,
         sla_state=sla_state,
+        checklist=await claim_checklist_summary(session, claim),
         created_at=claim.created_at,
         updated_at=claim.updated_at,
     )

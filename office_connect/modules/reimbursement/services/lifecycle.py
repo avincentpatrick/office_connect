@@ -56,6 +56,7 @@ from office_connect.modules.reimbursement.models import (
     ReimbReturnReasonCatalog,
     ReimbStatusHistory,
 )
+from office_connect.modules.reimbursement.services import checklist
 from office_connect.modules.reimbursement.services import errors
 from office_connect.modules.reimbursement.services import status as st
 from office_connect.modules.reimbursement.services.compute import compute_claim_totals
@@ -397,6 +398,13 @@ async def submit_claim(
     await compute_claim_totals(
         session, claim_id=claim.id, actor_user_id=actor_user_id
     )
+    # Documentary requirements (core-service #7, R-3). AFTER compute, because
+    # the catalog rules read fresh totals; BEFORE start_instance, because an
+    # incomplete packet must create no workflow instance and must never burn an
+    # RB- number — the same ordering logic that already puts the flag gate here.
+    await checklist.assert_packet_complete(
+        session, claim=claim, actor_user_id=actor_user_id, now=now
+    )
     # Flag gate fires inside start_instance — BEFORE a reference number is
     # burned (numbers are never reused, so order matters).
     instance = await wf.start_instance(
@@ -479,8 +487,21 @@ async def claim_action(
         await compute_claim_totals(
             session, claim_id=claim.id, actor_user_id=actor_user_id
         )
+        # A return is very often "you're missing a document", so resubmit gets
+        # the same gate as submit — re-materialized, because the claimant has
+        # been editing and the applicable set may have changed.
+        await checklist.assert_packet_complete(
+            session, claim=claim, actor_user_id=actor_user_id, now=now
+        )
         instance.amount = to_money(claim.totals["grand"])
         await session.flush()
+
+    if action == "approve":
+        # Spec §9.4: an approver may approve past a FLAG, never past a missing
+        # required item. Persisted rows only — see the service docstring for why
+        # re-materializing mid-approval would violate "in-flight always
+        # finishes" (workflow-standards §9).
+        await checklist.assert_persisted_packet_complete(session, claim=claim)
 
     key = idempotency_key or (
         f"{action}:{claim.id}:{instance.revision_no}"

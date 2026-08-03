@@ -8,16 +8,18 @@ import {
 } from "../../api/reimbursement";
 import { ApiError } from "../../api/http";
 import { Button } from "../../components/Button/Button";
+import { Callout } from "../../components/Callout/Callout";
 import { ChipGroup } from "../../components/ChipGroup/ChipGroup";
 import { ConfirmDialog } from "../../components/Dialog/Dialog";
 import { FormDialog } from "../../components/Dialog/FormDialog";
 import { ErrorSummary } from "../../components/ErrorSummary/ErrorSummary";
 import { TextareaField } from "../../components/TextareaField/TextareaField";
 import { toast } from "../../components/Toast/toast-bus";
+import { EMPTY_CHECKLIST_SUMMARY } from "./checklist-status";
 import { actionLabel, approveConsequence } from "./claim-status";
 import { useReturnReasons } from "./use-claim";
 
-/** Wording shared by the client-side guard and the server's 422 (ui-standards §14). */
+/** Wording shared by the client-side guard and the server's 422 (ui-standards §3.14). */
 const NO_REASON_MESSAGE = "Select at least one reason for returning this claim.";
 const NO_COMMENT_MESSAGE =
   "Explain what needs fixing — the claimant sees this comment.";
@@ -108,14 +110,64 @@ export function ClaimActions({ claim }: { claim: ClaimDetail }) {
     sendBack.mutate();
   };
 
+  const checklist = claim.checklist ?? EMPTY_CHECKLIST_SUMMARY;
+  const flags = checklist.flags;
+  const blocking = checklist.blocking;
+
   // Below the hooks, never above them: the same component renders for a
   // claimant (nothing on offer) and an approver (two buttons), so bailing out
   // early would change the hook order between those two renders.
-  if (!canApprove && !canReturn) return null;
+  //
+  // The callouts must SURVIVE the "no actions on offer" case, because that is
+  // exactly when an approver most needs to know why: the server withholds
+  // `approve` when a required document is missing, and a vanished button with
+  // no explanation is the §9.1-principle-4 failure this whole increment exists
+  // to prevent. Bail out only when there is nothing at all to say.
+  if (!canApprove && !canReturn && flags.length === 0 && blocking.length === 0) {
+    return null;
+  }
 
   return (
     <div className="flex flex-col gap-3">
       {pageError ? <ErrorSummary errors={[{ message: pageError }]} /> : null}
+
+      {/* Red before amber: a hard stop outranks a warning. */}
+      {blocking.length > 0 ? (
+        <Callout status="blocked" title="Required documents are missing">
+          <p>This claim cannot be approved until the claimant attaches them.</p>
+          <ul className="mt-1 flex list-disc flex-col gap-1 pl-5">
+            {blocking.map((item) => (
+              <li key={item.catalog_id}>{item.label}</li>
+            ))}
+          </ul>
+        </Callout>
+      ) : null}
+
+      {/* Spec §9.4 — flagged auto-checks render as amber callouts above the
+          buttons. A flag NEVER disables approving; it informs the decision. */}
+      {flags.length > 0 ? (
+        <Callout
+          status="warn"
+          title={
+            flags.length === 1
+              ? "1 automatic check flagged"
+              : `${flags.length} automatic checks flagged`
+          }
+        >
+          <p>
+            You can still approve. Approving past a flag is recorded against
+            your name.
+          </p>
+          <ul className="mt-1 flex list-disc flex-col gap-1 pl-5">
+            {flags.map((flag) => (
+              <li key={`${flag.catalog_id}-${flag.check_type}`}>
+                <span className="font-medium">{flag.label}</span> — {flag.message}
+              </li>
+            ))}
+          </ul>
+        </Callout>
+      ) : null}
+
       {/* Exactly one primary per screen-moment (ui-standards §3.1): approving
           is the expected path, returning is the exception. */}
       <div className="flex gap-2">
@@ -136,7 +188,7 @@ export function ClaimActions({ claim }: { claim: ClaimDetail }) {
               </Button>
             }
             title={actionLabel("approve", claim.status)}
-            consequence={approveConsequence(claim.status)}
+            consequence={approveConsequence(claim.status, flags.length)}
             confirmLabel={actionLabel("approve", claim.status)}
             onConfirm={() => approve.mutate()}
           />

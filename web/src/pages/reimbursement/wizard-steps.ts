@@ -9,11 +9,16 @@
 import type { ClaimDetail } from "../../api/reimbursement";
 import type { TaskListSection } from "../../components/TaskList/TaskList";
 import type { SemanticStatus } from "../../components/StatusChip/StatusChip";
+import {
+  EMPTY_CHECKLIST_SUMMARY,
+  checklistProgress,
+} from "./checklist-status";
 
 export const WIZARD_STEPS = [
   { slug: "trip", label: "Trip" },
   { slug: "itinerary", label: "Itinerary" },
   { slug: "money", label: "Money" },
+  { slug: "documents", label: "Documents" },
   { slug: "review", label: "Review and submit" },
 ] as const;
 
@@ -53,6 +58,20 @@ export function stepStatus(claim: ClaimDetail): Record<StepSlug, StepState> {
   const moneyStarted = claim.fund_source !== null;
   const submitted = claim.status !== "draft" && claim.status !== "returned";
 
+  // R-3. Fail-OPEN when the server sends no summary: the client blocking where
+  // the server would allow strands the user with no path (spec §9.1 principle
+  // 4), while the client allowing where the server blocks costs one round trip
+  // and lands in an ErrorSummary carrying the server's own words.
+  const checklist = claim.checklist ?? EMPTY_CHECKLIST_SUMMARY;
+  const documentsDone = checklist.required_done >= checklist.required_total;
+  const documentsStarted = checklist.required_done > 0;
+  // The required SET is unknowable before Money computes — the catalog rules
+  // read totals.other, the leg transport modes and is_jo_cos (spec §5.3). But
+  // once the checklist exists it must never re-close: a totals edit clears the
+  // snapshot server-side, and a step already holding the claimant's uploads
+  // saying "cannot start yet" would be a lie.
+  const checklistMaterialized = checklist.required_total > 0;
+
   return {
     trip: tripDone ? "done" : tripStarted ? "in_progress" : "not_started",
     itinerary: !tripDone ? "blocked" : itineraryDone ? "done" : "not_started",
@@ -63,6 +82,17 @@ export function stepStatus(claim: ClaimDetail): Record<StepSlug, StepState> {
         : moneyStarted
           ? "in_progress"
           : "not_started",
+    documents:
+      !moneyDone && !checklistMaterialized
+        ? "blocked"
+        : documentsDone
+          ? "done"
+          : documentsStarted
+            ? "in_progress"
+            : "not_started",
+    // Documents deliberately absent from the Review gate: spec §9.3 step 5 says
+    // "Submit disabled until required items clear, with the blocking items
+    // listed inline" — the PAGE is reachable, the BUTTON is what is gated.
     review: submitted
       ? "done"
       : tripDone && itineraryDone && moneyDone
@@ -92,6 +122,7 @@ const STEP_STATE_PRESENTATION: Record<
 /** The wizard sidebar — every linked item IS the save-and-return re-entry. */
 export function buildTaskSections(claim: ClaimDetail): TaskListSection[] {
   const status = stepStatus(claim);
+  const checklist = claim.checklist ?? EMPTY_CHECKLIST_SUMMARY;
   return [
     {
       title: "Your claim",
@@ -102,6 +133,12 @@ export function buildTaskSections(claim: ClaimDetail): TaskListSection[] {
           status: presentation.status,
           statusLabel: presentation.label,
           to: presentation.linked ? stepPath(claim.id, step.slug) : undefined,
+          // Spec §9.1's "always-visible progress line", carried in the rail on
+          // every step page rather than only on Documents itself.
+          hint:
+            step.slug === "documents" && checklist.required_total > 0
+              ? checklistProgress(checklist)
+              : undefined,
         };
       }),
     },

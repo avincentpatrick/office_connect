@@ -22,6 +22,7 @@ from sqlalchemy import select
 
 from office_connect.modules.reimbursement.models import ReimbReturnEvent
 from tests.conftest import CSRF, login
+from tests.reimb_checklist_helpers import satisfy_packet_over_http
 from tests.reimb_lifecycle_helpers import ensure_reimb_workflow
 from tests.reimbursement_helpers import make_staff
 from tests.workflow_helpers import grant_scoped_role, make_org_unit
@@ -77,6 +78,8 @@ async def _submitted_over_http(client, app_session, make_user):
         },
         headers=CSRF,
     )
+    # The 5th wizard step (R-3): submit refuses an incomplete packet.
+    await satisfy_packet_over_http(client, cid)
     submitted = await client.post(f"{BASE}/claims/{cid}/submit", headers=CSRF)
     assert submitted.status_code == 200, submitted.text
 
@@ -256,6 +259,8 @@ async def test_segregation_is_filtered_from_the_action_set_not_only_enforced(
         },
         headers=CSRF,
     )
+    # The 5th wizard step (R-3): submit refuses an incomplete packet.
+    await satisfy_packet_over_http(client, cid)
     submitted = await client.post(f"{BASE}/claims/{cid}/submit", headers=CSRF)
     assert submitted.status_code == 200, submitted.text
     # Approve is withheld even though the chief holds the gate permission…

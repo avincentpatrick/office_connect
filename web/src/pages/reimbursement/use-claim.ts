@@ -5,6 +5,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
+  fetchChecklist,
   fetchClaim,
   fetchMyWork,
   fetchRegions,
@@ -54,5 +55,14 @@ export function useReturnReasons() {
     queryKey: reimbKeys.returnReasons(),
     queryFn: fetchReturnReasons,
     staleTime: 5 * 60_000, // seeded taxonomy
+  });
+}
+
+export function useChecklist(id: number | null) {
+  return useQuery({
+    queryKey: reimbKeys.checklist(id ?? -1),
+    queryFn: () => fetchChecklist(id as number),
+    enabled: id !== null,
+    retry: false,
   });
 }

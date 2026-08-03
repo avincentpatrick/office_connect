@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "../components/Button/Button";
+import { Callout } from "../components/Callout/Callout";
 import { Card } from "../components/Card/Card";
 import { CheckboxField } from "../components/CheckboxField/CheckboxField";
 import { ChipGroup } from "../components/ChipGroup/ChipGroup";
 import { ConfirmationPanel } from "../components/ConfirmationPanel/ConfirmationPanel";
 import { ConfirmDialog } from "../components/Dialog/Dialog";
 import { FormDialog } from "../components/Dialog/FormDialog";
+import { FileUpload } from "../components/FileUpload/FileUpload";
 import { EmptyState } from "../components/EmptyState/EmptyState";
 import { ErrorSummary } from "../components/ErrorSummary/ErrorSummary";
 import { FormField } from "../components/FormField/FormField";
@@ -35,6 +37,7 @@ export function UiFoundationPage() {
   const [fieldValue, setFieldValue] = useState("");
   const [chips, setChips] = useState<string[]>(["1"]);
   const [formDialogOpen, setFormDialogOpen] = useState(false);
+  const [demoUpload, setDemoUpload] = useState<string>();
 
   return (
     <AdminPage title="UI foundation">
@@ -313,6 +316,31 @@ export function UiFoundationPage() {
         >
           <TextareaField id="demo-dialog-comment" label="What needs fixing?" />
         </FormDialog>
+      </AdminSection>
+
+      <AdminSection title="21. File upload (R-3)">
+        <FileUpload
+          id="demo-upload"
+          label="Upload your travel order"
+          help="Attach a scan or a photo."
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          status={demoUpload}
+          onFiles={(files) => setDemoUpload(`${files[0].name} attached.`)}
+        />
+      </AdminSection>
+
+      <AdminSection title="22. Callout (R-3)">
+        <div className="flex flex-col gap-3">
+          <Callout status="warn" title="1 automatic check flagged">
+            <p>
+              You can still approve. Approving past a flag is recorded against
+              your name.
+            </p>
+          </Callout>
+          <Callout status="blocked" title="Required documents are missing">
+            <p>This claim cannot be approved until the claimant attaches them.</p>
+          </Callout>
+        </div>
       </AdminSection>
 
       <AdminSection

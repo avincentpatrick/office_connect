@@ -4,6 +4,7 @@ endpoint. Membership is holder/claimant-keyed: nothing leaks across users."""
 from __future__ import annotations
 
 from tests.conftest import CSRF, login
+from tests.reimb_checklist_helpers import satisfy_packet_over_http
 from tests.reimb_lifecycle_helpers import ensure_reimb_workflow
 from tests.reimbursement_helpers import make_staff
 from tests.workflow_helpers import grant_scoped_role, make_org_unit
@@ -77,6 +78,8 @@ async def test_submit_moves_the_claim_to_in_flight_and_the_approver_queue(
                         "fare": "500.00"}]},
         headers=CSRF,
     )
+    # The 5th wizard step (R-3): submit refuses an incomplete packet.
+    await satisfy_packet_over_http(client, cid)
     submitted = await client.post(f"{BASE}/claims/{cid}/submit", headers=CSRF)
     assert submitted.status_code == 200, submitted.text
 

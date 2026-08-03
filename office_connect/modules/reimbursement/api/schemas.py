@@ -133,6 +133,88 @@ class LegOut(BaseModel):
     meals_provided: bool
 
 
+# --- R-3: the documentary packet -------------------------------------------
+
+
+class ChecklistBlockerOut(BaseModel):
+    """One reason submit is refused — everything the UI needs to link to the fix."""
+
+    catalog_id: int
+    item_id: int | None = None
+    code: str
+    label: str
+    group: str
+    evidence: str
+    reason: str = "missing"
+
+
+class ChecklistFlagOut(BaseModel):
+    """An auto-check that flagged. Never blocks (spec §5.3) — it informs."""
+
+    catalog_id: int
+    code: str
+    label: str
+    check_type: str
+    reason: str
+    message: str
+    detail: dict[str, Any] = {}
+    remedy: str | None = None
+
+
+class ChecklistSummaryOut(BaseModel):
+    """The gate's answer + the progress line + the approver's flags.
+
+    Always present on ``ClaimDetail``, never null: an engine with nothing to say
+    answers zeroes, so the client has one shape to render rather than two.
+    """
+
+    required_total: int = 0
+    required_done: int = 0
+    complete: bool = True
+    blocking: list[ChecklistBlockerOut] = []
+    flags: list[ChecklistFlagOut] = []
+    #: Verbatim the sentence the submit 422 carries, so the client never authors
+    #: gate wording and the two can't drift (ui-standards §3.14).
+    gate_message: str | None = None
+
+
+class ChecklistFileOut(BaseModel):
+    id: int  # reimb_attachments.id — what DELETE addresses
+    attachment_id: int  # core_attachments.id — display only
+    filename: str
+    byte_size: int
+    scan_status: str
+    uploaded_at: datetime
+    #: Null until the scan is clean — an unservable file must not offer a link.
+    download_path: str | None = None
+
+
+class ChecklistItemOut(BaseModel):
+    catalog_id: int
+    item_id: int | None = None  # null until the row is materialized on first write
+    code: str
+    label: str
+    group: str
+    evidence: str
+    required: bool
+    #: Why this applies, in plain language. Null for unconditional items.
+    required_because: str | None = None
+    status: str
+    #: Populated when an auto-check flagged; rendered verbatim.
+    flag_reason: str | None = None
+    waiver_reason: str | None = None
+    sort: int = 0
+    files: list[ChecklistFileOut] = []
+
+
+class ChecklistOut(BaseModel):
+    """The Documents step's whole payload — and every mutation's response, so
+    the rows and the progress line always refresh together."""
+
+    items: list[ChecklistItemOut]
+    summary: ChecklistSummaryOut
+
+
 class ClaimDetail(BaseModel):
     id: int
     ref_no: str | None = None
@@ -166,6 +248,11 @@ class ClaimDetail(BaseModel):
     row_version: int | None = None
     sla_due_at: datetime | None = None
     sla_state: str | None = None
+    # --- R-3: the submit gate + the approver's amber flags, on the record they
+    # describe. The item LIST is a sibling endpoint (too big to ride every claim
+    # read); the SUMMARY rides here because the button and the reason it is
+    # absent must refresh in one response.
+    checklist: ChecklistSummaryOut = ChecklistSummaryOut()
     created_at: datetime
     updated_at: datetime
 

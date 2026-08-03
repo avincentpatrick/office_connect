@@ -19,6 +19,10 @@ from office_connect.modules.reimbursement.services import (
     submit_claim,
 )
 from tests.conftest import CSRF, login
+from tests.reimb_checklist_helpers import (
+    satisfy_packet,
+    satisfy_packet_over_http,
+)
 from tests.reimb_lifecycle_helpers import (
     ensure_reimb_workflow,
     return_reason_ids,
@@ -105,6 +109,8 @@ async def test_http_wizard_walk_computes_the_anchor_and_submits_once(
         for leg in computed.json()["legs"]
     )
 
+    # The 5th wizard step (R-3): submit refuses an incomplete packet.
+    await satisfy_packet_over_http(client, cid)
     submitted = await client.post(f"{BASE}/claims/{cid}/submit", headers=CSRF)
     assert submitted.status_code == 200, submitted.text
     body = submitted.json()
@@ -226,6 +232,8 @@ async def test_resubmit_of_a_returned_claim_over_http(
                         "fare": "500.00"}]},
         headers=CSRF,
     )
+    # The 5th wizard step (R-3): submit refuses an incomplete packet.
+    await satisfy_packet_over_http(client, cid)
     first = await client.post(f"{BASE}/claims/{cid}/submit", headers=CSRF)
     assert first.status_code == 200, first.text
     ref = first.json()["ref_no"]
@@ -267,6 +275,9 @@ async def test_submit_requires_ownership_over_http(
     await app_session.commit()
 
     await login(client, intruder, intruder_pw)
+    # No Documents step here: ownership is checked BEFORE the packet gate, so
+    # an intruder is refused for who they are, never for what is missing (the
+    # 403-not-422 ordering is itself the assertion).
     resp = await client.post(f"{BASE}/claims/{cid}/submit", headers=CSRF)
     assert resp.status_code == 403
     assert resp.json()["error"]["code"] == "reimb_not_claim_owner"
@@ -282,6 +293,10 @@ async def test_resubmit_keeps_other_total_regression(
     claim = cast.claim
     claim.other_total = Decimal("250.00")
     await app_session.flush()
+    # "Other expenses" > 0 spawns LOD-01 (spec §9.3 step 3: "each spawns its
+    # conditional checklist items"), so the packet needs satisfying again —
+    # which is the conditional grammar doing its job, not test friction.
+    await satisfy_packet(app_session, claim=claim, actor_user_id=cast.owner.id)
 
     await submit_claim(
         app_session, claim_id=claim.id, actor_user_id=cast.owner.id

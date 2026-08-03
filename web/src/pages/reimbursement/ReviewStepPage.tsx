@@ -17,6 +17,12 @@ import { SummaryList, type SummaryListRow } from "../../components/SummaryList/S
 import { TaskList } from "../../components/TaskList/TaskList";
 import { WizardPage } from "../../layouts/WizardPage";
 import { formatManilaDate, formatPeso } from "../../lib/format";
+import {
+  EMPTY_CHECKLIST_SUMMARY,
+  checklistItemAnchor,
+  checklistProgress,
+  gateMessage,
+} from "./checklist-status";
 import { ClaimStepGuard } from "./ClaimStepGuard";
 import { ClaimTotalsCard } from "./MoneyStepPage";
 import {
@@ -159,16 +165,32 @@ function ReviewForm({ claim }: { claim: ClaimDetail }) {
         },
       ]);
       // A 409 means the claim moved under us — refetch so the guard re-routes.
-      if (error instanceof ApiError && error.status === 409) {
+      // A 422 from the packet gate needs the same pull: the panel below may be
+      // empty precisely because we believed the packet was clear, and refetching
+      // is what makes the path appear (spec §9.1 principle 4).
+      if (
+        error instanceof ApiError &&
+        (error.status === 409 ||
+          (error.status === 422 && error.code === "reimb_packet_incomplete"))
+      ) {
         void queryClient.invalidateQueries({ queryKey: reimbKeys.claim(claim.id) });
       }
     },
   });
 
   const status = stepStatus(claim);
-  const blocking = WIZARD_STEPS.filter(
-    (step) => step.slug !== "review" && status[step.slug] !== "done",
+  const checklist = claim.checklist ?? EMPTY_CHECKLIST_SUMMARY;
+  // `documents` is excluded here because its blockers are enumerated
+  // item-by-item below — listing both the step and its five missing files
+  // would double-count the same problem.
+  const blockingSteps = WIZARD_STEPS.filter(
+    (step) =>
+      step.slug !== "review" &&
+      step.slug !== "documents" &&
+      status[step.slug] !== "done",
   );
+  const blockingItems = checklist.blocking;
+  const blocked = blockingSteps.length > 0 || blockingItems.length > 0;
   const isResubmit = claim.status === "returned";
 
   return (
@@ -177,8 +199,11 @@ function ReviewForm({ claim }: { claim: ClaimDetail }) {
       steps={STEP_LABELS}
       current={stepNumber("review")}
       back={
-        <Link to={stepPath(claim.id, "money")} className="text-sm text-link underline">
-          Back to Money
+        <Link
+          to={stepPath(claim.id, "documents")}
+          className="text-sm text-link underline"
+        >
+          Back to Documents
         </Link>
       }
       taskList={<TaskList sections={buildTaskSections(claim)} />}
@@ -202,14 +227,46 @@ function ReviewForm({ claim }: { claim: ClaimDetail }) {
           <SummaryList rows={moneyRows(claim)} />
           {claim.totals ? <TotalsTable totals={claim.totals} /> : null}
         </section>
+        <section className="flex flex-col gap-2">
+          <h2 className="text-lg font-bold text-text">Documents</h2>
+          {/* Check-your-answers is a SUMMARY; the full packet is one click
+              away, and the blocking items are enumerated in the gate below. */}
+          <SummaryList
+            rows={[
+              {
+                key: "Required documents",
+                value: checklistProgress(checklist),
+                action: {
+                  label: "Change",
+                  to: `${stepPath(claim.id, "documents")}?from=review`,
+                  visuallyHidden: "your documents",
+                },
+              },
+            ]}
+          />
+        </section>
 
-        {blocking.length > 0 ? (
-          <section className="rounded-md border border-status-warn bg-surface p-4">
-            <h2 className="text-base font-bold text-text">
-              Finish these before you submit
+        {/* Spec §9.3 step 5: "Submit disabled until required items clear, with
+            the blocking items listed inline." GOV.UK would keep the button
+            enabled; we follow the spec, but mitigate the a11y cost — the button
+            stays VISIBLE (the goal is legible), the reason sits immediately
+            above it and is aria-describedby-linked, and every blocker links to
+            its own fix. This panel must therefore never be collapsible: a
+            disabled button is not focusable, so some screen readers skip its
+            description. Recorded in the module delta register. */}
+        {blocked ? (
+          <section
+            id="submit-gate"
+            aria-labelledby="submit-gate-heading"
+            className="rounded-md border border-status-blocked bg-surface p-4"
+          >
+            <h2 id="submit-gate-heading" className="text-base font-bold text-text">
+              {blockingItems.length > 0
+                ? gateMessage(checklist)
+                : "Finish these before you submit"}
             </h2>
             <ul className="mt-2 flex list-disc flex-col gap-1 pl-5">
-              {blocking.map((step) => (
+              {blockingSteps.map((step) => (
                 <li key={step.slug}>
                   <Link
                     to={stepPath(claim.id, step.slug)}
@@ -219,20 +276,38 @@ function ReviewForm({ claim }: { claim: ClaimDetail }) {
                   </Link>
                 </li>
               ))}
+              {blockingItems.map((item) => (
+                <li key={item.catalog_id}>
+                  <Link
+                    to={`${stepPath(claim.id, "documents")}#${checklistItemAnchor(
+                      item.catalog_id,
+                    )}`}
+                    className="text-base text-link underline"
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </section>
-        ) : (
-          <div>
-            <Button type="button" loading={submit.isPending} onClick={() => submit.mutate()}>
-              {isResubmit ? "Resubmit claim" : "Submit claim"}
-            </Button>
-            <p className="mt-2 text-sm text-text-muted">
-              {isResubmit
-                ? "Resubmitting recomputes your totals and restarts the approval chain."
-                : "Submitting assigns your RB reference and sends the claim to your division chief."}
-            </p>
-          </div>
-        )}
+        ) : null}
+
+        <div>
+          <Button
+            type="button"
+            disabled={blocked}
+            aria-describedby={blocked ? "submit-gate-heading" : undefined}
+            loading={submit.isPending}
+            onClick={() => submit.mutate()}
+          >
+            {isResubmit ? "Resubmit claim" : "Submit claim"}
+          </Button>
+          <p className="mt-2 text-sm text-text-muted">
+            {isResubmit
+              ? "Resubmitting recomputes your totals and restarts the approval chain."
+              : "Submitting assigns your RB reference and sends the claim to your division chief."}
+          </p>
+        </div>
       </div>
     </WizardPage>
   );

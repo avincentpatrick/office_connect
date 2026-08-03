@@ -167,6 +167,68 @@ def unsupported_claim_action(action: str) -> APIError:
     )
 
 
+# --- R-3 checklist / documentary-requirements errors ------------------------
+
+
+def packet_incomplete(items, *, actor_is_owner: bool = True) -> APIError:
+    """Spec §2: "a claim physically cannot be submitted with a missing required
+    item". The message NAMES the blockers and says what to do next — spec §9.1
+    principle 4 ("never block without a path") makes a bare refusal a defect —
+    and ``details`` carries the full machine-readable list the Documents step
+    deep-links from."""
+    listed = ", ".join(f"{i.code} ({i.label})" for i in items[:5])
+    more = f", and {len(items) - 5} more" if len(items) > 5 else ""
+    remedy = (
+        "Attach them on the Documents step, then submit again."
+        if actor_is_owner
+        else "Return the claim so the claimant can complete the packet."
+    )
+    noun = "document" if len(items) == 1 else "documents"
+    return APIError(
+        422,
+        "reimb_packet_incomplete",
+        f"{len(items)} required {noun} still missing: {listed}{more}. {remedy}",
+        details=[
+            {
+                "catalog_id": i.catalog_id,
+                "item_id": i.item_id,
+                "code": i.code,
+                "label": i.label,
+                "group": i.group,
+                "evidence": i.evidence,
+                "reason": i.reason,
+            }
+            for i in items
+        ],
+    )
+
+
+def unknown_catalog_item(catalog_id: int) -> APIError:
+    return APIError(
+        422,
+        "reimb_unknown_catalog_item",
+        f"Checklist item {catalog_id} is not in the active catalog for this "
+        "claim — refresh the packet and try again.",
+    )
+
+
+def evidence_not_uploadable(code: str, evidence: str) -> APIError:
+    return APIError(
+        422,
+        "reimb_evidence_not_uploadable",
+        f"'{code}' is a {evidence.replace('_', ' ')} item — there is nothing "
+        "for you to upload against it.",
+    )
+
+
+def evidence_not_on_item(attachment_id: int) -> APIError:
+    return APIError(
+        422,
+        "reimb_evidence_not_on_item",
+        f"Attachment {attachment_id} is not filed against that checklist item.",
+    )
+
+
 # --- R-2-wizard draft/API errors --------------------------------------------
 
 

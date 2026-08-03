@@ -298,3 +298,39 @@ the workflow engine.
   the buttons, the CAS token and the data they describe refresh in one response
   with no second query to invalidate and no window where they disagree.
   Additive within v1 (§1), so existing clients are unaffected.
+
+## §9b. A module owns the upload endpoint for its own entity (R-3, 2026-08-03)
+
+> **The module that owns the entity owns its upload route. It reuses
+> `core.attachments` for every byte and never touches a storage driver.**
+
+Core ships `POST /api/v1/attachments` (core-service #2) with a generic
+`holder_kind`/`holder_id` pair. Reimbursement still declares its own
+`POST /claims/{id}/checklist/{catalog_id}/attachments` on the gated module
+router. The reasoning generalizes to DTWIS/QMS/Supply:
+
+- **Atomicity.** Attaching evidence is upload + join row + display mirror +
+  checklist status recompute in ONE transaction. Split across two HTTP calls
+  there is a window in which a stored, scanned, permission-gated file exists
+  with no owner — and if the second call fails, an orphan nobody can find.
+- **Authorization.** The real rule is *"may this actor edit THIS claim's
+  packet"* — owner, and only while the claim is claimant-held. A coarse
+  `attachment.upload` permission cannot express that. Same argument §9 makes for
+  read scoping, applied to writes: coarse at the route, exact in the service.
+- **What stays in core, always.** Validation, magic-byte sniffing, the type
+  allowlist, hashing, the content-addressed store, the ClamAV scan and the
+  image re-encode. A module calls `core.attachments.upload_attachment` and keeps
+  a thin join row for what only it knows (which entity, which checklist item,
+  custody, retention class). Rule 10 — never a second pipeline.
+- **Downloads stay on the core route.** `GET /api/v1/attachments/{id}/content`
+  is the one download path; a module scopes it by registering a holder
+  authorizer (`core.attachments.authz.register_holder_authorizer`), which needs
+  **zero core router change**. Fail-closed: anything the hook raises denies.
+- **Accepted residual** — that core route is not behind `require_feature`, so
+  with a module flag OFF a permitted user can still fetch a file already
+  uploaded. Consistent with §9a's doctrine (the flag gates the module's
+  surface, not core services), and recorded rather than papered over.
+- **Reuse the module's existing write permission** (`reimb.claim.create`) rather
+  than minting one per surface: editing the packet IS editing the claim, exactly
+  like `PATCH /claims/{id}`. The size cap and its deterministic 413 mirror the
+  core route's, so a claimant hitting the limit gets the same answer either way.

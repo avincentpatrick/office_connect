@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expectNoA11yViolations } from "../../test/a11y";
 import { renderRoutes, stubFetch } from "../../test/harness";
@@ -7,6 +7,7 @@ import {
   RETURN_REASONS,
   awaitingApproval,
   completeClaim,
+  makeChecklistSummary,
   makeTimeline,
 } from "../../test/reimb-fixtures";
 import { ClaimPage } from "./ClaimPage";
@@ -274,5 +275,111 @@ describe("ClaimPage — the wizard resume redirect", () => {
     expect(
       await screen.findByRole("heading", { name: /RB-2026-0001 — Travel claim/ }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("ClaimPage — the approver's auto-check callouts (spec §9.4)", () => {
+  const FLAG = {
+    catalog_id: 5,
+    code: "RER-46",
+    label: "Reimbursement Expense Receipt for taxi/no-receipt fares",
+    check_type: "amount_threshold",
+    reason: "amount_over_threshold",
+    message:
+      "₱500.00 is over the ₱300.00 limit set by 'receipts.cenrr_max'. Attach the receipt the higher amount requires.",
+    detail: {},
+    remedy: "require_item:RER",
+  };
+
+  it("renders an amber callout ABOVE the decision buttons and still offers approve", async () => {
+    stubFetch(
+      reads(
+        awaitingApproval({
+          checklist: makeChecklistSummary({
+            required_total: 2,
+            required_done: 2,
+            flags: [FLAG],
+          }),
+        }),
+      ),
+    );
+    renderRoutes(ROUTES, PATH);
+
+    const callout = await screen.findByRole("region", {
+      name: /1 automatic check flagged/,
+    });
+    expect(screen.getByText(new RegExp(FLAG.label))).toBeInTheDocument();
+
+    // A flag never blocks: approve stays on offer (spec §5.3).
+    const approve = screen.getByRole("button", { name: "Approve" });
+    expect(approve).toBeInTheDocument();
+    // …and the callout sits above it.
+    expect(
+      callout.compareDocumentPosition(approve) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("states the consequence of approving past a flag before the tap", async () => {
+    stubFetch(
+      reads(
+        awaitingApproval({
+          checklist: makeChecklistSummary({
+            required_total: 1,
+            required_done: 1,
+            flags: [FLAG],
+          }),
+        }),
+      ),
+    );
+    renderRoutes(ROUTES, PATH);
+    await userEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    // Scoped to the sheet: the callout says it too, and saying it in both
+    // places is the point — inform on the page, re-state before the commit.
+    const sheet = await screen.findByRole("dialog");
+    expect(
+      within(sheet).getByText(/recorded against your name/),
+    ).toBeInTheDocument();
+  });
+
+  it("explains the missing Approve button rather than leaving a silent gap", async () => {
+    // The server withholds `approve` when a required document is missing; a
+    // vanished button with no explanation is the failure this prevents.
+    stubFetch(
+      reads(
+        awaitingApproval({
+          available_actions: ["return"],
+          checklist: makeChecklistSummary({ required_total: 2, required_done: 0 }),
+        }),
+      ),
+    );
+    renderRoutes(ROUTES, PATH);
+
+    expect(
+      await screen.findByRole("region", { name: /Required documents are missing/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+    // The approver's remedy is untouched.
+    expect(screen.getByRole("button", { name: "Return" })).toBeInTheDocument();
+  });
+
+  it("does not steal focus the way an ErrorSummary would", async () => {
+    stubFetch(
+      reads(
+        awaitingApproval({
+          checklist: makeChecklistSummary({
+            required_total: 1,
+            required_done: 1,
+            flags: [FLAG],
+          }),
+        }),
+      ),
+    );
+    renderRoutes(ROUTES, PATH);
+    const callout = await screen.findByRole("region", {
+      name: /1 automatic check flagged/,
+    });
+    expect(callout).not.toHaveFocus();
+    await expectNoA11yViolations(document.body);
   });
 });

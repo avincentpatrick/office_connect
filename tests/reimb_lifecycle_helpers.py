@@ -28,10 +28,15 @@ async def ensure_reimb_workflow(session):
     return version
 
 
-async def trip_claim(session, *, staff, **claim_kw):
+async def trip_claim(session, *, staff, packet=True, owner_user_id=None, **claim_kw):
     """A manila_3day-shaped trip (grand ₱6,500) on an EXISTING staff row —
     the factory in ``reimbursement_trip_factories`` creates its own staff,
-    which here must carry a division for org-unit derivation."""
+    which here must carry a division for org-unit derivation.
+
+    ``packet=True`` (R-3) also satisfies the documentary checklist, because
+    submit now refuses an incomplete packet (spec §2). Pass ``packet=False`` to
+    build a claim that is deliberately unsubmittable — that is the gate's own
+    test fixture, not an oversight."""
     claim = await make_claim(
         session,
         claimant_id=staff.id,
@@ -48,12 +53,19 @@ async def trip_claim(session, *, staff, **claim_kw):
         session, claim_id=claim.id, seq=2, leg_date=JUL3,
         transport_mode="bus", fare="500.00",
     )
+    if packet:
+        from tests.reimb_checklist_helpers import satisfy_packet
+
+        await satisfy_packet(session, claim=claim, actor_user_id=owner_user_id)
     return claim
 
 
-async def standard_cast(session, make_user):
+async def standard_cast(session, make_user, *, packet=True):
     """Office → division tree + owner/approver/admin users + a submittable
-    claim. Callers needing committed data (separate-session tests) commit."""
+    claim. Callers needing committed data (separate-session tests) commit.
+
+    ``packet=False`` leaves the documentary checklist unsatisfied, for tests
+    that exercise the R-3 submit gate itself."""
     office = await make_org_unit(session, kind="office")
     division = await make_org_unit(session, kind="division", parent=office)
 
@@ -70,7 +82,9 @@ async def standard_cast(session, make_user):
     )
 
     await ensure_reimb_workflow(session)
-    claim = await trip_claim(session, staff=staff)
+    claim = await trip_claim(
+        session, staff=staff, packet=packet, owner_user_id=owner.id
+    )
     await session.flush()
     return SimpleNamespace(
         office=office, division=division, staff=staff,

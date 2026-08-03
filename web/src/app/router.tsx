@@ -8,6 +8,7 @@ import { PasswordChangePage } from "../pages/PasswordChangePage";
 import { ClaimConfirmationPage } from "../pages/reimbursement/ClaimConfirmationPage";
 import { ClaimPage } from "../pages/reimbursement/ClaimPage";
 import { ItineraryStepPage } from "../pages/reimbursement/ItineraryStepPage";
+import { DocumentsStepPage } from "../pages/reimbursement/DocumentsStepPage";
 import { MoneyStepPage } from "../pages/reimbursement/MoneyStepPage";
 import { MyWorkPage } from "../pages/reimbursement/MyWorkPage";
 import { ReviewStepPage } from "../pages/reimbursement/ReviewStepPage";
@@ -40,6 +41,7 @@ export const router = createBrowserRouter([
           { path: "claims/:claimId/trip", element: <TripStepPage /> },
           { path: "claims/:claimId/itinerary", element: <ItineraryStepPage /> },
           { path: "claims/:claimId/money", element: <MoneyStepPage /> },
+          { path: "claims/:claimId/documents", element: <DocumentsStepPage /> },
           { path: "claims/:claimId/review", element: <ReviewStepPage /> },
           { path: "claims/:claimId/confirmation", element: <ClaimConfirmationPage /> },
         ],

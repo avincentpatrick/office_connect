@@ -27,6 +27,7 @@ from office_connect.core import workflow as wf
 from office_connect.core.models import WorkflowInstance, WorkflowStep
 from office_connect.core.time import utc_now
 from office_connect.modules.reimbursement.models import ReimbClaim
+from office_connect.modules.reimbursement.services import checklist
 from office_connect.modules.reimbursement.services import status as st
 from office_connect.modules.reimbursement.services.lifecycle import is_claim_owner
 
@@ -55,13 +56,26 @@ async def claim_actions(
             return []
         if not await is_claim_owner(session, claim, actor_user_id):
             return []
+        # `submit` stays on offer even with an incomplete packet: the Review
+        # step renders the button plus the blocking list inline (spec §9.3 step
+        # 5), so withholding the verb would make the goal invisible. `approve`
+        # is the opposite case — see below.
         return ["submit", "cancel"]
-    return await wf.available_actions(
+
+    verbs = await wf.available_actions(
         session,
         instance_id=claim.workflow_instance_id,
         actor_user_id=actor_user_id,
         now=now,
     )
+    if "approve" in verbs and not await checklist.persisted_packet_complete(
+        session, claim=claim
+    ):
+        # The R-4-screens doctrine again: never offer a button certain to fail.
+        # The approver sees a red callout explaining the gap instead, and
+        # `return` — their actual remedy — is untouched.
+        verbs = [verb for verb in verbs if verb != "approve"]
+    return verbs
 
 
 def sla_state(due_at: datetime | None, *, now: datetime) -> str | None:

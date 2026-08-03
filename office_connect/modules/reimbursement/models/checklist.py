@@ -60,6 +60,17 @@ class ReimbChecklistItem(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     __table_args__ = (
         Index("ix_reimb_checklist_items_claim_id", "claim_id"),
         Index("ix_reimb_checklist_items_catalog_id", "catalog_id"),
+        # At most ONE live item per (claim, catalog row) — the invariant the
+        # engine's reconciliation assumes. The claim's FOR UPDATE lock is the
+        # app-level serializer; this is the DB belt behind it (0017, same
+        # pattern as 0015's claim↔instance index).
+        Index(
+            "uq_reimb_checklist_items_claim_catalog",
+            "claim_id",
+            "catalog_id",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     claim_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("reimb_claims.id"))
@@ -67,6 +78,16 @@ class ReimbChecklistItem(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
         BigInteger, ForeignKey("reimb_checklist_catalogs.id")
     )
     status: Mapped[str] = mapped_column(ChecklistItemStatus, server_default="missing")
+    # Which circular revision this item was materialized against (0017).
+    # master-plan §1.1 #7 requires catalog versions pinned to the issuing
+    # revision, and `apply_dataset` upserts catalog rows IN PLACE — without a
+    # snapshot here, revising a catalog row retroactively rewrites what a
+    # historical claim's item meant. Unbackfillable after the fact.
+    circular_version: Mapped[str | None]
+    # DISPLAY MIRROR ONLY. `reimb_attachments` is the source of truth (it has the
+    # FK, the soft-delete columns and the custody state); db-standards §11 forbids
+    # putting anything other code must join on inside JSONB. Reassign this list,
+    # never mutate it in place — the column has no MutableList.
     attachment_ids: Mapped[list[Any]] = mapped_column(
         JSONB, server_default=text("'[]'::jsonb")
     )
