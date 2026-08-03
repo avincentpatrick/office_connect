@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C R-4-screens: the approver surface — approve/return action endpoints (NOT behind the flag-404 gate) + the phone-first approval screen + the return dialog (≥1-reason enforcement lands here) + the claim tracker timeline.**
+> **Resume Office-Connect — Stage C R-3: the checklist engine + uploads — core-service #7 (documentary requirements) + the wizard's Documents step + the submit gate ("cannot submit with a missing required item") + the approver's flagged auto-checks.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,111 +10,128 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **Stage C IN PROGRESS** — **workflow engine (R-4 core) ✅ + R-1 ✅ +
-  R-2-engine ✅ + R-2-shell ✅ + R-4-app ✅ + R-2-wizard ✅** (the module's first HTTP
-  surface + the claim wizard + My-Work are LIVE). Stage A (`phase-0-complete`) + Stage B
-  (`phase-2-complete`) remain complete + pushed. **Migration head `0016`**
-  (`reimb_claims.other_total`). **Verified: pytest 442/442 (+29), lint-imports 3/3,
-  `alembic check` clean, seeds ×2 idempotent, FE gate green (75 tests — first
-  page-level tests), e2e smoke via :5174 (flag→config, 401 gate, SPA), plus a
-  45-agent adversarial review pass — 13 confirmed findings ALL fixed pre-commit
-  (incl. a cancelled-claim-resurrection hole in `submit_claim`).**
-  **`module.reimbursement` is ON in dev** (new audited `bootstrap set-flag`; prod
-  default stays OFF). **NOT pushed** — push cadence: **once at the Stage C QA gate**.
+- **Phase:** **Stage C IN PROGRESS** — **R-1 ✅ + R-2-engine ✅ + R-2-shell ✅ +
+  R-2-wizard ✅ + R-4 ✅ (engine core + app + screens)**. The reimbursement claim now
+  runs its **whole life over HTTP**: file → submit → approve/return → resubmit →
+  hand to FMS → paid & closed. Stage A (`phase-0-complete`) + Stage B
+  (`phase-2-complete`) remain complete + pushed. **Migration head `0016`** — R-4-screens
+  added **no schema change**. **Verified: pytest 470/470 (+28) on a clean DB,
+  lint-imports 3/3, `alembic check` clean, FE gate green (96 tests, +21), and a 14/14
+  live smoke driving a claim end to end to `paid_closed` incl. the flag-OFF action
+  contract.** ⚠ One pre-existing SLA-ladder test now fails on the **dev** DB from
+  accumulated test residue — see the known issue below.
+  **`module.reimbursement` is ON in dev** (audited `bootstrap set-flag`; prod default
+  stays OFF). **NOT pushed** — push cadence: **once at the Stage C QA gate**.
   Master Plan v1 in force.
-- **Last session:** #16 — 2026-07-30 — **Stage C R-2-wizard: the claim wizard + My-Work
-  inbox — the module's FIRST HTTP surface**. Backend: 9 endpoints under
-  `/api/v1/reimbursement` (draft create with server-side directory prefill +
-  `is_jo_cos`, read with §3.2 owner-or-scoped authz, PATCH, bulk legs replace with
-  soft-deletes, `/compute` returning server totals, `/submit` =
-  `lifecycle.submit_claim` — routes `returned`→resubmit, `/cancel`, `/my-work`,
-  `/regions`), first module router (mounted from `main.py`; conventions = NEW
-  api-standards §9) behind the new core `require_feature`→404 gate;
-  `lifecycle.create_draft_claim` stamps status/holder/next-action at birth;
-  `services/drafts.py` owns claimant business-field writes (editable-state + owner
-  guards, stale-totals clearing on compute-input edits); `other_total` column
-  (migration `0016`) fixes the latent resubmit-resets-other bug. FE: 4-step GOV.UK
-  wizard (Trip → Itinerary → Money → Review; Documents → R-3) on react-hook-form
-  7.83.0 + zod 4.4.3 (shape-only), submit-per-step save-and-return with task-list
-  resume, check-your-answers + RB- confirmation, My-Work landing ("Waiting on you" /
-  "Your claims in flight", 🎉 zero-state aria-hidden); inventory grew to 17
-  (Select/Textarea/Checkbox/RadioGroup + SummaryList + ConfirmationPanel + WorkItemRow;
-  FormField widened for RHF; WizardPage `asideExtra` totals rail; Dialog controlled
-  mode); 422→RHF error mapper (dots→dashes id convention); MutationCache 401 handler.
-  **Module doc: +10 delta rows; api-standards §9 NEW; ui-standards §3/§4/§7/§8 +
-  tech-stack §4 amended; conftest exports `CSRF`+`login`.**
-- **Decisions this session:** kickoff (user-confirmed): **dev flag ON** via the new
-  `set-flag` subcommand; **`other_total` = a claim column** (not expense lines — R-3);
-  **4-step wizard** (Documents step + checklist submit-gate → R-3). Design: flag-OFF
-  404s the WHOLE router (revisit at action endpoints — they must NOT sit behind it);
-  read scope = owner-or-scoped {approve,review,fms_update} (global staff read can't
-  express §3.2); `/compute` takes no body (other_total edits via PATCH — one writer);
-  activity picker omitted from v1 (no activities endpoint); return-reason ≥1 + return
-  dialog + approval screens deferred to the approver surface; pagination envelope +
-  Idempotency-Key header stay deferred; step routes render the read-only detail
-  in place for non-editable claims (post-submit redirect would race the confirmation
-  navigation — caught by the first page-level FE tests).
-- **Blockers / waiting on user:** none. The approver surface (R-4-screens) is fully
-  unblocked — `claim_action` already implements approve/return/resubmit/cancel; only
-  HTTP + UI are missing.
+- **Last session:** #17 — 2026-08-03 — **Stage C R-4-screens: the approver surface**.
+  Backend: `api/actions.py` — a SECOND, deliberately **un-gated** top-level router
+  (`/claims/{id}/approve`, `/claims/{id}/return`), because *the flag gates the
+  module's surface but never a decision on an instance already in the chain*
+  (**api-standards §9a NEW**; workflow-standards §9); one `approve` covers the whole
+  chain (the graph authors the same action on every forward move — only the label
+  varies); **≥1-taxonomy-reason enforcement in `claim_action`** (delta row 44 closed —
+  service-layer, since `reason_ids` is FK-less JSONB); `services/actions.py` (per-actor
+  action set incl. the pre-instance answer a draft needs + the spec §6.3 SLA badge);
+  `api/tracking.py` (`/timeline` + `/return-reasons`); `ClaimDetail` embeds
+  `available_actions` + `row_version` (CAS) + `sla_*`; My-Work rows carry the SLA
+  badge (delta row 52 closed). **Core (Rule 10):** `available_actions` now filters the
+  actor-dependent gate guards, so the UI is never offered a button certain to 409.
+  **Bug fixed en route:** an idempotent replay of a return appended a phantom second
+  `reimb_return_event` to an append-only hash-chained table. FE: the phone-first
+  decision bar folded into `/claims/:id` on a new sticky `DetailPage.actions` slot,
+  the return dialog on two new inventory components (**ChipGroup** + **FormDialog**,
+  rows 18–19), the claim tracker (first consumer of `Timeline`), My-Work urgency chips,
+  and a resume-redirect fix that stops a reviewer being dragged into a stranger's
+  wizard. **Docs: api-standards §9a NEW; workflow-standards §3/§9, ui-standards
+  §3/§4/§8 amended; module doc +9 delta rows.**
+- **Decisions this session:** kickoff (user-confirmed): **per-action routes** over a
+  `{action}` envelope; **approval folds into `/claims/:id`** (one canonical URL — what
+  differs between claimant, approver and bystander is entirely `available_actions`);
+  **whole chain** with contextual labels; **new FormDialog + ChipGroup** over
+  stretching ConfirmDialog. Design: un-gated = the two action POSTs ONLY (accepted
+  residual: flag-OFF the approver *UI* is unreachable though the POST answers);
+  action set + CAS token embedded in `ClaimDetail` rather than a sibling endpoint;
+  **due-soon = 1 day**, because §6.3's 7-day window belongs to the R-6 liquidation
+  clock, not a 3-working-day approval SLA; **return comment stays mandatory** though
+  §9.2 calls it optional (engine `requires_comment` + spec §12's verbatim promise);
+  `DetailPage.actions` renders ONE node repositioned by breakpoint, never two copies
+  behind `lg:hidden`/`hidden lg:block`.
+- **Blockers / waiting on user:** none. R-3 is fully unblocked — nothing in the
+  checklist engine depends on unshipped work; `reimb_checklist_catalogs` is already
+  seeded (R-1) and core-service #2 (attachments) exists for the uploads half.
+- **⚠ Known issue (found session 17, NOT a regression — decide in a future session):**
+  tests commit into the **shared dev database** and nothing truncates between runs
+  (`app_session` is a plain session; rule 6 forbids hard deletes), so escalated
+  workflow steps accumulate forever. They crossed **223** this session, and
+  `sweep_sla_reminders` selects `ORDER BY WorkflowStep.id ASC LIMIT 200` — so
+  `test_reminder_ladder_counts_working_days` now fails **on the dev DB** while passing
+  on a clean one (verified: `470/470` against a freshly migrated scratch database;
+  the same file is 6/6 there and 5/6 on dev). Two separable problems: (a) test
+  isolation — a global-sweep assertion cannot be deterministic against a never-reset
+  DB; (b) **a real production flaw the residue exposed** — ordering the nudge budget
+  by insertion id means that once ~200 steps are permanently stuck, newly-overdue
+  items are *never* nudged, silently, which is the exact opposite of spec §7.5
+  ("stalls are visible, not silent"). Most-overdue-first (`sla_due_at ASC`, spec
+  §7.5's own words) is the semantically right priority. Left untouched deliberately:
+  it is an untouched subsystem and reordering at session end would be tuning a
+  notification ladder to make a residue-driven test go green.
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
 Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS — DONE: the shared core
-workflow engine (#11), R-1 (#12), R-2-engine (#13), R-2-shell (#14), R-4-app (#15), and
-R-2-wizard (#16) — the claim wizard + My-Work are LIVE end to end (file → submit →
-RB- ref → sits in the approver's "Waiting on you"). What's MISSING is the approver's
-side: claim_action (approve/return/resubmit/cancel) exists as a SERVICE but has no
-HTTP surface, so a submitted claim can only be acted on from a Python shell.
+workflow engine (#11), R-1 (#12), R-2-engine (#13), R-2-shell (#14), R-4-app (#15),
+R-2-wizard (#16) and R-4-screens (#17). The claim's WHOLE LIFE now runs over HTTP:
+file → 4-step wizard → submit → approve/return (with taxonomy reasons) → resubmit →
+hand to FMS → paid & closed, with a tracker and server-driven action buttons. What is
+MISSING is the thing both halves keep deferring TO: the checklist engine. The wizard
+is 4 steps because Documents is not built; spec §2's "cannot submit with a missing
+required item" is unenforced; and spec §9.4's flagged auto-checks (amber callouts
+above the approve buttons — "an approver may approve past a flag, never past a missing
+required item") have nothing to render.
 Available to build on:
-BACKEND — modules/reimbursement/api/ (9 endpoints, first module router — conventions
-in api-standards §9; mounted from main.py; whole router behind require_feature→404),
-services/lifecycle.py::claim_action (approve/return/resubmit/cancel — engine guards:
-permission, comment-on-return, CAS expected_version, segregation, idempotency; writes
-reimb_return_events with the returned step id), core.workflow.available_actions
-(computes the (state × actor × guards) action set the UI renders — nothing surfaces
-it over HTTP yet), reimb_return_reason_catalogs (seeded taxonomy; ≥1-reason
-enforcement DEFERRED to this session's return dialog — delta row), reimb_status_
-histories (the tracker feed), SLA due dates on core_workflow_steps (the My-Work
-badge deferral). FRONTEND — the wizard + My-Work (web/src/pages/reimbursement/),
-17-component inventory incl. SummaryList/ConfirmationPanel/WorkItemRow, ClaimDetailView
-(read-only detail), Timeline component (unused so far), claim-status semantic map,
-form-errors mapper, harness.tsx page-test kit. Migration head 0016. pytest 440/440,
-lint-imports 3/3, FE gate green (73). Dev flag ON (bootstrap set-flag). Push cadence:
-once at the Stage C QA gate.
-Read CLAUDE.md, then docs/modules/reimbursement.md (delta register — the R-2-wizard
-rows + row 43 cancel/authz + row 44 return reasons; R-phase table), api-standards §9
-(CRITICAL: action endpoints must NOT sit behind the flag-404 gate — workflow-standards
-§9, in-flight always finishes), workflow-standards §3 (available_actions doctrine:
-the UI renders the server's action set, never computes permissions) + §4 (CAS/409s),
-spec §9.2 (approval screen — single card, sticky Approve/Return, PHONE-FIRST) + §9.4
-(return dialog: ≥1 taxonomy reason chips + comment; approver can approve past a flag
-but never past a missing required item — checklist gate is R-3) + §6.1 (transitions
-by role) + §6.3 (derived badges).
-Task: Stage C R-4-screens — the approver surface (completes R-4's UI half; scope-note
-the master-plan R-4 line like "My-Work → R-2-wizard" did).
-Backend: POST /claims/{id}/actions (or per-action endpoints) wrapping claim_action —
-approve/return/resubmit/cancel with expected_version CAS from the client, comment +
-reason_ids on return (≥1-reason enforcement lands HERE, validated against the live
-taxonomy), NOT behind the flag-404 gate (new sub-router or per-route dependency —
-document the pattern in api-standards §9); GET available-actions (or embed in
-ClaimDetail) via core.workflow.available_actions; GET the status-history timeline +
-return reasons for the tracker; GET the return-reason taxonomy for the dialog;
-consider the SLA due date on My-Work items (the deferred badge — steps join).
-Frontend: the phone-first approval screen (spec §9.2: summary card + computed totals
-+ sticky Approve / Return buttons; ConfirmDialog for approve), the return dialog
-(taxonomy chips ≥1 + comment — the deferred enforcement), action buttons driven ONLY
-by the server's available actions, the claim tracker timeline on ClaimDetailView
-(Timeline component + reimb_status_histories), My-Work rows linking approvers into
-the approval screen; resubmit-over-HTTP now becomes e2e-testable (wizard Review
-already routes returned→resubmit).
+ALREADY IN THE SCHEMA (R-1, migration 0013 — no new tables should be needed):
+reimb_checklist_catalogs (kind+code unique, group/evidence/sort, seeded with a
+representative COA 2023-004 set) and reimb_checklist_items (per-claim instances,
+catalog_id FK, status enum), plus reimb_attachments.checklist_item_id already
+pointing at them. Enums: reimb_checklist_{group,evidence,item_status}.
+CORE — attachments service (core/attachments/ + core/storage/, core-service #2:
+upload, scanner hook, soft-delete), the workflow engine (submit is the gate point:
+lifecycle.submit_claim is the ONE place a claim enters the chain), core/audit.
+MODULE — services/lifecycle.py (submit_claim is where a submit-gate check belongs),
+services/drafts.py (claimant field writes + editable-state guards), api/ (two routers:
+the gated one for reads/writes, api/actions.py un-gated for decisions — api-standards
+§9a), services/actions.py (the per-actor action set the UI renders).
+FRONTEND — the 4-step wizard + wizard-steps.ts (WIZARD_STEPS/stepStatus/
+buildTaskSections drive the GOV.UK task list — a 5th step slots in there), the
+19-component inventory (TaskList, ChipGroup, FormDialog, StatusChip…), ClaimActions
+(where flag callouts go), harness.tsx + stubFetch page-test kit.
+Migration head 0016. pytest 470/470, lint-imports 3/3, FE gate green (96). Dev flag ON.
+Push cadence: once at the Stage C QA gate.
+Read CLAUDE.md, then docs/modules/reimbursement.md (delta register — the R-4-screens
+rows; note row 45 "4 steps, Documents + submit-gate DEFER TO R-3" and the §9.4 row
+"flagged auto-checks not built — R-3"; R-phase table), master-plan §1.1 core-service
+#7 (checklist/documentary-requirements engine — Rule 10: it is a CORE service with a
+reimbursement consumer, NOT a module feature) + #2 (attachments — do not rebuild),
+api-standards §9/§9a, spec §2 + §5.4 (checklist grammar) + §9.3 (Documents step) +
+§9.4 (amber flag callouts, approve-past-a-flag-but-never-a-missing-item) + §11
+(the COA 2023-004 seed set).
+Task: Stage C R-3 — the checklist engine + uploads.
+Backend: the checklist grammar as a CORE service (Rule 10 — DTWIS/QMS/Supply will all
+want it): materialize a claim's required items from the catalog on a rule/condition
+basis, per-item status + evidence, waivers with a reason, and the "is this packet
+complete?" answer submit_claim consults; wire uploads through core attachments onto
+reimb_attachments.checklist_item_id; expose the checklist over HTTP (gated router)
+and surface flagged/auto-check state to the approver in ClaimDetail.
+Frontend: the wizard's Documents step (5th step, wizard-steps.ts + task list) with
+per-item upload + status, and the approver's amber flag callouts above the decision
+bar in ClaimActions.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed.
-Open questions for the user (confirm at kickoff): (1) endpoint shape — one
-POST /actions body {action,...} vs per-action routes; (2) does the approval screen
-live at /reimbursement/claims/:id/approve or fold into the detail page; (3) whether
-FMS handoff/paid-closed updates (admin_officer fms_update actions) are in scope or
-a follow-up increment.
+Open questions for the user (confirm at kickoff): (1) how much of the checklist
+grammar goes to core vs stays module-shaped this increment (the catalog tables are
+already reimb_-prefixed — a core engine over module tables needs a documented seam);
+(2) whether the submit gate is hard (422 on a missing required item) or advisory this
+increment; (3) whether waivers ship now or defer with the R-8 learning loop.
 ```
 
 ---
@@ -127,7 +144,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (engine core ✅ + R-1 ✅ + R-2-engine ✅ + R-2-shell ✅ + R-4-app ✅ + R-2-wizard ✅) | 11–16 | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-4 ✅** engine core/app/screens) | 11–17 | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
@@ -148,6 +165,100 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+### Session 17 — 2026-08-03 — Stage C R-4-screens: the approver surface (completes R-4's UI half)
+
+- **Phase(s):** C (R-4-screens — completes R-4 alongside sessions 11/15) ·
+  **Commit:** `session(2026-08-03)` — **local only** (push at the Stage C gate).
+- **Done:**
+  - **The un-gated action surface** — `modules/reimbursement/api/actions.py`, a
+    SECOND top-level router (`POST /claims/{id}/approve`, `POST /claims/{id}/return`)
+    mounted from `main.py` **without** `require_feature`. It cannot be included under
+    the gated router: FastAPI applies a router's `dependencies` to everything beneath
+    it. The rule, now **api-standards §9a**: *the flag gates the module's surface; it
+    never gates a decision on an instance already in the chain* (workflow-standards §9
+    — `execute_action` never reads the flag). Reads + wizard writes stay gated;
+    `/submit` needs no exemption (`start_instance` already refuses flag-OFF) and its
+    resubmit branch stays gated (claimant-editing work). Pinned in
+    `test_reimb_api_flag_gate.py`: flag OFF, the action routes must answer 401/403/409
+    and must **never** return the gate's bare `not_found`.
+  - **One `approve` for the whole chain** — the definition authors the same `approve`
+    action on every forward move, so `division_approval → admin_review →
+    handed_to_fms → paid_closed` needed one endpoint; only the LABEL varies by status
+    ("Approve" / "Approve & hand to FMS" / "Mark paid & close"). A claim is now
+    drivable to terminal over HTTP — the chain is e2e-testable for the first time.
+  - **≥1-reason enforcement (closes delta row 44)** — `claim_action` rejects an empty
+    `reason_ids` (422 `reimb_return_reason_required`) and any id outside the live+active
+    catalog (422 `reimb_unknown_return_reason`), in the SERVICE not just the wire
+    schema: `reason_ids` is FK-less JSONB and non-HTTP callers exist. Per-action routes
+    (the kickoff choice) make the wire failure **field-anchored** (`loc:
+    ["body","reason_ids"]`), so the FE mapper lands it on the chip picker itself.
+  - **`services/actions.py`** — the per-actor action set (wrapping the engine, plus the
+    pre-instance answer a draft needs: no instance exists before submit, so the module
+    synthesizes the owner's `["submit","cancel"]`) and the spec §6.3 SLA badge
+    (`on_track`/`due_soon`/`overdue`, server-derived). `ClaimDetail` now embeds
+    `available_actions` + `row_version` (the CAS token) + `sla_due_at`/`sla_state`
+    rather than serving a sibling endpoint — every mutation returns the whole claim,
+    so buttons, token and record can never disagree.
+  - **`api/tracking.py`** — `GET /claims/{id}/timeline` (append-only history merged with
+    `reimb_return_events`; positional pairing, defensive on a count mismatch) and
+    `GET /return-reasons`. **My-Work** rows carry `sla_due_at` + `sla_state` from one
+    batched join over active steps — closes the delta row 52 deferral.
+  - **Core fix (Rule 10)** — `available_actions` now mirrors `execute_action`'s two
+    ACTOR-dependent gate guards (already-acted, and originator-under-segregation), so
+    a chief who filed their own claim is no longer offered an Approve button that
+    always 409s. Fixed in **core**, not the module — every future module inherits it;
+    recorded as workflow-standards §3 doctrine (*an action listed is one the POST
+    would accept now; a predictable 409 is a bug, a race-driven one is not*).
+  - **Bug found + fixed en route** — an idempotent replay of a return appended a
+    phantom SECOND `reimb_return_event` to an APPEND-ONLY hash-chained table (the
+    module's insert sat after `execute_action`, which returns the original event
+    verbatim on a key hit). Now guarded by a pre-check — which is also what makes the
+    timeline's history↔return-event pairing exact.
+  - **FE — the approval screen folded into `/claims/:id`** (one canonical URL for
+    claimant, approver and bystander; what differs is entirely `available_actions`).
+    New `ClaimActions` (server-driven bar: Approve behind a ConfirmDialog, Return
+    behind the new FormDialog) and `ClaimTimeline` (first consumer of the
+    built-but-unused `Timeline`, with return reasons as chips under their bounce).
+    Inventory rows **18–19**: `ChipGroup` (a `<fieldset>` of real checkboxes styled as
+    chips — chips are a look, not a widget) and `FormDialog` (a dialog whose submit is
+    NOT wrapped in `Dialog.Close`, so failed validation keeps the user's work).
+    `DetailPage` gains a sticky `actions` slot (§4 amendment) — **one** node
+    repositioned by breakpoint, after the first draft rendered two copies behind
+    `lg:hidden`/`hidden lg:block` and duplicated every id + announced every button
+    twice. My-Work "Waiting on you" spends its one chip on urgency when a row slips.
+    The wizard resume redirect now keys on `available_actions`, so a reviewer opening
+    a returned claim is no longer dragged into a stranger's wizard.
+- **Decisions this session:** kickoff (user-confirmed): **per-action routes** over a
+  `{action}` envelope; **approval folds into `/claims/:id`**; **whole chain** with
+  contextual labels; **new FormDialog + ChipGroup** over stretching ConfirmDialog.
+  Design: un-gated = the two action POSTs ONLY (accepted residual: flag-OFF the
+  approver *UI* is unreachable though the POST answers — the guarantee is that the
+  engine and its HTTP mirror never refuse an in-flight transition, not that the SPA
+  stays up); action set + CAS token embedded in `ClaimDetail`; **due-soon = 1 day**,
+  because §6.3's 7-day window belongs to the R-6 liquidation clock, not a
+  3-working-day approval SLA; **return comment stays mandatory** (engine
+  `requires_comment` + spec §12's verbatim promise) though §9.2 calls it optional —
+  recorded as a delta row; `/return-reasons` ordering comes free from the PG enum's
+  declaration order (the catalog has no `sort` column).
+- **Docs updated:** api-standards **§9a NEW** (+ §9 caveat resolved);
+  workflow-standards §3 + §9 amended; ui-standards §3 (rows 18–19 + amendment note),
+  §4 (template amendment + the app-wide z-index ladder), §8 (two visual specs);
+  `docs/modules/reimbursement.md` (+9 delta rows, rows 44/46/52 closed, R-phase table,
+  decisions log); master-plan R-2 + R-4 bullets; CHANGELOG `[Unreleased]`.
+- **Verified:** **pytest 470/470 (+28)** — measured against a freshly migrated scratch
+  database, because the shared dev DB now fails one *pre-existing* SLA-ladder test on
+  accumulated residue (see the known issue above; the same suite is 469/470 there) —
+  **lint-imports 3/3**, **`alembic check` clean** (no schema change — head stays
+  `0016`), **FE gate green** (eslint + tsc + vitest **96** (+21) + build), and a
+  **14/14 live smoke** on the dev stack:
+  file → submit → return-with-reasons (0 reasons refused) → tracker shows the reasons
+  verbatim → resubmit on the same RB- ref → approve → hand to FMS → mark paid & closed,
+  plus the SLA badge, the draft action set, and the flag-OFF contract (reads 404,
+  `/approve` answers 409 — never `not_found`).
+- **Next:** **R-3 — the checklist engine + uploads** (core-service #7). It is the
+  gate on spec §9.4's "never approve past a missing required item" and the wizard's
+  missing 5th step, both explicitly deferred to it.
 
 ### Session 16 — 2026-07-30 — Stage C R-2-wizard: the claim wizard + My-Work inbox (the module's first HTTP surface)
 

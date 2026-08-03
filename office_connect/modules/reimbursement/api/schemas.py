@@ -74,6 +74,27 @@ class CancelIn(BaseModel):
     comment: str = Field(min_length=1, max_length=2000)
 
 
+class ApproveIn(BaseModel):
+    """Clear the current gate. ``expected_version`` is the CAS token from
+    ``ClaimDetail.row_version`` (workflow-standards §4) — omit it and you race
+    whoever else holds the claim; send it and a moved claim 409s
+    ``stale_workflow_version`` instead of acting on a stale screen."""
+
+    comment: str | None = Field(default=None, max_length=2000)
+    expected_version: int | None = None
+
+
+class ReturnIn(BaseModel):
+    """Bounce the claim back. ≥1 taxonomy reason (spec §5.6) AND a comment (the
+    engine's ``requires_comment`` on every authored return transition) — the
+    service re-validates both against the live catalog, so this is the wire
+    whitelist, not the enforcement."""
+
+    comment: str = Field(min_length=1, max_length=2000)
+    reason_ids: list[int] = Field(min_length=1, max_length=20)
+    expected_version: int | None = None
+
+
 # --- Responses ---------------------------------------------------------------
 
 
@@ -138,6 +159,13 @@ class ClaimDetail(BaseModel):
     other_total: str
     totals: dict[str, Any] | None = None  # compute snapshot verbatim; {} → None
     legs: list[LegOut]
+    # --- R-4-screens: the approver read-model, embedded rather than a second
+    # endpoint. Every mutation returns ClaimDetail, so the action set and the
+    # CAS token refresh in lockstep with the claim they describe.
+    available_actions: list[str] = []
+    row_version: int | None = None
+    sla_due_at: datetime | None = None
+    sla_state: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -155,6 +183,8 @@ class WorkItemOut(BaseModel):
     holder_since: datetime | None = None
     days_in_state: int
     grand: str | None = None
+    sla_due_at: datetime | None = None
+    sla_state: str | None = None  # spec §6.3 derived badge — never a status
     updated_at: datetime
 
 
@@ -167,3 +197,28 @@ class RegionOut(BaseModel):
     region_code: str
     region_name: str | None = None
     cluster: str
+
+
+class ReturnReasonOut(BaseModel):
+    """One row of the seeded return-reason taxonomy — the dialog's chips."""
+
+    id: int
+    code: str
+    label: str
+    category: str
+
+
+class TimelineEventOut(BaseModel):
+    """One tracker row (spec §9.2 claim tracker), from
+    ``reimb_status_histories``. ``reasons`` is populated on the rows a return
+    produced — spec §12 says the claimant sees the reasons verbatim."""
+
+    id: int
+    from_status: str | None = None
+    from_status_label: str | None = None
+    to_status: str
+    to_status_label: str
+    actor_display: str | None = None
+    note: str | None = None
+    reasons: list[ReturnReasonOut] = []
+    created_at: datetime

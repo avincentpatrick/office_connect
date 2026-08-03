@@ -36,7 +36,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from office_connect.core import workflow as wf
-from office_connect.core.models import Staff, User, WorkflowInstance, WorkflowState
+from office_connect.core.models import (
+    Staff,
+    User,
+    WorkflowEvent,
+    WorkflowInstance,
+    WorkflowState,
+)
 from office_connect.core.org_units import ancestors_or_self, authorize_scoped, permission_holders
 from office_connect.core.reference_numbers import allocate_reference_number
 from office_connect.core.session import set_audit_context
@@ -47,6 +53,7 @@ from office_connect.modules.reimbursement.models import (
     ReimbClaim,
     ReimbConfig,
     ReimbReturnEvent,
+    ReimbReturnReasonCatalog,
     ReimbStatusHistory,
 )
 from office_connect.modules.reimbursement.services import errors
@@ -96,11 +103,41 @@ async def _owner_user(session: AsyncSession, claimant_id: int) -> User | None:
     ).scalar_one_or_none()
 
 
-async def _is_owner(
+async def is_claim_owner(
     session: AsyncSession, claim: ReimbClaim, actor_user_id: int
 ) -> bool:
+    """Is this actor the claimant? Public because ``services/actions.py`` needs
+    the same answer to synthesize a pre-instance action set (R-4-screens)."""
     actor = await session.get(User, actor_user_id)
     return bool(actor and actor.staff_id == claim.claimant_id)
+
+
+async def _assert_return_reasons(
+    session: AsyncSession, reason_ids: Sequence[int]
+) -> None:
+    """≥1 reason, every one of them live and active (spec §5.6; delta row 44).
+
+    Validated against the seeded taxonomy rather than trusted from the wire:
+    ``reimb_return_events.reason_ids`` is append-only JSONB with no FK, so this
+    is the only thing standing between the R-8 learning loop and junk ids."""
+    if not reason_ids:
+        raise errors.return_reason_required()
+    wanted = list(dict.fromkeys(reason_ids))  # de-dupe, keep order
+    live = set(
+        (
+            await session.execute(
+                select(ReimbReturnReasonCatalog.id).where(
+                    ReimbReturnReasonCatalog.id.in_(wanted),
+                    ReimbReturnReasonCatalog.is_active.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    unknown = [i for i in wanted if i not in live]
+    if unknown:
+        raise errors.unknown_return_reason(unknown)
 
 
 async def config_working_days(
@@ -341,7 +378,7 @@ async def submit_claim(
         raise errors.claim_not_reimbursement()
     if claim.workflow_instance_id is not None:
         raise errors.claim_already_submitted()
-    if not await _is_owner(session, claim, actor_user_id):
+    if not await is_claim_owner(session, claim, actor_user_id):
         raise errors.not_claim_owner()
     # Cancelled is terminal even pre-submit (no instance exists to make the
     # engine refuse) — without this, a cancelled draft would resurrect here and
@@ -410,7 +447,7 @@ async def claim_action(
     """Act on a submitted claim (approve / return / resubmit / cancel) and sync
     the read-model in the same transaction. Engine guards (permission, comment,
     CAS, segregation, idempotency) all apply; the module adds the ownership
-    belt on resubmit/cancel and the return-event record."""
+    belt on resubmit/cancel, the ≥1-reason rule, and the return-event record."""
     if action not in _CLAIM_ACTIONS:
         raise errors.unsupported_claim_action(action)
     now = now or utc_now()
@@ -421,10 +458,15 @@ async def claim_action(
         raise errors.claim_not_in_workflow()
     instance = await session.get(WorkflowInstance, claim.workflow_instance_id)
 
+    if action == "return":
+        # Spec §5.6: reason_ids is "≥1 mandatory", enforced HERE (the service
+        # layer) so every caller is covered, not just the HTTP dialog.
+        await _assert_return_reasons(session, reason_ids)
+
     if action in ("resubmit", "cancel"):
         # Belt to the engine's braces (FLAG 1): owner, or an admin reviewer.
         if not (
-            await _is_owner(session, claim, actor_user_id)
+            await is_claim_owner(session, claim, actor_user_id)
             or await authorize_scoped(
                 session, actor_user_id, "reimb.claim.review", instance.org_unit_id
             )
@@ -440,22 +482,34 @@ async def claim_action(
         instance.amount = to_money(claim.totals["grand"])
         await session.flush()
 
+    key = idempotency_key or (
+        f"{action}:{claim.id}:{instance.revision_no}"
+        f":{instance.current_state_id}:{actor_user_id}"
+    )
+    # A replay returns the ORIGINAL event verbatim, so the side effects below
+    # must not run twice: _sync_claim_from_event already no-ops (same state),
+    # but the return-event insert would append a phantom second return.
+    replayed = (
+        await session.execute(
+            select(WorkflowEvent.id).where(
+                WorkflowEvent.instance_id == instance.id,
+                WorkflowEvent.idempotency_key == key,
+            )
+        )
+    ).first() is not None
+
     event = await wf.execute_action(
         session,
         instance_id=instance.id,
         action=action,
         actor_user_id=actor_user_id,
         comment=comment,
-        idempotency_key=idempotency_key
-        or (
-            f"{action}:{claim.id}:{instance.revision_no}"
-            f":{instance.current_state_id}:{actor_user_id}"
-        ),
+        idempotency_key=key,
         expected_version=expected_version,
         now=now,
     )
 
-    if action == "return":
+    if action == "return" and not replayed:
         to_state = await session.get(WorkflowState, event.to_state_id)
         # The engine stamps event.step_id only on approve (the acted slot); a
         # return resolves ALL live slots — recover the returned step here so
@@ -504,7 +558,7 @@ async def cancel_draft_claim(
     claim = await _locked_claim(session, claim_id)
     if claim.workflow_instance_id is not None:
         raise errors.claim_already_submitted()
-    if not await _is_owner(session, claim, actor_user_id):
+    if not await is_claim_owner(session, claim, actor_user_id):
         raise errors.not_claim_owner()
     if not comment:
         raise wf.errors.comment_required()

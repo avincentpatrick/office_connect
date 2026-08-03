@@ -49,6 +49,18 @@ re-validates through `execute_action` — the UI never computes permissions itse
 `core/maker_checker.py::assert_segregation` — no self-approval, distinct approver per
 slot (four-eyes). COA 92-389 / NGICS.
 
+**`available_actions` must not offer an action that is certain to fail**
+(R-4-screens, 2026-08-03). Because the UI is forbidden from computing
+permissions, an action in that list is a promise: `execute_action` would accept
+it, for this actor, now. So the ACTOR-dependent gate guards are mirrored into
+the `approve` branch — the actor already holds a `done` slot of this gate
+(`workflow_step_already_acted`), and the actor is the instance originator under
+`enforce_segregation` (`segregation_of_duties`). Before this, a chief who filed
+their own claim was shown an Approve button that always 409'd. Race-driven 409s
+remain normal and expected (someone else acted first); a *predictable* 409 is a
+bug. The guards themselves stay in `execute_action` — this is a filter, not the
+enforcement.
+
 ## 4. Every transition is atomic, idempotent, concurrency-safe
 
 `execute_action` runs ONE transaction: `SELECT … FOR UPDATE` the instance → idempotency
@@ -111,6 +123,12 @@ Escalation is a nudge to the holder — superiors are never auto-rerouted
 (`enabled AND is_active`, the `/api/v1/config` rule). `execute_action` **never** reads the
 flag → in-flight items always finish. Turning a module OFF stops new work; it never
 strands work in progress.
+
+**The HTTP surface must mirror this** (R-4-screens): a module's action POSTs
+live on a separate, un-gated router so an approver can still clear an in-flight
+item with the module switched off. Everything else stays behind the 404 gate.
+The full pattern, and the reasoning for where the line falls, is
+api-standards §9a.
 
 ## 10. Purity & the polymorphic back-ref
 

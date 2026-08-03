@@ -84,6 +84,8 @@ first**. Required states in parentheses.
 | **Summary list** (GOV.UK check-your-answers) | `<dl>` of key/value rows with an optional per-row "Change" link (accessible-name context suffix, e.g. "Change purpose"); empty values render "Not provided", never blank. |
 | **Confirmation panel** | transaction-complete panel: title (focused on mount), reference label + the reference number rendered large; used once per completed transaction. |
 | **Work-item row** | linked inbox/list row: reference + title, StatusChip right, one muted meta line; the My-Work rendering (NOT the Pipeline-board card — that is a board `<article>`, no link affordance). |
+| **Chip group** | multi-select picker over a SHORT closed taxonomy: fieldset + legend, chip-styled labels over real checkboxes, selected / unselected / error states. |
+| **Form dialog** | dialog whose body is a form — a decision that needs input before it can be made. Submit does NOT close the dialog; the caller closes it on success. |
 
 > **Inventory amendment 2026-07-28 (R-2-shell):** **Error summary** added as
 > the fourteenth component. master-plan §2 R-2 names it as a deliverable; it is
@@ -104,6 +106,23 @@ first**. Required states in parentheses.
 > reusable **Table** inventory item is deferred until a second consumer
 > appears (amend §3 first when it does).
 
+> **Inventory amendment 2026-08-03 (R-4-screens):** rows 18–19 for the approver
+> surface. **Chip group** — spec §9.4 asks for "taxonomy chips" on the return
+> dialog; on a phone a wrapped row of chips beats a tall column of checkbox rows
+> for a 7-row taxonomy. Chips are a LOOK, not a widget: the component is a
+> `<fieldset>` of real checkboxes with `sr-only` inputs driving `peer-checked:`
+> styling, so keyboard traversal and the screen-reader group name come from the
+> platform. Use it only for a short CLOSED taxonomy — a long or open-ended list
+> is a Select. **Form dialog** — ConfirmDialog cannot host it: it has no body
+> slot, and its confirm button is wrapped in `Dialog.Close`, so it closes
+> unconditionally and in-dialog validation could never keep it open. FormDialog
+> is a sibling with a real `<form>` whose submit is NOT wrapped in `Close`;
+> **the caller closes it on success**, which is the only party that knows the
+> request landed. Rule of thumb: **ConfirmDialog for a yes/no you cannot get
+> wrong, FormDialog for a decision you can.** Both live in
+> `components/Dialog/`. Validation wording inside a FormDialog must match the
+> server's message for the same rule verbatim (§14).
+
 ## 4. Layout templates — LOCKED
 
 **No page is built outside one of these templates.** New template = amend
@@ -114,9 +133,24 @@ this doc first.
 | **App shell** | Global chrome: top bar + nav (from `NAV_GROUPS`) + content slot. Every page renders inside it. |
 | **List page** | Filter row → table/cards → pagination; empty state + skeleton mandatory. |
 | **Wizard page** | Stepper shell + one step's form + task-list sidebar. |
-| **Detail + right rail** | Main record + right rail (status, timeline, actions). |
+| **Detail + right rail** | Main record + right rail (status, timeline) + an optional `actions` slot: sticky to the bottom of the viewport on a phone, in the flow below the record from `lg` up. |
 | **Board page** | Pipeline columns of board cards. |
 | **Admin / settings page** | Sectioned forms with per-section save. |
+
+> **Template amendment 2026-08-03 (R-4-screens):** **Detail + right rail**
+> gains `actions` — spec §9.2 requires sticky Approve/Return on a phone, and
+> this is the codebase's first sticky pattern. Two rules come with it, both
+> learned the hard way:
+> 1. **One node, repositioned — never two copies behind `lg:hidden` /
+>    `hidden lg:block`.** CSS hides a node from sight, not from the DOM: a
+>    duplicated action bar duplicates every `id` inside it and announces every
+>    button twice to a screen reader. Reposition with
+>    `sticky bottom-0 … lg:static`.
+> 2. **Z-index ladder** (whole app, so a new sticky region has somewhere to
+>    sit): sticky page regions `z-30` → dialog overlay `z-40` → dialog content
+>    and toast viewport `z-50`. A sticky bar must stay *below* the overlay of a
+>    dialog it opens. Sticky regions carry an opaque `bg-bg` and a `border-t`
+>    so content stays legible scrolling underneath.
 
 ## 5. Copy standard — LOCKED
 
@@ -215,6 +249,8 @@ under `web/src/components/<Name>/`.
 | Skeleton | `animate-pulse bg-surface` blocks (`row`/`block` variants), `aria-hidden`; `PageSkeleton` wraps in `role="status"` + sr-only label. |
 | Toast / bell | Radix Toast provider/viewport (bottom-right, 5 s); success `CheckCircle2 status-done` / info `Info link`; `toast()` bus is callable outside React (`toast-bus.ts`). Bell = top-bar icon button, `aria-label` includes unread count; badge in-memory (feed API deferred). |
 | Error summary | `role="alert"`, `tabIndex=-1` + focused on mount; "There is a problem" heading; list of anchor links (`#field-id`) with wording identical to inline errors; `border-2 border-status-blocked`. |
+| Chip group | `<fieldset>` (bare group `id` for ErrorSummary anchors) + `<legend>`; wrapped `flex` of chips, each a `sr-only` checkbox + `<label>` `min-h-11 rounded-lg border-border`; selected = `peer-checked:border-brand bg-brand text-brand-contrast`; focus ring via `peer-focus-visible:`. |
+| Form dialog | Dialog chrome (above) with a `<form>` body: title, optional muted description, caller's fields, then Cancel (secondary, wrapped in `Dialog.Close`) + submit (`type="submit"`, danger when destructive, `loading` while in flight). Submit is NOT wrapped in `Close`. Panel scrolls (`max-h-[90vh] overflow-y-auto`) — dialog forms grow on a phone. |
 
 **Template notes (§4 as-built):** all six templates exist in
 `web/src/layouts/`. The **App shell** takes a `minimal` mode (brand bar only)

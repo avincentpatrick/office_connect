@@ -8,6 +8,8 @@ import {
   fetchClaim,
   fetchMyWork,
   fetchRegions,
+  fetchReturnReasons,
+  fetchTimeline,
   reimbKeys,
 } from "../../api/reimbursement";
 
@@ -35,5 +37,22 @@ export function useRegions() {
     queryKey: reimbKeys.regions(),
     queryFn: fetchRegions,
     staleTime: 5 * 60_000, // reference data
+  });
+}
+
+export function useTimeline(id: number | null) {
+  return useQuery({
+    queryKey: reimbKeys.timeline(id ?? -1),
+    queryFn: () => fetchTimeline(id as number),
+    enabled: id !== null,
+    retry: false,
+  });
+}
+
+export function useReturnReasons() {
+  return useQuery({
+    queryKey: reimbKeys.returnReasons(),
+    queryFn: fetchReturnReasons,
+    staleTime: 5 * 60_000, // seeded taxonomy
   });
 }

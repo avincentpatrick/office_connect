@@ -22,6 +22,7 @@ from office_connect.modules.reimbursement.services.lifecycle import (
 )
 from tests.reimb_lifecycle_helpers import (
     assert_holder_invariant,
+    return_reason_ids,
     standard_cast,
     trip_claim,
 )
@@ -89,11 +90,13 @@ async def test_return_paths_never_orphan(app_session, seed_rbac, make_user, reim
     """Every return loop lands the ball with a person (spec §7.6)."""
     cast = await _submitted(app_session, make_user)
     claim = cast.claim
+    reasons = await return_reason_ids(app_session)
 
     # division_approval ─return→ returned (holder = claimant)
     await claim_action(
         app_session, claim_id=claim.id, action="return",
         actor_user_id=cast.approver.id, comment="Fix the itinerary.",
+        reason_ids=reasons,
     )
     assert claim.status == st.RETURNED
     assert (claim.holder_kind, claim.holder_id) == ("user", cast.owner.id)
@@ -106,6 +109,7 @@ async def test_return_paths_never_orphan(app_session, seed_rbac, make_user, reim
     await claim_action(
         app_session, claim_id=claim.id, action="return",
         actor_user_id=cast.admin.id, comment="CENRR missing.",
+        reason_ids=reasons,
     )
     assert claim.status == st.RETURNED
     assert_holder_invariant(claim)
@@ -118,6 +122,7 @@ async def test_return_paths_never_orphan(app_session, seed_rbac, make_user, reim
     await claim_action(
         app_session, claim_id=claim.id, action="return",
         actor_user_id=cast.admin.id, comment="ORS number mismatch.",
+        reason_ids=reasons,
     )
     assert claim.status == st.FMS_RETURNED
     assert (claim.holder_kind, claim.holder_id) == ("user", cast.admin.id)
@@ -127,6 +132,7 @@ async def test_return_paths_never_orphan(app_session, seed_rbac, make_user, reim
     await claim_action(
         app_session, claim_id=claim.id, action="return",
         actor_user_id=cast.admin.id, comment="Per FMS: correct the ORS number.",
+        reason_ids=reasons,
     )
     assert claim.status == st.RETURNED
     assert (claim.holder_kind, claim.holder_id) == ("user", cast.owner.id)
@@ -134,22 +140,55 @@ async def test_return_paths_never_orphan(app_session, seed_rbac, make_user, reim
 
 
 async def test_return_requires_reason(app_session, seed_rbac, make_user, reimb_flag_on):
+    """Two independent mandates, both server-side (R-4-screens closed the
+    delta-row-44 deferral): ≥1 taxonomy reason (spec §5.6, the module) AND a
+    free comment (``requires_comment``, the engine)."""
+    cast = await _submitted(app_session, make_user)
+
+    with pytest.raises(APIError) as ei:
+        await claim_action(
+            app_session, claim_id=cast.claim.id, action="return",
+            actor_user_id=cast.approver.id, comment="No reason picked.",
+        )
+    assert ei.value.code == "reimb_return_reason_required"
+    await app_session.rollback()
+
     cast = await _submitted(app_session, make_user)
     with pytest.raises(APIError) as ei:
         await claim_action(
             app_session, claim_id=cast.claim.id, action="return",
             actor_user_id=cast.approver.id,
+            reason_ids=await return_reason_ids(app_session),
         )
     assert ei.value.code == "workflow_comment_required"
     await app_session.rollback()
 
 
+async def test_return_rejects_reasons_outside_the_live_taxonomy(
+    app_session, seed_rbac, make_user, reimb_flag_on
+):
+    """``reason_ids`` is FK-less JSONB — the service is the only thing keeping
+    junk out of the R-8 learning loop."""
+    cast = await _submitted(app_session, make_user)
+    good = await return_reason_ids(app_session)
+    with pytest.raises(APIError) as ei:
+        await claim_action(
+            app_session, claim_id=cast.claim.id, action="return",
+            actor_user_id=cast.approver.id, comment="Missing DPO copy.",
+            reason_ids=[*good, 987654],
+        )
+    assert ei.value.code == "reimb_unknown_return_reason"
+    assert "987654" in ei.value.message
+    await app_session.rollback()
+
+
 async def test_return_writes_return_event(app_session, seed_rbac, make_user, reimb_flag_on):
     cast = await _submitted(app_session, make_user)
+    reasons = await return_reason_ids(app_session, "MISSING_OR", "PER_DIEM_CALC")
     await claim_action(
         app_session, claim_id=cast.claim.id, action="return",
         actor_user_id=cast.approver.id, comment="Missing DPO copy.",
-        reason_ids=(1, 2),
+        reason_ids=reasons,
     )
     event = (
         await app_session.execute(
@@ -159,9 +198,51 @@ async def test_return_writes_return_event(app_session, seed_rbac, make_user, rei
         )
     ).scalar_one()
     assert event.step_id is not None  # the gate step returned from
-    assert event.reason_ids == [1, 2]
+    assert event.reason_ids == reasons
     assert event.free_comment == "Missing DPO copy."
     assert event.returned_to == "claimant"
+
+
+async def test_replayed_return_does_not_append_a_second_return_event(
+    app_session, seed_rbac, make_user, reimb_flag_on
+):
+    """``execute_action`` replays the original event verbatim on an idempotency
+    hit; the module's return-event insert must ride the same replay guard, or a
+    double-tapped Return would fabricate a second entry in an APPEND-ONLY,
+    hash-chained table."""
+    cast = await _submitted(app_session, make_user)
+    reasons = await return_reason_ids(app_session)
+    for _ in range(2):
+        await claim_action(
+            app_session, claim_id=cast.claim.id, action="return",
+            actor_user_id=cast.approver.id, comment="Fix the fare.",
+            reason_ids=reasons, idempotency_key="return-once",
+        )
+    events = (
+        (
+            await app_session.execute(
+                select(ReimbReturnEvent).where(
+                    ReimbReturnEvent.claim_id == cast.claim.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(events) == 1
+    history = (
+        (
+            await app_session.execute(
+                select(ReimbStatusHistory).where(
+                    ReimbStatusHistory.claim_id == cast.claim.id,
+                    ReimbStatusHistory.to_status == st.RETURNED,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(history) == 1  # the two append-only lanes stay 1:1
 
 
 async def test_segregation_blocks_chief_approving_own_claim(
@@ -203,6 +284,7 @@ async def test_cancel_from_returned_owner_only_reason_mandatory(
     await claim_action(
         app_session, claim_id=cast.claim.id, action="return",
         actor_user_id=cast.approver.id, comment="Wrong fund source.",
+        reason_ids=await return_reason_ids(app_session),
     )
 
     outsider, _ = await make_user(roles=("staff",))

@@ -3,8 +3,10 @@ import { Plus } from "lucide-react";
 import { Button } from "../components/Button/Button";
 import { Card } from "../components/Card/Card";
 import { CheckboxField } from "../components/CheckboxField/CheckboxField";
+import { ChipGroup } from "../components/ChipGroup/ChipGroup";
 import { ConfirmationPanel } from "../components/ConfirmationPanel/ConfirmationPanel";
 import { ConfirmDialog } from "../components/Dialog/Dialog";
+import { FormDialog } from "../components/Dialog/FormDialog";
 import { EmptyState } from "../components/EmptyState/EmptyState";
 import { ErrorSummary } from "../components/ErrorSummary/ErrorSummary";
 import { FormField } from "../components/FormField/FormField";
@@ -31,11 +33,13 @@ import { formatManilaDate, formatPeso } from "../lib/format";
  */
 export function UiFoundationPage() {
   const [fieldValue, setFieldValue] = useState("");
+  const [chips, setChips] = useState<string[]>(["1"]);
+  const [formDialogOpen, setFormDialogOpen] = useState(false);
 
   return (
     <AdminPage title="UI foundation">
       <p className="text-base text-text-muted">
-        The 14-component inventory and template system on the served design tokens. Development
+        The 19-component inventory and template system on the served design tokens. Development
         builds only.
       </p>
 
@@ -274,6 +278,41 @@ export function UiFoundationPage() {
             meta={`Holder: Maria Santos · 3 days in this step · ${formatPeso("6750.00")}`}
           />
         </ul>
+      </AdminSection>
+
+      <AdminSection title="19. Chip group (multi-select taxonomy)">
+        <ChipGroup
+          id="demo-chips"
+          legend="Why are you returning it?"
+          help="Pick every reason that applies."
+          options={[
+            { value: "1", label: "Missing official receipt" },
+            { value: "2", label: "Per-diem miscomputed" },
+            { value: "3", label: "Missing required signature" },
+          ]}
+          value={chips}
+          onChange={setChips}
+        />
+      </AdminSection>
+
+      <AdminSection title="20. Form dialog (a decision that needs input)">
+        <Button variant="secondary" onClick={() => setFormDialogOpen(true)}>
+          Return claim
+        </Button>
+        <FormDialog
+          open={formDialogOpen}
+          onOpenChange={setFormDialogOpen}
+          title="Return this claim"
+          description="The claim goes back to the claimant to fix and resubmit."
+          submitLabel="Return claim"
+          danger
+          onSubmit={() => {
+            setFormDialogOpen(false);
+            toast("Claim returned (demo).", "info");
+          }}
+        >
+          <TextareaField id="demo-dialog-comment" label="What needs fixing?" />
+        </FormDialog>
       </AdminSection>
 
       <AdminSection

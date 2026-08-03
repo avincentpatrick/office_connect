@@ -36,6 +36,10 @@ async def test_fresh_draft_waits_on_its_owner(
     assert item["holder_display"] == "You"
     assert item["days_in_state"] == 0
     assert created["id"] not in [i["id"] for i in work["in_flight"]]
+    # A draft has no gate step, so no SLA — the badge is approver-facing only
+    # (spec §6.3; the claimant's clock is the R-6 liquidation deadline).
+    assert item["sla_due_at"] is None
+    assert item["sla_state"] is None
 
 
 async def test_submit_moves_the_claim_to_in_flight_and_the_approver_queue(
@@ -89,6 +93,12 @@ async def test_submit_moves_the_claim_to_in_flight_and_the_approver_queue(
     approver_work = (await client.get(f"{BASE}/my-work")).json()
     assert cid in [i["id"] for i in approver_work["waiting_on_you"]]
     assert approver_work["in_flight"] == []  # no staff link → owns nothing
+
+    # R-4-screens closed the SLA-badge deferral: a freshly activated gate step
+    # carries a due date (3 Manila working days out), so the row is on track.
+    queued = next(i for i in approver_work["waiting_on_you"] if i["id"] == cid)
+    assert queued["sla_due_at"] is not None
+    assert queued["sla_state"] == "on_track"
 
 
 async def test_waiting_orders_longest_waiting_first(

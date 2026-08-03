@@ -29,6 +29,9 @@ from office_connect.core.observability import init_error_tracking
 # include them (import-linter: core never imports modules; app → modules is
 # legal, same reasoning as the ops import in lifespan). api-standards §9.
 from office_connect.modules.reimbursement.api import router as reimbursement_router
+from office_connect.modules.reimbursement.api.actions import (
+    router as reimbursement_actions_router,
+)
 
 settings = get_settings()
 
@@ -61,6 +64,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, version=APP_VERSION, lifespan=lifespan)
 app.include_router(api_router)
 app.include_router(reimbursement_router)
+# The approver's decision endpoints mount SEPARATELY and un-gated on purpose:
+# a router's dependencies apply to everything included beneath it, and the
+# feature flag must never strand in-flight approvals (workflow-standards §9).
+app.include_router(reimbursement_actions_router)
 
 # Structured error envelope for every raised HTTPException/APIError/validation
 # error (api-standards §3) — the first exception handlers in the app.

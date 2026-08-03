@@ -56,7 +56,7 @@ async def create_claim(
             actor_user_id=principal.user_id,
             changes=changes,
         )
-    detail = await claim_detail(session, claim)
+    detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
     await session.commit()
     return detail
 
@@ -73,7 +73,7 @@ async def read_claim(
     ):
         # Same slug as the write paths — no owner-vs-scope information leak.
         raise errors.not_claim_owner()
-    return await claim_detail(session, claim)
+    return await claim_detail(session, claim, actor_user_id=principal.user_id)
 
 
 @router.patch("/claims/{claim_id}", response_model=ClaimDetail)
@@ -89,7 +89,7 @@ async def update_claim(
         actor_user_id=principal.user_id,
         changes=body.model_dump(exclude_unset=True),
     )
-    detail = await claim_detail(session, claim)
+    detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
     await session.commit()
     return detail
 
@@ -107,7 +107,7 @@ async def replace_legs(
         actor_user_id=principal.user_id,
         legs=[leg.model_dump() for leg in body.legs],
     )
-    detail = await claim_detail(session, claim)
+    detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
     await session.commit()
     return detail
 
@@ -124,7 +124,7 @@ async def compute_claim(
     claim = await drafts.recompute_totals(
         session, claim_id=claim_id, actor_user_id=principal.user_id
     )
-    detail = await claim_detail(session, claim)
+    detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
     await session.commit()
     return detail
 
@@ -152,7 +152,7 @@ async def submit_claim(
         claim = await lifecycle.submit_claim(
             session, claim_id=claim_id, actor_user_id=principal.user_id
         )
-    detail = await claim_detail(session, claim)
+    detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
     await session.commit()
     return detail
 
@@ -173,6 +173,6 @@ async def cancel_claim(
         actor_user_id=principal.user_id,
         comment=body.comment,
     )
-    detail = await claim_detail(session, claim)
+    detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
     await session.commit()
     return detail

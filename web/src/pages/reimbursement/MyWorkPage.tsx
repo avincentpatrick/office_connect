@@ -8,7 +8,13 @@ import { Button } from "../../components/Button/Button";
 import { toast } from "../../components/Toast/toast-bus";
 import { WorkItemRow } from "../../components/WorkItemRow/WorkItemRow";
 import { ListPage } from "../../layouts/ListPage";
-import { CLAIM_STATUS_TO_SEMANTIC, myWorkMeta, workItemTitle } from "./claim-status";
+import {
+  CLAIM_STATUS_TO_SEMANTIC,
+  SLA_STATE_LABEL,
+  SLA_STATE_TO_SEMANTIC,
+  myWorkMeta,
+  workItemTitle,
+} from "./claim-status";
 import { useMyWork } from "./use-claim";
 import { stepPath } from "./wizard-steps";
 
@@ -89,6 +95,7 @@ export function MyWorkPage() {
           <WorkSection
             heading="Waiting on you"
             items={data.waiting_on_you}
+            urgency
             zeroState={
               <p className="text-base text-text-muted">
                 Nothing waiting on you<span aria-hidden="true"> 🎉</span>
@@ -112,10 +119,18 @@ function WorkSection({
   heading,
   items,
   zeroState,
+  urgency = false,
 }: {
   heading: string;
   items: WorkItem[];
   zeroState: ReactNode;
+  /**
+   * "Waiting on you" swaps the status chip for the SLA urgency chip (spec §9.2
+   * — "urgency chips"): the section heading already says these are yours, so
+   * the one chip is better spent on how late they are. Only when the server
+   * says a row is slipping — an on-track row keeps its status.
+   */
+  urgency?: boolean;
 }) {
   return (
     <section className="flex flex-col gap-2" aria-label={heading}>
@@ -124,17 +139,28 @@ function WorkSection({
         zeroState
       ) : (
         <ul className="divide-y divide-border border-t border-b border-border">
-          {items.map((item) => (
-            <WorkItemRow
-              key={item.id}
-              refNo={item.ref_no}
-              title={workItemTitle(item)}
-              status={CLAIM_STATUS_TO_SEMANTIC[item.status]}
-              statusLabel={item.status_label}
-              to={`/reimbursement/claims/${item.id}`}
-              meta={myWorkMeta(item)}
-            />
-          ))}
+          {items.map((item) => {
+            const slipping =
+              urgency &&
+              (item.sla_state === "overdue" || item.sla_state === "due_soon");
+            return (
+              <WorkItemRow
+                key={item.id}
+                refNo={item.ref_no}
+                title={workItemTitle(item)}
+                status={
+                  slipping
+                    ? SLA_STATE_TO_SEMANTIC[item.sla_state!]
+                    : CLAIM_STATUS_TO_SEMANTIC[item.status]
+                }
+                statusLabel={
+                  slipping ? SLA_STATE_LABEL[item.sla_state!] : item.status_label
+                }
+                to={`/reimbursement/claims/${item.id}`}
+                meta={myWorkMeta(item)}
+              />
+            );
+          })}
         </ul>
       )}
     </section>

@@ -30,7 +30,7 @@ from office_connect.modules.reimbursement.models import (
     ReimbClaim,
     ReimbItineraryLeg,
 )
-from office_connect.modules.reimbursement.services import errors
+from office_connect.modules.reimbursement.services import actions, errors
 from office_connect.modules.reimbursement.services import status as st
 
 _SCOPED_READ_PERMS = (
@@ -161,9 +161,15 @@ def _leg_out(leg: ReimbItineraryLeg) -> LegOut:
     )
 
 
-async def claim_detail(session: AsyncSession, claim: ReimbClaim) -> ClaimDetail:
+async def claim_detail(
+    session: AsyncSession, claim: ReimbClaim, *, actor_user_id: int
+) -> ClaimDetail:
     """The one response mapper. Build BEFORE the router commits — the pydantic
-    model holds plain values, so post-commit attribute expiry can't bite."""
+    model holds plain values, so post-commit attribute expiry can't bite.
+
+    ``actor_user_id`` is required because the action set is per-actor: the same
+    claim shows Approve/Return to its gate holder and nothing to a bystander
+    (workflow-standards §3)."""
     status_code = claim.status or st.DRAFT
     legs = (
         (
@@ -176,6 +182,7 @@ async def claim_detail(session: AsyncSession, claim: ReimbClaim) -> ClaimDetail:
         .scalars()
         .all()
     )
+    sla_due_at, sla_state = await actions.claim_sla(session, claim=claim)
     return ClaimDetail(
         id=claim.id,
         ref_no=claim.ref_no,
@@ -204,6 +211,12 @@ async def claim_detail(session: AsyncSession, claim: ReimbClaim) -> ClaimDetail:
         other_total=money_str(claim.other_total),
         totals=claim.totals if claim.totals else None,
         legs=[_leg_out(leg) for leg in legs],
+        available_actions=await actions.claim_actions(
+            session, claim=claim, actor_user_id=actor_user_id
+        ),
+        row_version=await actions.instance_row_version(session, claim),
+        sla_due_at=sla_due_at,
+        sla_state=sla_state,
         created_at=claim.created_at,
         updated_at=claim.updated_at,
     )

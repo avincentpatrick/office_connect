@@ -36,7 +36,7 @@ from office_connect.modules.reimbursement.services.compute import (
     compute_claim_totals,
 )
 from office_connect.modules.reimbursement.services.lifecycle import (
-    _is_owner,
+    is_claim_owner,
     _locked_claim,
 )
 
@@ -106,7 +106,7 @@ async def _owned_editable_claim(
     # Ownership BEFORE editability: the 409-vs-403 distinction would otherwise
     # hand any staff user (global reimb.claim.create grant) an existence-plus-
     # status oracle over other people's claims (§3.2 — not bureau-public).
-    if not await _is_owner(session, claim, actor_user_id):
+    if not await is_claim_owner(session, claim, actor_user_id):
         raise errors.not_claim_owner()
     _assert_editable(claim)
     return claim

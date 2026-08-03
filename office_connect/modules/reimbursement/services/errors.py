@@ -137,6 +137,27 @@ def claim_not_in_workflow() -> APIError:
     )
 
 
+def return_reason_required() -> APIError:
+    """R-4-screens: spec §5.6/§9.4 — a return carries ≥1 taxonomy reason. The
+    engine's ``requires_comment`` covers the prose; this covers the STRUCTURE
+    the R-8 learning loop reads."""
+    return APIError(
+        422,
+        "reimb_return_reason_required",
+        "Select at least one reason for returning this claim.",
+    )
+
+
+def unknown_return_reason(reason_ids: list[int]) -> APIError:
+    listed = ", ".join(str(i) for i in reason_ids)
+    return APIError(
+        422,
+        "reimb_unknown_return_reason",
+        f"Return reason id(s) {listed} are not in the active return-reason "
+        "taxonomy — pick from the published catalog.",
+    )
+
+
 def unsupported_claim_action(action: str) -> APIError:
     return APIError(
         422,

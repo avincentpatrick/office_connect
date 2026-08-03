@@ -19,7 +19,12 @@ from office_connect.modules.reimbursement.services import (
     submit_claim,
 )
 from tests.conftest import CSRF, login
-from tests.reimb_lifecycle_helpers import ensure_reimb_workflow, standard_cast, trip_claim
+from tests.reimb_lifecycle_helpers import (
+    ensure_reimb_workflow,
+    return_reason_ids,
+    standard_cast,
+    trip_claim,
+)
 from tests.reimbursement_helpers import make_staff
 from tests.workflow_helpers import grant_scoped_role, make_org_unit
 
@@ -230,6 +235,7 @@ async def test_resubmit_of_a_returned_claim_over_http(
     await claim_action(
         app_session, claim_id=cid, action="return",
         actor_user_id=approver.id, comment="Fix the fare",
+        reason_ids=await return_reason_ids(app_session),
     )
     await app_session.commit()
 
@@ -288,6 +294,7 @@ async def test_resubmit_keeps_other_total_regression(
         action="return",
         actor_user_id=cast.approver.id,
         comment="Receipts missing",
+        reason_ids=await return_reason_ids(app_session),
     )
     await claim_action(
         app_session, claim_id=claim.id, action="resubmit",

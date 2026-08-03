@@ -309,7 +309,12 @@ async def available_actions(
 ) -> list[str]:
     """The actions ``actor_user_id`` may take on the instance right now — the single
     (state × actor × guards × delegation) computation a GET renders and a POST
-    re-validates through ``execute_action`` (the UI never computes permissions)."""
+    re-validates through ``execute_action`` (the UI never computes permissions).
+
+    Contract: an action listed here is one ``execute_action`` would accept for
+    this actor *now* — including the actor-dependent gate guards
+    (distinct-approver, segregation). Offering an action that is certain to 409
+    is a bug, not a race (workflow-standards §3)."""
     now = now or utc_now()
     instance = await session.get(WorkflowInstance, instance_id)
     if instance is None:
@@ -339,6 +344,23 @@ async def available_actions(
                     revision_no=instance.revision_no,
                 )
                 if not any(s.status == "active" for s in gate):
+                    continue
+                # Mirror execute_action's two ACTOR-dependent guards, or the UI
+                # would render a button that always 409s. Distinct-approver:
+                # this actor already filled a slot of this gate.
+                if any(
+                    s.acted_by_user_id == actor_user_id and s.status == "done"
+                    for s in gate
+                ):
+                    continue
+                # Segregation: the maker can never be a checker (COA 92-389).
+                # Prior checkers can't be the maker (they'd have been blocked),
+                # so the actor-as-originator case is the only one to filter.
+                if (
+                    current.enforce_segregation
+                    and instance.originator_user_id is not None
+                    and instance.originator_user_id == actor_user_id
+                ):
                     continue
             auth = await resolve_authority(
                 session,

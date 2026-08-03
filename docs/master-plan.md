@@ -220,7 +220,7 @@ ledger (§5) and research hardening — full detail in `docs/modules/reimburseme
   prefill, and the **My-Work inbox** as the module landing; inventory grew to 17
   (Form-field family, SummaryList, ConfirmationPanel, WorkItemRow). The claimant
   journey is live end to end; the approver surface (approval screen + return dialog
-  + action endpoints) completes R-4's UI half next.
+  + action endpoints) completed R-4's UI half in session 17.
 - **R-4**: the **shared core workflow engine** ships here (owner decision) and the
   reimbursement chain becomes its first definition. Sequential now; `join_type`
   ready for DTWIS parallel routing. **Engine CORE shipped 2026-07-27 (session 11**,
@@ -233,6 +233,19 @@ ledger (§5) and research hardening — full detail in `docs/modules/reimburseme
   via `register_sla_enqueuer` + `ops.reimb_sla_reminders`, bootstrap `seed-workflows`,
   migration `0015`. **Scope note (2026-07-29): the My-Work inbox moved to R-2-wizard**
   — it is an HTTP/UI surface and the wizard owns the module's first HTTP surface.
+  **R-4-screens shipped 2026-08-03 (session 17)** — the approver surface, completing
+  R-4's UI half: per-action `/approve` + `/return` endpoints on a SECOND, deliberately
+  **un-gated** module router (the flag gates a module's surface but never a decision on
+  an in-flight instance — api-standards §9a, workflow-standards §9), ≥1-taxonomy-reason
+  enforcement in `claim_action`, the per-actor action set + CAS `row_version` + the
+  spec §6.3 SLA badge embedded in `ClaimDetail`, the claim-tracker timeline +
+  return-reason taxonomy endpoints, and — Rule 10, in core so every module inherits it —
+  `available_actions` now filtering the actor-dependent gate guards so the UI is never
+  offered a button certain to 409 (workflow-standards §3). FE: the phone-first decision
+  bar folded into `/claims/:id` on a new sticky `DetailPage.actions` slot, the return
+  dialog on two new inventory components (ChipGroup + FormDialog), the tracker, and
+  My-Work urgency chips. No migration — head stays `0016`. A claim is now drivable to
+  `paid_closed` over HTTP, so the chain is end-to-end testable for the first time.
   **Delegation decision (2026-07-27):** on-behalf-of uses a dedicated
   `core_workflow_delegations` table — this refines the Stage-B B3 "no RBAC delegation
   table" note (a role-window grants a ROLE; a workflow delegation records one PERSON

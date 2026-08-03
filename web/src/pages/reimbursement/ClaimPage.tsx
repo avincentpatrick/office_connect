@@ -9,15 +9,25 @@ import { SummaryList } from "../../components/SummaryList/SummaryList";
 import { DetailPage } from "../../layouts/DetailPage";
 import { formatManilaDate, formatPeso } from "../../lib/format";
 import { NotFoundPage } from "../NotFoundPage";
-import { CLAIM_STATUS_TO_SEMANTIC } from "./claim-status";
+import { ClaimActions } from "./ClaimActions";
+import { ClaimTimeline } from "./ClaimTimeline";
+import {
+  CLAIM_STATUS_TO_SEMANTIC,
+  SLA_STATE_LABEL,
+  SLA_STATE_TO_SEMANTIC,
+} from "./claim-status";
 import { parseClaimId, useClaim } from "./use-claim";
 import { firstIncompleteStep, stepPath } from "./wizard-steps";
 
 /**
- * /reimbursement/claims/:claimId — the resume redirect + read-only detail.
- * Claimant-held claims (draft/returned) jump straight into the wizard at the
- * first incomplete step (server-side save-and-return); everything else renders
- * the read-only record on the Detail template.
+ * /reimbursement/claims/:claimId — the canonical claim URL, for everyone.
+ *
+ * A claim I can still edit resumes the wizard at the first incomplete step
+ * (server-side save-and-return). Anything else renders the record, with the
+ * tracker in the rail and — if the SERVER says I may act — the approval bar
+ * (spec §9.2). One URL, three audiences, no client-side role routing: what
+ * differs between a claimant, an approver and a bystander is entirely in
+ * `available_actions`.
  */
 export function ClaimPage() {
   const params = useParams();
@@ -46,7 +56,13 @@ export function ClaimPage() {
   }
 
   const claim = query.data;
-  if (claim.status === "draft" || claim.status === "returned") {
+  // Resume the wizard only for someone who can actually move it forward. The
+  // status alone would drag a REVIEWER opening a returned claim into a
+  // stranger's wizard; the server's action set says whose ball it is.
+  const canEdit =
+    claim.available_actions.includes("submit") ||
+    claim.available_actions.includes("resubmit");
+  if (canEdit && (claim.status === "draft" || claim.status === "returned")) {
     return <Navigate to={stepPath(claim.id, firstIncompleteStep(claim))} replace />;
   }
   return <ClaimDetailView claim={claim} />;
@@ -61,33 +77,48 @@ export function ClaimDetailView({ claim }: { claim: ClaimDetail }) {
           {claim.status_label}
         </StatusChip>
       }
+      actions={<ClaimActions claim={claim} />}
       rail={
-        <Card title="Status">
-          <dl className="flex flex-col gap-2 text-base text-text">
-            {claim.holder_display ? (
+        <>
+          <Card title="Status">
+            <dl className="flex flex-col gap-2 text-base text-text">
+              {claim.holder_display ? (
+                <div>
+                  <dt className="text-sm text-text-muted">With</dt>
+                  <dd>{claim.holder_display}</dd>
+                </div>
+              ) : null}
+              {claim.next_action ? (
+                <div>
+                  <dt className="text-sm text-text-muted">Next action</dt>
+                  <dd>{claim.next_action}</dd>
+                </div>
+              ) : null}
+              {claim.sla_state && claim.sla_due_at ? (
+                <div>
+                  <dt className="text-sm text-text-muted">Due with this step</dt>
+                  <dd className="flex items-center gap-2">
+                    {formatManilaDate(claim.sla_due_at)}
+                    <StatusChip status={SLA_STATE_TO_SEMANTIC[claim.sla_state]}>
+                      {SLA_STATE_LABEL[claim.sla_state]}
+                    </StatusChip>
+                  </dd>
+                </div>
+              ) : null}
+              {claim.totals ? (
+                <div>
+                  <dt className="text-sm text-text-muted">Grand total</dt>
+                  <dd className="font-bold">{formatPeso(claim.totals.grand)}</dd>
+                </div>
+              ) : null}
               <div>
-                <dt className="text-sm text-text-muted">With</dt>
-                <dd>{claim.holder_display}</dd>
+                <dt className="text-sm text-text-muted">Last updated</dt>
+                <dd>{formatManilaDate(claim.updated_at)}</dd>
               </div>
-            ) : null}
-            {claim.next_action ? (
-              <div>
-                <dt className="text-sm text-text-muted">Next action</dt>
-                <dd>{claim.next_action}</dd>
-              </div>
-            ) : null}
-            {claim.totals ? (
-              <div>
-                <dt className="text-sm text-text-muted">Grand total</dt>
-                <dd className="font-bold">{formatPeso(claim.totals.grand)}</dd>
-              </div>
-            ) : null}
-            <div>
-              <dt className="text-sm text-text-muted">Last updated</dt>
-              <dd>{formatManilaDate(claim.updated_at)}</dd>
-            </div>
-          </dl>
-        </Card>
+            </dl>
+          </Card>
+          <ClaimTimeline claimId={claim.id} />
+        </>
       }
     >
       <div className="flex flex-col gap-6">

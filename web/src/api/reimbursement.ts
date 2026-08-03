@@ -118,8 +118,50 @@ export interface ClaimDetail {
   other_total: string;
   totals: ClaimTotals | null;
   legs: ClaimLeg[];
+  /**
+   * What THIS user may do to THIS claim right now, computed server-side
+   * (workflow-standards §3). Render buttons from this list and nothing else —
+   * the client never derives permissions, and `/auth/me` deliberately carries
+   * roles rather than permission strings.
+   */
+  available_actions: ClaimAction[];
+  /** CAS token echoed back as `expected_version`; null before submit. */
+  row_version: number | null;
+  sla_due_at: string | null;
+  sla_state: SlaState | null;
   created_at: string;
   updated_at: string;
+}
+
+export type ClaimAction =
+  | "submit"
+  | "approve"
+  | "return"
+  | "resubmit"
+  | "cancel";
+
+/** Spec §6.3 derived badge — computed on view, never stored as a status. */
+export type SlaState = "on_track" | "due_soon" | "overdue";
+
+export interface ReturnReason {
+  id: number;
+  code: string;
+  label: string;
+  category: string;
+}
+
+/** One row of the claim tracker (spec §9.2), from reimb_status_histories. */
+export interface TimelineEvent {
+  id: number;
+  from_status: ClaimStatus | null;
+  from_status_label: string | null;
+  to_status: ClaimStatus;
+  to_status_label: string;
+  actor_display: string | null;
+  note: string | null;
+  /** Populated on the rows a return produced — shown to the claimant verbatim. */
+  reasons: ReturnReason[];
+  created_at: string;
 }
 
 export interface WorkItem {
@@ -135,6 +177,8 @@ export interface WorkItem {
   holder_since: string | null;
   days_in_state: number;
   grand: string | null;
+  sla_due_at: string | null;
+  sla_state: SlaState | null;
   updated_at: string;
 }
 
@@ -183,7 +227,9 @@ export const reimbKeys = {
   all: ["reimbursement"] as const,
   myWork: () => [...reimbKeys.all, "my-work"] as const,
   claim: (id: number) => [...reimbKeys.all, "claim", id] as const,
+  timeline: (id: number) => [...reimbKeys.all, "claim", id, "timeline"] as const,
   regions: () => [...reimbKeys.all, "regions"] as const,
+  returnReasons: () => [...reimbKeys.all, "return-reasons"] as const,
 };
 
 export function createClaim(): Promise<ClaimDetail> {
@@ -236,4 +282,42 @@ export function fetchMyWork(): Promise<MyWorkResponse> {
 
 export function fetchRegions(): Promise<Region[]> {
   return api<Region[]>("/reimbursement/regions");
+}
+
+/**
+ * Clear the current gate. The same call at every rung of the chain — the
+ * server decides where the claim lands; only the button label differs
+ * (see `actionLabel` in pages/reimbursement/claim-status.ts).
+ */
+export function approveClaim(
+  id: number,
+  body: { comment?: string; expected_version?: number | null } = {},
+): Promise<ClaimDetail> {
+  return api<ClaimDetail>(`/reimbursement/claims/${id}/approve`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Bounce the claim back. ≥1 taxonomy reason AND a comment, both server-enforced. */
+export function returnClaim(
+  id: number,
+  body: {
+    comment: string;
+    reason_ids: number[];
+    expected_version?: number | null;
+  },
+): Promise<ClaimDetail> {
+  return api<ClaimDetail>(`/reimbursement/claims/${id}/return`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchTimeline(id: number): Promise<TimelineEvent[]> {
+  return api<TimelineEvent[]>(`/reimbursement/claims/${id}/timeline`);
+}
+
+export function fetchReturnReasons(): Promise<ReturnReason[]> {
+  return api<ReturnReason[]>("/reimbursement/return-reasons");
 }

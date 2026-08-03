@@ -5,9 +5,13 @@ Two self-keyed lists over the denormalized holder/status columns:
 in flight" (claimant = my staff, excluding rows already in the first list).
 Membership is holder/claimant-keyed, so no scope check is needed — nothing
 another user holds or owns can appear (spec §3.2 stays server-side by
-construction). SLA-due badges live on ``core_workflow_steps`` and arrive with
-the approval screens (recorded deferral); ordering by ``holder_since`` is the
-v1 urgency proxy.
+construction).
+
+R-4-screens closed the SLA deferral: each row carries the active gate step's
+``sla_due_at`` plus the spec §6.3 derived badge (``on_track``/``due_soon``/
+``overdue``), server-computed in ``services/actions.py`` so the browser never
+reasons about a Manila deadline. Ordering stays ``holder_since`` ASC — the
+longest-waiting item is the most overdue one, so urgency floats up for free.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from office_connect.modules.reimbursement.api.schemas import (
     WorkItemOut,
 )
 from office_connect.modules.reimbursement.models import ReimbClaim
+from office_connect.modules.reimbursement.services import actions
 from office_connect.modules.reimbursement.services import status as st
 
 router = APIRouter()
@@ -36,7 +41,11 @@ _LIST_CAP = 100  # hard cap; the pagination envelope is a Stage-D deferral
 
 
 def _work_item(
-    claim: ReimbClaim, *, holder_display: str | None, now: datetime
+    claim: ReimbClaim,
+    *,
+    holder_display: str | None,
+    now: datetime,
+    sla_due_at: datetime | None = None,
 ) -> WorkItemOut:
     status_code = claim.status or st.DRAFT
     days = (
@@ -58,6 +67,8 @@ def _work_item(
         holder_since=claim.holder_since,
         days_in_state=days,
         grand=totals.get("grand"),
+        sla_due_at=sla_due_at,
+        sla_state=actions.sla_state(sla_due_at, now=now),
         updated_at=claim.updated_at,
     )
 
@@ -140,6 +151,21 @@ async def my_work(
         )
 
     names = await _holder_names(session, [*waiting, *in_flight])
+    # Spec §6.3's approver-facing badge: one batched join over the active gate
+    # steps (the partial SLA index covers it), never a per-row query.
+    due = await actions.active_step_due_dates(
+        session,
+        [
+            c.workflow_instance_id
+            for c in (*waiting, *in_flight)
+            if c.workflow_instance_id is not None
+        ],
+    )
+
+    def _sla(claim: ReimbClaim) -> datetime | None:
+        if claim.workflow_instance_id is None:
+            return None
+        return due.get(claim.workflow_instance_id)
 
     def _display(claim: ReimbClaim) -> str | None:
         if claim.holder_kind == "external_fms":
@@ -152,9 +178,11 @@ async def my_work(
 
     return MyWorkOut(
         waiting_on_you=[
-            _work_item(c, holder_display=_display(c), now=now) for c in waiting
+            _work_item(c, holder_display=_display(c), now=now, sla_due_at=_sla(c))
+            for c in waiting
         ],
         in_flight=[
-            _work_item(c, holder_display=_display(c), now=now) for c in in_flight
+            _work_item(c, holder_display=_display(c), now=now, sla_due_at=_sla(c))
+            for c in in_flight
         ],
     )

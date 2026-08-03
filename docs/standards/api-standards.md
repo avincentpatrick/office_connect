@@ -226,10 +226,8 @@ are now the binding conventions for every module HTTP surface:
   house). Two ordering facts, both pinned by tests: the CSRF middleware wall
   fires even earlier (a header-less POST 403s `csrf_failed` with the flag
   OFF), and with the flag ON the normal 401/403 gates take over.
-  **Caveat (workflow-standards §9):** the flag blocks NEW work, never strands
-  in-flight work — when approval-ACTION endpoints land they must NOT sit
-  behind this 404 gate. The gate reads the DB per request (indexed
-  single-row select); a Redis-cached variant is a recorded deferral.
+  The gate reads the DB per request (indexed single-row select); a
+  Redis-cached variant is a recorded deferral. **The one exemption is §9a.**
 - **Read scoping is the module's job** — coarse `require_permission` cannot
   express "owner sees own; scoped roles see their unit" when a role's grant is
   global (the `staff` role's `reimb.claim.read` is). Reimbursement's rule
@@ -245,3 +243,58 @@ are now the binding conventions for every module HTTP surface:
   `Idempotency-Key` request-header convention is deferred (the claim-row
   `FOR UPDATE` lock + 409s + the engine's server-derived keys already make
   double-submit burn exactly one reference number).
+
+## §9a. Un-gated action endpoints + the workflow action convention (R-4-screens, 2026-08-03)
+
+> **The flag gates the module's surface; it never gates a decision on an
+> instance already in the chain.**
+
+This is the resolution of the §9 caveat, and it binds every module that runs on
+the workflow engine.
+
+- **Why an exemption exists at all** — `execute_action` never reads the feature
+  flag (workflow-standards §9): the engine will always finish work it started.
+  If the HTTP surface 404'd everything, switching a module OFF would strand
+  every in-flight item at whatever gate it was sitting on. The flag must stop
+  new work, not trap existing work.
+- **Scope of the exemption: the action POSTs, and nothing else.** Reimbursement
+  un-gates exactly `POST /claims/{id}/approve` and `POST /claims/{id}/return`.
+  Reads and wizard writes stay gated so an OFF module still looks absent to a
+  browser (fail-safe OFF survives intact), and `/submit` needs no exemption —
+  `start_instance` already refuses a new instance flag-OFF. `/submit`'s
+  *resubmit* branch stays gated too: resubmit is claimant-editing work, and it
+  is meaningless without the wizard behind it. **Residual, accepted:** flag-OFF
+  the approver *UI* is unreachable even though the POST answers. The guarantee
+  is that the engine and its HTTP mirror never refuse an in-flight transition —
+  not that the SPA stays up for a module someone deliberately switched off.
+- **How to implement it** — a **second top-level router**
+  (`modules/<module>/api/actions.py`, self-prefixed, no `dependencies=`),
+  mounted from `main.py` alongside the gated one. It cannot be an
+  `include_router` under the gated router: FastAPI applies a router's
+  `dependencies` to everything included beneath it. Pinned by
+  `tests/test_reimb_api_flag_gate.py` — with the flag OFF the action routes must
+  answer 401/403/409, and specifically must never return the gate's bare
+  `not_found`.
+- **Per-action routes, not a verb envelope** — `POST …/{id}/approve` and
+  `POST …/{id}/return`, matching the existing `/submit` and `/cancel`. Each
+  action gets its own request schema, so a rule like "≥1 return reason" fails as
+  a **field-anchored 422** (`loc: ["body","reason_ids"]`) that the FE's
+  422→field mapper attaches to the control that is wrong. A single
+  `POST /actions` with a `{action}` discriminator cannot do that without a
+  union, and buys nothing.
+- **Route permission is deliberately coarse** — a chain's gates carry
+  *different* permissions (`reimb.claim.approve` / `.review` / `.fms_update`),
+  so no single route dependency can express the real rule. Declare the module's
+  read permission and let the engine's `resolve_authority` be the authorization
+  of record (403 `workflow_not_authorized`). Same reasoning as `can_read_claim`
+  above: coarse at the route, exact in the service.
+- **CAS on the wire** — a read that exposes an action set also exposes
+  `row_version` (from `core_workflow_instances`); the client echoes it back as
+  `expected_version` and a moved claim 409s `stale_workflow_version` instead of
+  acting on a stale screen (workflow-standards §4). Null before submit.
+- **The action set travels with the record, not beside it** — reimbursement
+  embeds `available_actions` in `ClaimDetail` rather than serving
+  `GET …/available-actions`. Every mutation already returns the full record, so
+  the buttons, the CAS token and the data they describe refresh in one response
+  with no second query to invalidate and no window where they disagree.
+  Additive within v1 (§1), so existing clients are unaffected.

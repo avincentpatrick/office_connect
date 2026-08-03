@@ -4,6 +4,7 @@ import type {
   ClaimDetail,
   ClaimTotals,
   MyWorkResponse,
+  TimelineEvent,
   WorkItem,
 } from "../api/reimbursement";
 
@@ -42,6 +43,11 @@ export function makeClaim(overrides: Partial<ClaimDetail> = {}): ClaimDetail {
     other_total: "0.00",
     totals: null,
     legs: [],
+    // A draft, seen by its owner: the pre-instance action set (R-4-screens).
+    available_actions: ["submit", "cancel"],
+    row_version: null,
+    sla_due_at: null,
+    sla_state: null,
     created_at: "2026-07-30T00:00:00Z",
     updated_at: "2026-07-30T00:00:00Z",
     ...overrides,
@@ -169,6 +175,8 @@ export function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
     holder_since: "2026-07-28T00:00:00Z",
     days_in_state: 2,
     grand: "6750.00",
+    sla_due_at: "2026-08-05T09:00:00Z",
+    sla_state: "on_track",
     updated_at: "2026-07-30T00:00:00Z",
     ...overrides,
   };
@@ -184,3 +192,62 @@ export function makeMyWork(overrides: Partial<MyWorkResponse> = {}): MyWorkRespo
     ...overrides,
   };
 }
+
+/**
+ * A claim sitting at the first gate, as its APPROVER sees it — the approval
+ * bar renders from `available_actions`, so this fixture is what makes the
+ * approver an approver in a page test (no auth context involved).
+ */
+export function awaitingApproval(
+  overrides: Partial<ClaimDetail> = {},
+): ClaimDetail {
+  return completeClaim({
+    ref_no: "RB-2026-0001",
+    status: "division_approval",
+    status_label: "For Approval",
+    next_action: "Approve or return",
+    holder_display: "Maria Santos",
+    available_actions: ["approve", "return"],
+    row_version: 2,
+    sla_due_at: "2026-08-05T09:00:00Z",
+    sla_state: "on_track",
+    ...overrides,
+  });
+}
+
+export function makeTimeline(
+  overrides: Partial<TimelineEvent>[] = [],
+): TimelineEvent[] {
+  const base: TimelineEvent[] = [
+    {
+      id: 1,
+      from_status: null,
+      from_status_label: null,
+      to_status: "draft",
+      to_status_label: "Draft",
+      actor_display: "Test Claimant",
+      note: null,
+      reasons: [],
+      created_at: "2026-07-28T01:00:00Z",
+    },
+    {
+      id: 2,
+      from_status: "draft",
+      from_status_label: "Draft",
+      to_status: "division_approval",
+      to_status_label: "For Approval",
+      actor_display: "Test Claimant",
+      note: null,
+      reasons: [],
+      created_at: "2026-07-28T02:00:00Z",
+    },
+  ];
+  return overrides.length === 0
+    ? base
+    : base.map((event, index) => ({ ...event, ...overrides[index] }));
+}
+
+export const RETURN_REASONS = [
+  { id: 1, code: "MISSING_OR", label: "Missing official receipt", category: "missing_doc" },
+  { id: 2, code: "PER_DIEM_CALC", label: "Per-diem miscomputed", category: "wrong_amount" },
+];

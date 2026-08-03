@@ -12,6 +12,26 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-4-screens — approvers can now clear their queue, from a phone**
+  (2026-08-03): the other half of the claim's life. A claim waiting on you shows
+  **Approve** and **Return** on the claim page itself, pinned to the bottom of the
+  screen on a phone so you never scroll back to act. The buttons come **entirely from
+  the server** — the same page shows a claimant nothing, and it will not offer you
+  Approve on a claim you filed yourself, because you can never clear your own claim
+  even as the Division Chief. One Approve carries the claim all the way down the
+  chain, and the button says what it will actually do at each step: *Approve*, then
+  *Approve & hand to FMS*, then *Mark paid & close*. **Returning now requires at
+  least one reason** picked from the published taxonomy plus a comment — the dialog
+  stays open and keeps your work if either is missing, and the claimant sees both
+  **word for word**. Every claim page carries a **tracker**: who did what, when
+  (Manila time), and the reasons attached to the bounce that produced them. **My
+  Work** rows now carry an urgency chip — amber when an approval is due soon, red
+  when it is overdue — computed from the step's own deadline. If two people act at
+  once, the second is told the claim moved rather than silently overwriting the
+  first. And switching the module off no longer traps work in progress: new claims
+  stop, but a claim already in the chain can always be finished. Verified: **pytest
+  470 (+28), lint-imports 3/3, FE gate green (96 tests, +21)**, no migration (schema
+  unchanged), live end-to-end smoke driving a claim from filing to *Paid / Closed*.
 - **Stage C R-2-wizard — file a travel claim end to end** (2026-07-30): the
   reimbursement module opened its first screens and API. From **My Work** (the module
   landing: "Waiting on you" above "Your claims in flight", each row with holder,

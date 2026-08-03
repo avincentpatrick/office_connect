@@ -23,7 +23,11 @@ from office_connect.modules.reimbursement.services.lifecycle import (
     submit_claim,
 )
 from office_connect.modules.reimbursement.workflow import SUBJECT_KIND
-from tests.reimb_lifecycle_helpers import standard_cast, trip_claim
+from tests.reimb_lifecycle_helpers import (
+    return_reason_ids,
+    standard_cast,
+    trip_claim,
+)
 from tests.reimbursement_helpers import make_staff
 
 
@@ -179,6 +183,7 @@ async def test_resubmit_keeps_ref_bumps_revision(
     await claim_action(
         app_session, claim_id=claim.id, action="return",
         actor_user_id=cast.approver.id, comment="Missing boarding pass.",
+        reason_ids=await return_reason_ids(app_session),
     )
     assert claim.status == st.RETURNED
     assert (claim.holder_kind, claim.holder_id) == ("user", cast.owner.id)

@@ -78,6 +78,33 @@ async def standard_cast(session, make_user):
     )
 
 
+async def return_reason_ids(session, *codes: str) -> list[int]:
+    """Live ``reimb_return_reason_catalogs`` ids by code — a return needs ≥1
+    (R-4-screens made the taxonomy mandatory in ``claim_action``). Defaults to
+    the seeded MISSING_OR row so callers that only need *a* valid reason stay
+    short."""
+    from sqlalchemy import select
+
+    from office_connect.modules.reimbursement.models import (
+        ReimbReturnReasonCatalog,
+    )
+
+    wanted = codes or ("MISSING_OR",)
+    rows = (
+        (
+            await session.execute(
+                select(ReimbReturnReasonCatalog).where(
+                    ReimbReturnReasonCatalog.code.in_(wanted)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_code = {row.code: row.id for row in rows}
+    return [by_code[code] for code in wanted]
+
+
 def assert_holder_invariant(claim) -> None:
     """Spec §7.1 / R-4 QA gate: a holder exists IFF the claim is non-terminal;
     an ``external_fms`` holder legitimately has a NULL id — a ``user`` holder
