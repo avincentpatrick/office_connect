@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Banknote, Home, Palette, ReceiptText } from "lucide-react";
+import { Banknote, Home, Inbox, Palette, ReceiptText } from "lucide-react";
 import { isFeatureOn } from "../lib/flags";
 
 /**
@@ -50,6 +50,17 @@ export const NAV_GROUPS: NavGroup[] = [
         requiredModule: "module.reimbursement",
         requiredRoles: ["admin_officer", "system_admin"],
         intentKeywords: ["cash advance", "liquidation", "deadline", "COA"],
+      },
+      {
+        // R-7-queue. Role-gated in the NAV only, like Cash advances: the
+        // server refuses anyone who oversees nobody, and hiding the link is
+        // discoverability rather than a security boundary.
+        label: "Claim queue",
+        to: "/reimbursement/queue",
+        icon: Inbox,
+        requiredModule: "module.reimbursement",
+        requiredRoles: ["admin_officer", "approver", "system_admin"],
+        intentKeywords: ["queue", "FMS", "follow up", "stuck", "overdue", "pipeline"],
       },
       { label: "UI foundation", to: "/ui-foundation", icon: Palette, devOnly: true },
     ],

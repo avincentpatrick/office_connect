@@ -9,11 +9,13 @@ import {
   fetchCashAdvances,
   fetchChecklist,
   fetchClaim,
+  fetchClaimQueue,
   fetchMyWork,
   fetchRegions,
   fetchReturnReasons,
   fetchTimeline,
   reimbKeys,
+  type ClaimQueueFilters,
 } from "../../api/reimbursement";
 
 export function parseClaimId(raw: string | undefined): number | null {
@@ -87,6 +89,21 @@ export function useCashAdvance(id: number | null) {
     queryKey: reimbKeys.cashAdvance(id ?? -1),
     queryFn: () => fetchCashAdvance(id as number),
     enabled: id !== null,
+    retry: false,
+  });
+}
+
+/**
+ * The oversight queue (R-7-queue) — other people's claims, scoped server-side.
+ *
+ * `retry: false` matters more here than anywhere else in this file: an actor
+ * who oversees nobody gets a 403, and that is a settled answer the page renders
+ * as an explanation, not a blip worth asking about three times.
+ */
+export function useClaimQueue(filters: ClaimQueueFilters = {}) {
+  return useQuery({
+    queryKey: reimbKeys.queue(filters),
+    queryFn: () => fetchClaimQueue(filters),
     retry: false,
   });
 }

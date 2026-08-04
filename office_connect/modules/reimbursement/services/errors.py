@@ -577,3 +577,21 @@ def spawn_below_advance() -> APIError:
         "This claim now totals less than the cash advance it nets, so nothing "
         "is due to you. Check the itinerary and the other expenses.",
     )
+
+
+def queue_not_permitted() -> APIError:
+    """R-7-queue. Distinct from ``not_claim_owner`` on purpose.
+
+    That slug says "only the claimant may do this", which is exactly wrong here:
+    the refusal is that the actor oversees NOBODY, not that they failed to own
+    some particular claim. There is also no row to leak about — the request
+    names none — so the honest message costs nothing, and it names the surface
+    that does answer the question the actor was actually asking (§9.1
+    principle 4).
+    """
+    return APIError(
+        403,
+        "reimb_queue_not_permitted",
+        "This queue shows other people's claims, so it is for approvers and "
+        "the Admin Officer. Your own claims are on My Work.",
+    )

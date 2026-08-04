@@ -10,7 +10,9 @@ nudges; ``status`` is the claim-status vocabulary (engine state codes + labels
 materialize the documentary packet over core-service #7 and take uploads
 through core-service #2 (R-3); ``deadline`` is the pure COA 30-day clock and
 ``cash_advance`` is the SINGLE sanctioned writer of ``reimb_cash_advances``
-(R-6-clock) — ``notify`` also carries that clock's D-7/D-3/D-0/overdue ladder.
+(R-6-clock) — ``notify`` also carries that clock's D-7/D-3/D-0/overdue ladder;
+``queue`` resolves who may see a LIST of other people's claims and counts the
+working days a claim has spent with FMS (R-7-queue).
 """
 
 from office_connect.modules.reimbursement.services.checklist import (
@@ -87,6 +89,12 @@ from office_connect.modules.reimbursement.services.settlement import (
     spawn_for_liquidation,
     spawn_reimbursement,
 )
+from office_connect.modules.reimbursement.services.queue import (
+    OVERSIGHT_PERMS,
+    days_with_fms,
+    followup_threshold,
+    oversight_scope,
+)
 from office_connect.modules.reimbursement.services.per_diem import (
     ConfigRow,
     DayBreakdown,
@@ -99,6 +107,10 @@ from office_connect.modules.reimbursement.services.per_diem import (
 )
 
 __all__ = [
+    "OVERSIGHT_PERMS",
+    "days_with_fms",
+    "followup_threshold",
+    "oversight_scope",
     "assert_packet_complete",
     "liquidation_for_advance",
     "start_liquidation",

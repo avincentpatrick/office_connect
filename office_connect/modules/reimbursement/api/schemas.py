@@ -459,6 +459,31 @@ class MyWorkOut(BaseModel):
     in_flight: list[WorkItemOut]
 
 
+class QueueItemOut(WorkItemOut):
+    """An oversight-queue row: a My-Work row plus the two things you only need
+    when the claim is somebody ELSE's (R-7-queue).
+
+    ``claimant_display`` because this list mixes travellers — My Work never has
+    to say whose claim it is. ``days_with_fms`` because spec §7 rule 5's
+    follow-up is counted in Manila WORKING days and no browser may compute that
+    (api-standards §9e); it is null unless FMS actually holds the claim, since
+    0 would be a false answer to a question that does not apply.
+    """
+
+    claimant_display: str | None = None
+    days_with_fms: int | None = None
+    external_followup: bool = False
+
+
+class ClaimQueueOut(BaseModel):
+    """``total`` is the count BEFORE ``limit``/``offset`` — a queue that says
+    "50 items" while hiding 200 is worse than no number at all."""
+
+    items: list[QueueItemOut]
+    total: int
+    followup_working_days: int
+
+
 class RegionOut(BaseModel):
     region_code: str
     region_name: str | None = None

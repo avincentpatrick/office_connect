@@ -389,6 +389,33 @@ export interface WorkItem {
   updated_at: string;
 }
 
+/**
+ * An oversight-queue row (R-7-queue): a work item plus the two things you only
+ * need when the claim is somebody else's. `days_with_fms` is null unless FMS
+ * actually holds it — the server counts Manila working days off the holiday
+ * calendar, and the browser is never allowed to guess at that.
+ */
+export interface QueueItem extends WorkItem {
+  claimant_display: string | null;
+  days_with_fms: number | null;
+  external_followup: boolean;
+}
+
+export interface ClaimQueueResponse {
+  items: QueueItem[];
+  /** The count BEFORE limit/offset — a queue that hides work must say so. */
+  total: number;
+  followup_working_days: number;
+}
+
+/** Filters the queue accepts. All optional; all narrow, none widen. */
+export interface ClaimQueueFilters {
+  status?: ClaimStatus;
+  kind?: ClaimKind;
+  claimantId?: number;
+  externalOver?: boolean;
+}
+
 export interface MyWorkResponse {
   waiting_on_you: WorkItem[];
   in_flight: WorkItem[];
@@ -447,6 +474,19 @@ export const reimbKeys = {
     [...reimbKeys.all, "cash-advances", claimantId ?? "mine"] as const,
   cashAdvance: (id: number) =>
     [...reimbKeys.all, "cash-advance", id] as const,
+  // Every filter value is in the key, for the same reason `cashAdvances` puts
+  // the claimant id in its own: two filters are two different lists, and one
+  // cache entry for both shows the Admin Officer the last question they asked
+  // rather than the one they are asking.
+  queue: (filters: ClaimQueueFilters = {}) =>
+    [
+      ...reimbKeys.all,
+      "queue",
+      filters.status ?? "any",
+      filters.kind ?? "any",
+      filters.claimantId ?? "any",
+      filters.externalOver ? "external-over" : "all-ages",
+    ] as const,
 };
 
 // --- R-6-clock: cash advances + the COA 30-day liquidation clock ------------
@@ -642,6 +682,26 @@ export function cancelClaim(id: number, comment: string): Promise<ClaimDetail> {
 
 export function fetchMyWork(): Promise<MyWorkResponse> {
   return api<MyWorkResponse>("/reimbursement/my-work");
+}
+
+/**
+ * The oversight queue (R-7-queue). Unlike My Work this lists other people's
+ * claims, so the server answers 403 to anyone who oversees nobody — the page
+ * renders that as an explanation rather than an empty list.
+ */
+export function fetchClaimQueue(
+  filters: ClaimQueueFilters = {},
+): Promise<ClaimQueueResponse> {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.kind) params.set("kind", filters.kind);
+  if (filters.claimantId !== undefined)
+    params.set("claimant_id", String(filters.claimantId));
+  if (filters.externalOver) params.set("external_over", "true");
+  const query = params.toString();
+  return api<ClaimQueueResponse>(
+    `/reimbursement/claims${query ? `?${query}` : ""}`,
+  );
 }
 
 export function fetchRegions(): Promise<Region[]> {

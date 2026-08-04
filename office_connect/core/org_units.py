@@ -12,11 +12,17 @@ primitive the Stage-C reimbursement flow calls.
 (``parent_org_unit_id``); ``ancestors_or_self`` is the recursive-CTE walker (there
 was no ancestry helper before B3). It is soft-delete-filtered and depth-guarded so
 a mis-set parent pointer can never spin an unbounded query.
+
+``descendants_or_self`` (Stage C R-7-queue) is its inverse, and exists because a
+LIST endpoint asks the scope question backwards: not "may this actor act on this
+one request" but "which requests may this actor see", which is the subtree
+closure of their grants and must be one query, not one per row.
 """
 
 from __future__ import annotations
 
 import enum
+from collections.abc import Iterable
 from datetime import datetime
 
 from sqlalchemy import literal, or_, select
@@ -76,6 +82,45 @@ async def ancestors_or_self(
     # deleted_at filter is stated explicitly in the CTE above; skip the listener.
     stmt = select(cte.c.id).order_by(cte.c.depth).execution_options(include_deleted=True)
     return list((await session.execute(stmt)).scalars().all())
+
+
+async def descendants_or_self(
+    session: AsyncSession, org_unit_ids: Iterable[int]
+) -> set[int]:
+    """Return every id in ``org_unit_ids`` plus everything BELOW them.
+
+    The inverse walk of :func:`ancestors_or_self`, and the same authorization
+    rule read from the other end: a scoped grant at unit U authorizes U and its
+    whole subtree, so "may this actor act on THIS request" walks up from the
+    request, while "which requests may this actor see" needs the subtree closure
+    of the grants. A LIST endpoint can only ask the second question — filtering
+    rows one at a time with ``ancestors_or_self`` is a query per row, unbounded
+    by the page size.
+
+    Unordered (a set — callers filter with ``IN``, they do not render a tree).
+    Soft-deleted nodes stop the walk, so a disbanded section does not drag its
+    children back into scope. Depth-guarded like its sibling.
+    """
+    roots = {int(i) for i in org_unit_ids}
+    if not roots:
+        return set()
+    ou = OrgUnit.__table__
+    base = (
+        select(ou.c.id, literal(0).label("depth"))
+        .where(ou.c.id.in_(roots), ou.c.deleted_at.is_(None))
+        .cte(name="org_subtree", recursive=True)
+    )
+    child = ou.alias()
+    step = select(child.c.id, (base.c.depth + 1).label("depth")).where(
+        child.c.parent_org_unit_id == base.c.id,
+        child.c.deleted_at.is_(None),
+        base.c.depth < _MAX_ANCESTRY_DEPTH,
+    )
+    cte = base.union_all(step)
+    # Core-table select: the ORM soft-delete listener does not apply here, so the
+    # deleted_at filter is stated explicitly in the CTE above; skip the listener.
+    stmt = select(cte.c.id).execution_options(include_deleted=True)
+    return set((await session.execute(stmt)).scalars().all())
 
 
 async def scoped_org_units(

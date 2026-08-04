@@ -7,9 +7,11 @@ import type {
   ChecklistResponse,
   ChecklistSummary,
   ClaimDetail,
+  ClaimQueueResponse,
   ClaimTotals,
   MyWorkResponse,
   PacketSummary,
+  QueueItem,
   TimelineEvent,
   WorkItem,
 } from "../api/reimbursement";
@@ -208,6 +210,40 @@ export function makeWorkItem(overrides: Partial<WorkItem> = {}): WorkItem {
     sla_due_at: "2026-08-05T09:00:00Z",
     sla_state: "on_track",
     updated_at: "2026-07-30T00:00:00Z",
+    ...overrides,
+  };
+}
+
+/**
+ * An oversight-queue row (R-7-queue). Defaults to a claim sitting with FMS but
+ * still inside the follow-up window — the uneventful case, so a test that cares
+ * about the stalled one has to say so.
+ */
+export function makeQueueItem(overrides: Partial<QueueItem> = {}): QueueItem {
+  return {
+    ...makeWorkItem({
+      status: "handed_to_fms",
+      status_label: "Handed to FMS",
+      next_action: "Waiting on FMS — update status",
+      holder_kind: "external_fms",
+      holder_display: "FMS",
+      sla_due_at: null,
+      sla_state: null,
+    }),
+    claimant_display: "Maria Santos",
+    days_with_fms: 4,
+    external_followup: false,
+    ...overrides,
+  };
+}
+
+export function makeClaimQueue(
+  overrides: Partial<ClaimQueueResponse> = {},
+): ClaimQueueResponse {
+  return {
+    items: [makeQueueItem()],
+    total: 1,
+    followup_working_days: 10,
     ...overrides,
   };
 }

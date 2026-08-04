@@ -269,6 +269,27 @@ this doc first.
 >    dialog it opens. Sticky regions carry an opaque `bg-bg` and a `border-t`
 >    so content stays legible scrolling underneath.
 
+> **Template note 2026-08-04 (R-7-queue) — the List page's `filters` slot,
+> first real use.** Both earlier lists parked a Button there; the claim queue is
+> the first page to put an actual filter in it. Three rules come out of it:
+> 1. **The filter row is inventory components only** — a `SelectField` of named
+>    *views*, not a bespoke control and not a row of ad-hoc toggles. A view is a
+>    named question ("With FMS too long"), so the label carries the meaning and
+>    the query string stays the server's business.
+> 2. **The filter value belongs in the query key.** Two filters are two
+>    different lists; one cache entry for both shows the user the last question
+>    they asked instead of the one they are asking.
+> 3. **An empty state must answer the question that was asked.** "Nothing here"
+>    is wrong under a filter — the queue's follow-up view says *"No claim has
+>    been with FMS longer than 10 working days"*, quoting the threshold the
+>    server applied rather than a number the page invented.
+
+> **Doctrine restated (R-6-clock, reaffirmed R-7-queue): an admin surface is
+> reachable by anyone and refused by the server.** The route is not role-gated;
+> the nav item is, for *discoverability only*. A 403 renders as the server's own
+> explanation in the page's empty state — never a blank page, never a paraphrase
+> the FE then has to keep true.
+
 ## 5. Copy standard — LOCKED
 
 - Sentence case everywhere (buttons, titles, tabs, labels).

@@ -12,6 +12,29 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-7-queue — the claim queue, and finding work that is with FMS**
+  (2026-08-04): Admin Officers and approvers get a new **Claim queue** screen
+  listing the claims they oversee, and it closes a real gap: once a packet was
+  handed to FMS it left everybody's My Work — correctly, because nobody in the
+  bureau holds it any more — and there was then **no screen anywhere that showed
+  it again**. The person who sent it to FMS had no way to look it up, chase it,
+  or even confirm it was still out there. It now appears in their queue with the
+  traveller's name, the amount, and how long FMS has had it.
+  **"With FMS too long" is one of the views.** The queue counts *working* days
+  since the hand-off — weekends and the Philippine holiday calendar excluded —
+  and flags anything past the follow-up threshold (10 working days by default,
+  and an Administrator can change that number without a code release). Those
+  claims wear a **Chase FMS** badge and sort to the top of the list, so the
+  follow-ups nobody was tracking are the first thing on the screen. Other views
+  narrow to a single stage: with FMS, FMS returned, admin review, for approval.
+  **You only ever see claims you are responsible for.** The queue shows the
+  claims in your own division or office and the units beneath it; someone with
+  an agency-wide role sees all of them. A traveller who opens the link is told
+  plainly that this queue is for approvers and the Admin Officer, and pointed
+  back to My Work — their own claims are all still there and unchanged.
+  Where the queue is longer than one page it says so ("Showing 50 of 214"),
+  rather than quietly looking complete.
+
 - **Stage C R-6-liq-settle — settling a liquidation** (2026-08-04): a
   liquidation can now be **finished**. Once FMS has processed it, Accounting
   records how the money actually came out, and that single act closes both the

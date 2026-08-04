@@ -14,7 +14,7 @@ Everything here is read-only; the routers own the commit.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +37,7 @@ from office_connect.modules.reimbursement.api.schemas import (
     OrgUnitRef,
     PacketOut,
     SpawnedClaimOut,
+    WorkItemOut,
 )
 # The registry module, not the package: all this layer needs is the key, and a
 # package import would drag the generator (and its checklist dependency) into
@@ -146,6 +147,95 @@ async def holder_display(
         if staff is not None and staff.full_name:
             return staff.full_name
     return user.email
+
+
+async def holder_names(
+    session: AsyncSession, claims: list[ReimbClaim]
+) -> dict[int, str]:
+    """One batched user→staff-name lookup for every ``user`` holder in a set.
+
+    The list-shaped sibling of :func:`holder_display`, which does one row at a
+    time. Promoted out of ``my_work.py`` at R-7-queue when the oversight queue
+    became its second caller. ``include_deleted`` so a claim keeps rendering a
+    name after its holder is offboarded — somebody still has to finish it.
+    """
+    user_ids = {
+        c.holder_id
+        for c in claims
+        if c.holder_kind == "user" and c.holder_id is not None
+    }
+    if not user_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(User.id, User.email, Staff.full_name)
+            .join(Staff, Staff.id == User.staff_id, isouter=True)
+            .where(User.id.in_(user_ids))
+            .execution_options(include_deleted=True)
+        )
+    ).all()
+    return {uid: (full_name or email) for uid, email, full_name in rows}
+
+
+async def claimant_names(
+    session: AsyncSession, claims: list[ReimbClaim]
+) -> dict[int, str]:
+    """One batched staff→name lookup, for lists that mix travellers. My Work
+    never needs this (every row is yours); the oversight queue always does."""
+    staff_ids = {c.claimant_id for c in claims}
+    if not staff_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(Staff.id, Staff.full_name)
+            .where(Staff.id.in_(staff_ids))
+            .execution_options(include_deleted=True)
+        )
+    ).all()
+    return {sid: name for sid, name in rows}
+
+
+def work_item(
+    claim: ReimbClaim,
+    *,
+    holder_display: str | None,
+    now: datetime,
+    sla_due_at: datetime | None = None,
+) -> WorkItemOut:
+    """One list row from the denormalized read-model.
+
+    Promoted out of ``my_work.py`` at R-7-queue: the oversight queue renders the
+    same row with two fields added, and two mappers for one row shape is how
+    the two lists drift apart.
+    """
+    status_code = claim.status or st.DRAFT
+    # Per-row, because these lists mix reimbursements and liquidations — the
+    # same code means the same thing in both chains, but the labels and the
+    # next-action copy are that KIND's to supply.
+    vocab = st.vocabulary(claim.kind)
+    days = (
+        max((now - claim.holder_since).days, 0)
+        if claim.holder_since is not None
+        else 0
+    )
+    totals = claim.totals or {}
+    return WorkItemOut(
+        id=claim.id,
+        ref_no=claim.ref_no,
+        purpose=claim.purpose,
+        destination=claim.destination,
+        status=status_code,
+        status_label=vocab.labels.get(status_code, status_code),
+        next_action=claim.next_action or vocab.next_action.get(status_code),
+        holder_kind=claim.holder_kind,
+        holder_display=holder_display,
+        holder_since=claim.holder_since,
+        days_in_state=days,
+        grand=totals.get("grand"),
+        sla_due_at=sla_due_at,
+        sla_state=actions.sla_state(sla_due_at, now=now),
+        updated_at=claim.updated_at,
+    )
 
 
 async def _claimant_block(session: AsyncSession, claim: ReimbClaim) -> ClaimantOut:

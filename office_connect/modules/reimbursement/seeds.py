@@ -93,6 +93,14 @@ REIMB_CONFIGS = SeedDataset(
         _cfg("sla.reminder_repeat_days", {"working_days": 2},
              "Reminder repeats every 2 working days (holder only)",
              "build spec §7 (work-management)"),
+        # R-7-queue. NOT an SLA in the §7.4 sense — the holder is FMS, outside
+        # the platform, so nothing is stamped on the step and nobody is nudged
+        # (lifecycle._stamp_sla skips external states deliberately). This is the
+        # threshold for the Admin Officer's own follow-up FILTER, which is what
+        # §7 rule 5 actually asks for.
+        _cfg("sla.external_followup_working_days", {"working_days": 10},
+             "Flag a claim for FMS follow-up after 10 working days",
+             "build spec §7 rule 5 (work-management)"),
     ),
 )
 

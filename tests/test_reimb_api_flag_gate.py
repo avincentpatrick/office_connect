@@ -57,6 +57,9 @@ async def test_flag_off_404s_the_whole_surface_even_authenticated(
 
     for method, path, kwargs in (
         ("GET", "/api/v1/reimbursement/my-work", {}),
+        # R-7-queue: a READ strands nothing, so §9a's un-gated exemption does
+        # not reach the oversight queue. It 404s with the rest of the surface.
+        ("GET", "/api/v1/reimbursement/claims", {}),
         ("GET", "/api/v1/reimbursement/claims/1", {}),
         ("GET", "/api/v1/reimbursement/claims/1/timeline", {}),
         ("GET", "/api/v1/reimbursement/regions", {}),

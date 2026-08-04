@@ -8,6 +8,7 @@ import type {
   ClaimAction,
   ClaimDetail,
   ClaimStatus,
+  QueueItem,
   SlaState,
   WorkItem,
 } from "../../api/reimbursement";
@@ -161,4 +162,56 @@ export function myWorkMeta(item: WorkItem): string {
   if (item.next_action) parts.push(`Next: ${item.next_action}`);
   if (item.grand) parts.push(formatPeso(item.grand));
   return parts.join(" · ");
+}
+
+/**
+ * The oversight-queue meta line (R-7-queue). Leads with the traveller, because
+ * this list mixes them and "whose is it" is the first question an Admin Officer
+ * asks; then the FMS working-day count where it applies, in WORKING days
+ * because that is the unit the server counted and the unit spec §7 rule 5 uses.
+ */
+export function queueMeta(item: QueueItem): string {
+  const parts: string[] = [];
+  if (item.claimant_display) parts.push(item.claimant_display);
+  if (item.holder_display) parts.push(`Holder: ${item.holder_display}`);
+  if (item.days_with_fms !== null) {
+    parts.push(
+      `${item.days_with_fms} working ${item.days_with_fms === 1 ? "day" : "days"} with FMS`,
+    );
+  } else {
+    parts.push(
+      `${item.days_in_state} ${item.days_in_state === 1 ? "day" : "days"} in this step`,
+    );
+  }
+  if (item.next_action) parts.push(`Next: ${item.next_action}`);
+  if (item.grand) parts.push(formatPeso(item.grand));
+  return parts.join(" · ");
+}
+
+/**
+ * The chip a queue row wears (R-7-queue), most-urgent axis first.
+ *
+ * Three axes can be true at once — the claim's status, its holder SLA, and how
+ * long FMS has had it — and one chip has to carry the most actionable of them.
+ * An FMS follow-up outranks an overdue gate here because this is the surface
+ * that exists to surface it: the gate ladder already nudges its holder
+ * (spec §7 rule 4), while nobody nudges FMS at all.
+ */
+export function queueChip(item: QueueItem): {
+  status: SemanticStatus;
+  label: string;
+} {
+  if (item.external_followup) {
+    return { status: "blocked", label: "Chase FMS" };
+  }
+  if (item.sla_state === "overdue" || item.sla_state === "due_soon") {
+    return {
+      status: SLA_STATE_TO_SEMANTIC[item.sla_state],
+      label: SLA_STATE_LABEL[item.sla_state],
+    };
+  }
+  return {
+    status: CLAIM_STATUS_TO_SEMANTIC[item.status],
+    label: item.status_label,
+  };
 }

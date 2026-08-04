@@ -8,6 +8,7 @@ import { PasswordChangePage } from "../pages/PasswordChangePage";
 import { ClaimConfirmationPage } from "../pages/reimbursement/ClaimConfirmationPage";
 import { CashAdvancesPage } from "../pages/reimbursement/CashAdvancesPage";
 import { ClaimPage } from "../pages/reimbursement/ClaimPage";
+import { ClaimQueuePage } from "../pages/reimbursement/ClaimQueuePage";
 import { ItineraryStepPage } from "../pages/reimbursement/ItineraryStepPage";
 import { DocumentsStepPage } from "../pages/reimbursement/DocumentsStepPage";
 import { MoneyStepPage } from "../pages/reimbursement/MoneyStepPage";
@@ -42,6 +43,9 @@ export const router = createBrowserRouter([
           // actor may see (a 403 renders as an explanation), and a nav item
           // hidden by role is not a security boundary.
           { path: "cash-advances", element: <CashAdvancesPage /> },
+          // R-7-queue. Same doctrine: reachable by anyone, refused by the
+          // server for anyone who oversees nobody.
+          { path: "queue", element: <ClaimQueuePage /> },
           { path: "claims/:claimId", element: <ClaimPage /> },
           { path: "claims/:claimId/trip", element: <TripStepPage /> },
           { path: "claims/:claimId/itinerary", element: <ItineraryStepPage /> },

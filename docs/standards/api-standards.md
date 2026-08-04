@@ -468,3 +468,53 @@ inherited:
   fallback.** `liquidation.overdue_note` reaches the client only once it applies.
   A missing row renders nothing rather than a developer's paraphrase, because a
   paraphrase of a COA consequence is indistinguishable from the real thing.
+
+## §9f. The first LIST endpoint: a list may not borrow a row's read rule (R-7-queue, 2026-08-04)
+
+Every read path before `GET /reimbursement/claims` answered **"may this actor read
+THIS record"** — one row, one `authorize_scoped`. A list asks the question
+backwards, **"which records may this actor see"**, and the two are not the same
+rule wearing different clothes. Four things follow, and the first is a security
+rule, not a style note.
+
+- **A list may not be keyed on a permission that is granted globally to
+  everyone.** `reimb.claim.read` is held *globally* by the `staff` role, because a
+  traveller must be able to read their own claim from anywhere in the org tree.
+  A list gated on it therefore returns **every claim in the agency to every
+  employee** — destinations, purposes, peso totals. The queue is scoped on the
+  **oversight** permissions instead (`reimb.claim.review` / `.fms_update` /
+  `.approve`), which only an approver or the Admin Officer holds. The route gate
+  stays coarse and unchanged (§9/§9a); what is different is that the service's
+  exact rule uses a *different permission set*, not a narrowing of the route's.
+  **The test to apply before writing any list:** if the permission at the route
+  is one an ordinary user holds so they can see their own data, it cannot also
+  decide whose data they see.
+
+- **Refuse, do not return an empty list.** An actor who oversees nobody gets
+  `403`, because `200 []` says *"there is no work"* — a claim about the world that
+  is false — where the truth is *"this surface is not yours"*. The refusal names
+  the surface that DOES answer their question (My Work), per §9.1 principle 4.
+  Note this is the one place the "same slug, no owner-vs-scope leak" rule does
+  **not** apply: a list request names no record, so there is nothing to leak, and
+  a borrowed `not_claim_owner` ("only the claimant may do this") would be a
+  plainly wrong sentence.
+
+- **Scope resolution for a set needs the SUBTREE, in one query.** A scoped grant
+  covers its unit and everything below it. Per-row that is
+  `ancestors_or_self` (walk up from the record); for a list it is
+  `core.org_units.descendants_or_self` (the grants' closure, one recursive CTE),
+  added in core beside its sibling — a module growing its own org-tree SQL is
+  the duplication rule 10 exists to stop. Rows whose org unit cannot be
+  determined are visible to a **global** holder only: "I could not place this" is
+  not a reason to show it to someone scoped.
+
+- **State what the page is hiding.** A list that caps or pages says so on the
+  wire (`total` is the count *before* `limit`/`offset`; the queue also returns
+  the follow-up threshold it applied). A short list that looks complete is worse
+  than a number — and where a filter must bound its own scan, the bound is
+  chosen so truncation can only drop rows the filter would have excluded anyway,
+  and it logs when the cap is actually reached.
+
+**Deferred, deliberately:** the pagination *envelope* is still a Stage-D item;
+until then lists are `?limit=&offset=` with a server-side ceiling, following
+`core/api/directory.py`.
