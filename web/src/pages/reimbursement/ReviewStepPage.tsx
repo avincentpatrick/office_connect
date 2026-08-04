@@ -23,8 +23,10 @@ import {
   checklistProgress,
   gateMessage,
 } from "./checklist-status";
+import { canPreparePacket } from "./claim-status";
 import { ClaimStepGuard } from "./ClaimStepGuard";
 import { ClaimTotalsCard } from "./MoneyStepPage";
+import { PacketPreview } from "./PacketPreview";
 import {
   buildTaskSections,
   STEP_LABELS,
@@ -245,6 +247,12 @@ function ReviewForm({ claim }: { claim: ClaimDetail }) {
             ]}
           />
         </section>
+
+        {/* The packet as it stands, BEFORE the gate — so a claimant can read
+            what they are about to file rather than discovering it after submit.
+            Pre-submit it is always a draft copy: no reference number has been
+            allocated yet, and the card says so. */}
+        <PacketPreview claim={claim} canPrepare={canPreparePacket(claim)} />
 
         {/* Spec §9.3 step 5: "Submit disabled until required items clear, with
             the blocking items listed inline." GOV.UK would keep the button

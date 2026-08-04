@@ -6,6 +6,7 @@
 
 import type {
   ClaimAction,
+  ClaimDetail,
   ClaimStatus,
   SlaState,
   WorkItem,
@@ -91,6 +92,28 @@ export function approveConsequence(
       ? "1 automatic check is"
       : `${flagCount} automatic checks are`;
   return `${subject} flagged on this claim. Approving past a flag is recorded against your name. ${base}`;
+}
+
+/** Actions that imply the generate endpoint will accept this actor. */
+const PREPARE_ACTIONS: readonly string[] = [
+  "approve",
+  "return",
+  "submit",
+  "resubmit",
+];
+
+/**
+ * Whether to offer "Prepare the packet" when none exists (R-5-packet).
+ *
+ * The server owns the real rule (owner-while-editable, or a scoped
+ * reviewer/approver). The action set is the closest thing the client honestly
+ * knows: anyone the server says may move this claim is someone the generate
+ * endpoint also accepts. A scoped reviewer who is not the current holder gets
+ * no button — conservative on purpose, per the R-4-screens doctrine that the UI
+ * is never offered a button certain to fail.
+ */
+export function canPreparePacket(claim: ClaimDetail): boolean {
+  return claim.available_actions.some((action) => PREPARE_ACTIONS.includes(action));
 }
 
 export function workItemTitle(item: WorkItem): string {

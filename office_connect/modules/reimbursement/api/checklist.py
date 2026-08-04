@@ -38,6 +38,7 @@ from office_connect.modules.reimbursement.api.deps import (
     can_read_claim,
     checklist_out,
     get_claim,
+    has_scoped_grant,
 )
 from office_connect.modules.reimbursement.api.schemas import (
     ChecklistOut,
@@ -137,6 +138,51 @@ async def attach_evidence(
     return payload
 
 
+#: The gates whose holders may ask for a packet on a claim they do not own.
+#: Not `reimb.claim.fms_update`: FMS tracks a claim it has already received on
+#: paper, and re-rendering under an external holder would reissue documents
+#: nobody in the bureau asked to change.
+_GENERATE_GRANTS = ("reimb.claim.review", "reimb.claim.approve")
+
+
+async def _claim_for_generation(
+    session: AsyncSession, *, claim_id: int, actor_user_id: int
+):
+    """The two doors onto generation (R-5-packet).
+
+    **Owner while editable** — the wizard's "Prepare my documents" button,
+    unchanged from R-5-gen.
+
+    **Or a scoped reviewer/approver** — added because
+    ``NEXT_ACTION[admin_review]`` reads *"Final check & print packet"*, and an
+    Admin Officer whose worker was down at submit would otherwise face that
+    instruction with no packet and no way to ask for one: a dead end, which
+    §9.1 principle 4 forbids. Their claim is past editing, so
+    ``owned_editable_claim`` can never serve them.
+
+    Not a widening to "anyone who may read the claim": a read grant is global on
+    the ``staff`` role (§3.2), so that would let any user in the bureau enqueue
+    renders on any claim they can see.
+    """
+    try:
+        return await drafts.owned_editable_claim(
+            session, claim_id=claim_id, actor_user_id=actor_user_id
+        )
+    except APIError:
+        claim = await get_claim(session, claim_id)
+        if not await has_scoped_grant(
+            session,
+            actor_user_id=actor_user_id,
+            claim=claim,
+            permissions=_GENERATE_GRANTS,
+        ):
+            # Re-raise the OWNER path's error, not a scoped-specific one: a
+            # bystander must not learn from the message whether the claim exists
+            # and is merely uneditable, or is someone else's entirely.
+            raise
+        return claim
+
+
 @router.post(
     "/claims/{claim_id}/documents/generate",
     response_model=GenerateDocumentsOut,
@@ -144,7 +190,7 @@ async def attach_evidence(
 )
 async def generate_documents(
     claim_id: int,
-    principal: Principal = Depends(require_permission("reimb.claim.create")),
+    principal: Principal = Depends(require_permission("reimb.claim.read")),
     session: AsyncSession = Depends(get_session),
 ):
     """Queue generation of the claim's packet (core-service #8).
@@ -153,6 +199,11 @@ async def generate_documents(
     explicit that WeasyPrint never runs in a request path — so this handler
     cannot return the finished documents. It returns the packet as it stands plus
     whether the render was actually queued, and the client polls the checklist.
+
+    The route gate is the coarse ``reimb.claim.read``; the real rule is
+    ``_claim_for_generation`` (api-standards §9's coarse-at-route,
+    exact-in-service doctrine). It was ``reimb.claim.create`` until R-5-packet,
+    which could not admit an approver — approving is not creating.
 
     On the **gated** router, not ``api/actions.py``: generating paperwork is not
     a decision on an in-flight workflow instance, so the §9a exemption does not
@@ -163,7 +214,7 @@ async def generate_documents(
     caller may ask again as often as it likes: generation is idempotent by
     fingerprint, so a duplicate request renders nothing new.
     """
-    claim = await drafts.owned_editable_claim(
+    claim = await _claim_for_generation(
         session, claim_id=claim_id, actor_user_id=principal.user_id
     )
     # Refuse early, with the specific reason, rather than letting the worker

@@ -183,6 +183,32 @@ first**. Required states in parentheses.
 >    the link only previews rather than downloads because the server sends
 >    `Content-Disposition: inline` for system-generated PDFs — see
 >    api-standards §9c; the client never asks for it.
+>
+> **Usage note 2026-08-04 (R-5-packet) — the embedded document preview.** Spec
+> §9.2 promises the approver a "packet PDF preview".
+> `pages/reimbursement/PacketPreview.tsx` ships it as another page-local
+> composition (Card + StatusChip + Button + Callout + one `<iframe>`), on the
+> same reasoning as the card above: one consumer is not yet a pattern. Three
+> rules that DO generalize, and are binding on any future embedded preview:
+> 1. **An `<iframe>` carries a `title`.** Without one it is announced as "frame"
+>    and nothing else — a WCAG failure that costs one attribute to avoid.
+> 2. **The frame is an enhancement over a link, never the only affordance.** iOS
+>    Safari does not render a PDF in an iframe; it shows a blank box or a
+>    download stub. So the new-tab link is present at every width and only the
+>    FRAME is hidden below `lg`. This also keeps `DetailPage`'s single-node rule
+>    intact — one node repositioned, never two nodes with duplicate ids.
+> 3. **Absence is a state with copy, not an empty frame.** A record with no
+>    document yet must say so in words (and, where the viewer may act, offer the
+>    button that fixes it). Rendering a frame around nothing looks like a broken
+>    page rather than an honest "not ready".
+>
+> A frame sits inside the page flow, so the §4 z-index ladder is unchanged: it
+> never overlaps the sticky decision bar (`z-30`) or a dialog above it.
+>
+> **Test-harness note:** `test/a11y.ts` runs axe with `iframes: false`. jsdom
+> gives an `<iframe>` no real window, so axe throws while trying to message it.
+> The frame ELEMENT's own rules still run; only its inner content is skipped,
+> and that content is a PDF the browser renders, not markup we author.
 
 ## 4. Layout templates — LOCKED
 

@@ -12,6 +12,38 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-5-packet — one packet you can print and hand over** (2026-08-04):
+  the three generated forms stop being three separate downloads. Office-Connect
+  now builds a **single printable packet** for every claim: a **cover sheet**
+  carrying the reference number, claimant, purpose, travel dates and the amount
+  due; the **COA checklist** as a final-check sheet showing what is required and
+  what is done; a **manifest of your supporting documents**; and then the
+  Itinerary, the accomplishment report and the Disbursement Voucher **in full**.
+  Six pages, A4, print-faithful — an Admin Officer can print it once and walk it
+  to Accounting instead of assembling three PDFs by hand in the right order.
+  **The manifest lists your receipts; it does not reprint them.** COA takes the
+  original documents, so the packet's job is to say exactly what must travel with
+  it — every file is listed with its checklist code, its size and a **SHA-256
+  fingerprint**, so a receipt in the envelope can be matched to the copy on file
+  years later. A file that failed its virus scan is shown as quarantined rather
+  than quietly left off the list.
+  **Approvers now see what they are approving.** `/claims/:id` gains a **Packet**
+  card: the PDF is embedded on a desktop screen and is one tap away as
+  "Open the packet" on a phone, right above the Approve / Return bar. Claimants
+  see the same card on Review (clearly marked **Draft copy** — no reference
+  number yet) and on the confirmation page once the claim is filed.
+  **It stays honest about itself.** Attach or remove a receipt and the packet is
+  withdrawn rather than left describing documents you no longer have; the cover
+  prints the fingerprint of the exact data it was built from. If the background
+  service is down, the card says so plainly and the approve/return decision is
+  never blocked — and an approver told to "print the packet" can now ask for one
+  themselves rather than waiting on the claimant.
+  Verified: **pytest 658 (+9) on a migrated database, lint-imports 3/3, no new
+  migration (head stays `0018`), FE gate green (150 tests, +10)**, and a live
+  smoke through the real background worker and real PDF engine: a **6-page
+  packet**, evidence attached → packet withdrawn → regenerated → the new receipt
+  on the manifest.
+
 - **Stage C R-5-gen — the system writes your paperwork** (2026-08-04): the
   module's founding promise, finally kept. Enter your trip once and Office-Connect
   fills in the **Itinerary of Travel (GAM Appendix 45)**, your **accomplishment

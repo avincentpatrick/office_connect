@@ -1,79 +1,10 @@
 {# Accomplishment / after-travel report (checklist code AR-01).
 
-   Unlike IOT-45 and DV-32 this has no GAM appendix number — it is the narrative
-   the traveller owes after the trip, and the system can only pre-fill the facts
-   it already holds. The purpose text and the itinerary become the skeleton; the
-   traveller signs it as their report.
-
-   The honest limitation is stated on the page rather than hidden: the system
-   knows where someone went and why they were authorised to go, not what they
-   accomplished. Printing a confident-looking narrative the traveller never
-   wrote would be worse than an explicit prompt to add one. #}
+   The standalone form: core's page frame plus the shared body. The substance —
+   and the note on why the narrative section is left deliberately blank — lives
+   in `_ar01_body.html.j2`, which the combined packet also includes. #}
 {% extends "_base.html.j2" %}
 
 {% block content %}
-<div class="field-grid">
-  <span class="field-label">Name</span>
-  <span class="field-value">{{ claimant.full_name }}</span>
-  <span class="field-label">Position</span>
-  <span class="field-value">{{ claimant.position_title or "—" }}</span>
-
-  <span class="field-label">Division</span>
-  <span class="field-value">{{ claimant.division or "—" }}</span>
-  <span class="field-label">Travel order</span>
-  <span class="field-value">{{ claim.dpo_no or "—" }}</span>
-
-  <span class="field-label">Destination</span>
-  <span class="field-value">{{ claim.destination or "—" }}</span>
-  <span class="field-label">Inclusive dates</span>
-  <span class="field-value">
-    {{ claim.date_depart | manila_date }} – {{ claim.date_return | manila_date }}
-  </span>
-</div>
-
-<h2>Authorised purpose</h2>
-<p>{{ claim.purpose or "—" }}</p>
-
-<h2>Places visited</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Date</th>
-      <th>Place</th>
-      <th>Means of transport</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for leg in legs %}
-    <tr>
-      <td>{{ leg.leg_date | manila_date }}</td>
-      <td>{{ leg.place or "—" }}</td>
-      <td>{{ leg.transport_mode or "—" }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="3">No itinerary legs recorded.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
-
-<h2>Accomplishments and observations</h2>
-<p class="note">
-  To be completed by the traveller before signing. The system pre-fills the
-  authorised purpose and the itinerary above; the narrative below is yours.
-</p>
-<div class="signature-line" style="height: 28mm; border-bottom: none;
-     border: 0.5pt solid var(--oc-color-border);"></div>
-
-<div class="signature-row">
-  <div class="signature-block">
-    <div class="signature-line"></div>
-    <p class="signature-name">{{ claimant.full_name }}</p>
-    <p class="signature-role">Traveller — report submitted</p>
-  </div>
-  <div class="signature-block">
-    <div class="signature-line"></div>
-    <p class="signature-name">&nbsp;</p>
-    <p class="signature-role">Noted — immediate supervisor</p>
-  </div>
-</div>
+{% include "_ar01_body.html.j2" %}
 {% endblock %}

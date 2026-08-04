@@ -24,6 +24,19 @@ IOT_45 = "reimb.iot45"
 AR_01 = "reimb.ar01"
 DV_32 = "reimb.dv32"
 
+#: The combined printable packet (R-5-packet). Deliberately NOT in
+#: ``reimb_template_maps``: it satisfies no checklist code, because no COA
+#: circular names the folder its documents travel in. It is a claim-level
+#: artifact, generated beside the bindings rather than from one — see the module
+#: doc's delta register.
+PACKET = "reimb.packet"
+
+#: The packet's own heading and filename stem. A constant rather than a seeded
+#: binding row for the same reason: nothing about it is per-circular
+#: configuration, so a row in a table the R-9 editor manages would invite an
+#: edit that means nothing.
+PACKET_TITLE = "Travel claim packet"
+
 SPECS = (
     DocumentSpec(
         key=IOT_45,
@@ -40,7 +53,27 @@ SPECS = (
         template="dv32.html.j2",
         title="Disbursement Voucher",
     ),
+    DocumentSpec(
+        key=PACKET,
+        template="packet.html.j2",
+        title=PACKET_TITLE,
+    ),
 )
+
+#: document key → the body partial the packet embeds for it.
+#:
+#: A **code-side** table, never data. The packet template includes
+#: ``section.body``, and a dynamic ``{% include %}`` is only safe while its value
+#: cannot be influenced by input — so the name is resolved from this frozen dict
+#: and a key that is absent is listed on the cover but not embedded, rather than
+#: reaching the loader. (``reimb_template_maps.document_key`` is admin-editable
+#: data; deriving a template path from it would hand the R-9 catalog editor a
+#: template-injection surface.)
+BODY_PARTIALS = {
+    IOT_45: "_iot45_body.html.j2",
+    AR_01: "_ar01_body.html.j2",
+    DV_32: "_dv32_body.html.j2",
+}
 
 
 def register() -> None:

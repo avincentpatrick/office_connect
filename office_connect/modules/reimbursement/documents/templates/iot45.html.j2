@@ -1,105 +1,11 @@
 {# Itinerary of Travel — GAM Vol. II, Appendix 45 (checklist code IOT-45).
 
-   The leg table is the form's substance: one row per itinerary leg, with the
-   per-diem percentage shown beside the amount so a reviewer can see WHY a day
-   was paid at 50% rather than having to reverse-engineer it from the figure.
-
-   Every money value arrives pre-computed as a 2-dp string; the `money` filter
-   only adds the peso sign and separators. There is no arithmetic in this file,
-   deliberately — the totals row prints `totals.*`, it does not sum the column. #}
+   The standalone form: core's page frame plus the shared body. The substance
+   lives in `_iot45_body.html.j2` because the combined packet prints the same
+   markup under its own cover — see that file for why the leg table looks the way
+   it does. #}
 {% extends "_base.html.j2" %}
 
 {% block content %}
-<div class="field-grid">
-  <span class="field-label">Name</span>
-  <span class="field-value">{{ claimant.full_name }}</span>
-  <span class="field-label">Position</span>
-  <span class="field-value">{{ claimant.position_title or "—" }}</span>
-
-  <span class="field-label">Division</span>
-  <span class="field-value">{{ claimant.division or "—" }}</span>
-  <span class="field-label">Employee no.</span>
-  <span class="field-value">{{ claimant.employee_no or "—" }}</span>
-
-  <span class="field-label">Travel order</span>
-  <span class="field-value">
-    {{ claim.dpo_no or "—" }}
-    {% if claim.dpo_date %}dated {{ claim.dpo_date | manila_date }}{% endif %}
-  </span>
-  <span class="field-label">Fund source</span>
-  <span class="field-value">{{ claim.fund_source or "—" }}</span>
-
-  <span class="field-label">Destination</span>
-  <span class="field-value">{{ claim.destination or "—" }}</span>
-  <span class="field-label">Inclusive dates</span>
-  <span class="field-value">
-    {{ claim.date_depart | manila_date }} – {{ claim.date_return | manila_date }}
-  </span>
-</div>
-
-<h2>Purpose of travel</h2>
-<p>{{ claim.purpose or "—" }}</p>
-
-<h2>Itinerary</h2>
-<table>
-  <thead>
-    <tr>
-      <th>Date</th>
-      <th>Place to be visited</th>
-      <th>Depart</th>
-      <th>Arrive</th>
-      <th>Means of transport</th>
-      <th class="amount">Transport</th>
-      <th class="amount">Per diem</th>
-      <th class="amount">Total</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for leg in legs %}
-    <tr>
-      <td>{{ leg.leg_date | manila_date }}</td>
-      <td>{{ leg.place or "—" }}</td>
-      <td>{{ leg.time_depart or "—" }}</td>
-      <td>{{ leg.time_arrive or "—" }}</td>
-      <td>{{ leg.transport_mode or "—" }}</td>
-      <td class="amount">{{ leg.fare | money }}</td>
-      <td class="amount">
-        {{ leg.per_diem_amount | money }}
-        {% if leg.per_diem_pct is not none %}
-        <br><span class="note">({{ leg.per_diem_pct }}%)</span>
-        {% endif %}
-      </td>
-      <td class="amount">{{ leg.leg_total | money }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="8">No itinerary legs recorded.</td></tr>
-    {% endfor %}
-    <tr class="total">
-      <td colspan="5">Total</td>
-      <td class="amount">{{ totals.transport | money }}</td>
-      <td class="amount">{{ totals.per_diem | money }}</td>
-      <td class="amount">{{ totals.grand | money }}</td>
-    </tr>
-  </tbody>
-</table>
-
-{% if claim.is_within_50km %}
-<p class="note">
-  Destination is within the 50-km radius — per-diem entitlement is limited
-  accordingly (EO 77, s. 2019).
-</p>
-{% endif %}
-
-<div class="signature-row">
-  <div class="signature-block">
-    <div class="signature-line"></div>
-    <p class="signature-name">{{ claimant.full_name }}</p>
-    <p class="signature-role">Claimant — certified true and correct</p>
-  </div>
-  <div class="signature-block">
-    <div class="signature-line"></div>
-    <p class="signature-name">&nbsp;</p>
-    <p class="signature-role">Approved — Head of Office</p>
-  </div>
-</div>
+{% include "_iot45_body.html.j2" %}
 {% endblock %}

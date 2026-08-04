@@ -172,6 +172,17 @@ tr {{ page-break-inside: avoid; }}
     color: var(--oc-color-text-muted);
 }}
 
+/* Two print primitives, deliberately generic. A combined packet needs to start
+   a section on a fresh sheet and to print a 64-character hash without it
+   overflowing its cell — neither is knowledge about claims, so both belong to
+   the engine rather than to a consumer's template. */
+.page-break {{ page-break-before: always; }}
+.mono {{
+    font-family: monospace;
+    font-size: var(--oc-font-size-xs);
+    word-break: break-all;
+}}
+
 /* Drafts carry a watermark AND a banner. Colour alone never carries meaning
    (ui-standards §6) — and a greyscale office printer is exactly where a
    colour-only draft marking disappears. */

@@ -17,7 +17,8 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from office_connect.core.models import OrgUnit, Staff, User, WorkflowInstance
+from office_connect.core.documents import find_active
+from office_connect.core.models import Attachment, OrgUnit, Staff, User, WorkflowInstance
 from office_connect.core.money import money_str
 from office_connect.core.org_units import authorize_scoped
 from office_connect.modules.reimbursement.api.schemas import (
@@ -31,12 +32,18 @@ from office_connect.modules.reimbursement.api.schemas import (
     ClaimDetail,
     LegOut,
     OrgUnitRef,
+    PacketOut,
 )
+# The registry module, not the package: all this layer needs is the key, and a
+# package import would drag the generator (and its checklist dependency) into
+# every request that reads a claim.
+from office_connect.modules.reimbursement.documents.registry import PACKET
 from office_connect.modules.reimbursement.models import (
     ReimbClaim,
     ReimbItineraryLeg,
 )
 from office_connect.modules.reimbursement.services import actions, checklist, errors
+from office_connect.modules.reimbursement.services import attachments as evidence
 from office_connect.modules.reimbursement.services import status as st
 
 _SCOPED_READ_PERMS = (
@@ -83,10 +90,30 @@ async def can_read_claim(
     actor = await session.get(User, actor_user_id)
     if actor is not None and actor.staff_id == claim.claimant_id:
         return True
+    return await has_scoped_grant(
+        session, actor_user_id=actor_user_id, claim=claim, permissions=_SCOPED_READ_PERMS
+    )
+
+
+async def has_scoped_grant(
+    session: AsyncSession,
+    *,
+    actor_user_id: int,
+    claim: ReimbClaim,
+    permissions: tuple[str, ...],
+) -> bool:
+    """Does any of ``permissions`` cover this claim's org unit?
+
+    Extracted from ``can_read_claim`` at R-5-packet so the generate endpoint can
+    ask the narrower question — "may this actor act on this claim's paperwork?"
+    — without re-deriving the org unit. Ownership is deliberately NOT folded in:
+    the two callers disagree about whether the owner qualifies, and a helper
+    that quietly answered both would hide that.
+    """
     org_unit_id = await claim_org_unit(session, claim)
     if org_unit_id is None:
         return False
-    for perm in _SCOPED_READ_PERMS:
+    for perm in permissions:
         if await authorize_scoped(session, actor_user_id, perm, org_unit_id):
             return True
     return False
@@ -267,6 +294,44 @@ async def claim_checklist_summary(
     return checklist_out(view).summary
 
 
+async def claim_packet(session: AsyncSession, claim: ReimbClaim) -> PacketOut | None:
+    """The live combined packet, or ``None`` (spec §9.2 preview — R-5-packet).
+
+    One indexed lookup on the ACTIVE snapshot: a voided or superseded copy must
+    never be offered, because the whole point of voiding is that the document no
+    longer describes the claim.
+
+    No new download route. Core's ``/api/v1/attachments/{id}/content`` is already
+    scoped to this claim by the holder authorizer ``services/attachments.py``
+    registers, and already serves a generated PDF ``inline`` (api-standards
+    §9c) — which is the only reason the frame can render it at all.
+    """
+    snapshot = await find_active(
+        session,
+        subject_kind=evidence.HOLDER_KIND,
+        subject_id=claim.id,
+        document_key=PACKET,
+    )
+    if snapshot is None:
+        return None
+
+    # A snapshot whose attachment vanished is schema corruption, not a state to
+    # render: offering a link to a row that is gone would 404 in a frame with no
+    # explanation. Report "no packet" instead.
+    attachment = await session.get(Attachment, snapshot.attachment_id)
+    if attachment is None or attachment.deleted_at is not None:
+        return None
+
+    return PacketOut(
+        attachment_id=attachment.id,
+        download_path=f"/api/v1/attachments/{attachment.id}/content",
+        generated_at=snapshot.generated_at,
+        is_draft=snapshot.is_draft,
+        content_sha256=snapshot.content_sha256,
+        source_fingerprint=snapshot.source_fingerprint,
+    )
+
+
 async def claim_detail(
     session: AsyncSession, claim: ReimbClaim, *, actor_user_id: int
 ) -> ClaimDetail:
@@ -324,6 +389,7 @@ async def claim_detail(
         sla_due_at=sla_due_at,
         sla_state=sla_state,
         checklist=await claim_checklist_summary(session, claim),
+        packet=await claim_packet(session, claim),
         created_at=claim.created_at,
         updated_at=claim.updated_at,
     )

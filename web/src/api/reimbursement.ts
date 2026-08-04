@@ -251,8 +251,35 @@ export interface ClaimDetail {
    * claim read). Optional only defensively — the server always answers.
    */
   checklist?: ChecklistSummary;
+  /**
+   * The live combined packet (spec §9.2's "packet PDF preview"), or null when
+   * none has been generated yet — a real state, not an error: a fresh draft, or
+   * a submit that happened while the render worker was down. The UI must say so
+   * rather than show an empty frame.
+   */
+  packet?: PacketSummary | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * One PDF: cover sheet, COA checklist, evidence manifest, then the three
+ * generated forms in full. A claim-level artifact, which is why it rides
+ * `ClaimDetail` rather than appearing as a checklist row.
+ */
+export interface PacketSummary {
+  attachment_id: number;
+  /**
+   * Always present. Generated PDFs are born scan-clean, so unlike an upload
+   * there is no window where the row exists but the bytes are unservable — and
+   * the server serves them `inline`, which is what lets a frame render one.
+   */
+  download_path: string;
+  generated_at: string;
+  /** The PDF carries a DRAFT watermark and no reference number. Say so. */
+  is_draft: boolean;
+  content_sha256: string;
+  source_fingerprint: string;
 }
 
 export type ClaimAction =

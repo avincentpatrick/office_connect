@@ -8,6 +8,7 @@ import {
   awaitingApproval,
   completeClaim,
   makeChecklistSummary,
+  makePacket,
   makeTimeline,
 } from "../../test/reimb-fixtures";
 import { ClaimPage } from "./ClaimPage";
@@ -42,6 +43,33 @@ describe("ClaimPage — the approver surface", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Return" })).toBeInTheDocument();
     await expectNoA11yViolations(container);
+  });
+
+  it("renders the packet preview beside the record it describes", async () => {
+    // Spec §9.2: "single card: summary, computed totals, flags, packet PDF
+    // preview". The preview belongs in the main column with the record, above
+    // the sticky decision bar — not in the status rail.
+    const packet = makePacket();
+    stubFetch(reads(awaitingApproval({ packet })));
+    const { container } = renderRoutes(ROUTES, PATH);
+
+    const link = await screen.findByRole("link", { name: /Open the packet/ });
+    expect(link).toHaveAttribute("href", packet.download_path);
+    expect(container.querySelector("iframe")).toHaveAttribute(
+      "src",
+      packet.download_path,
+    );
+    await expectNoA11yViolations(container);
+  });
+
+  it("says so honestly when no packet has been generated", async () => {
+    stubFetch(reads(awaitingApproval({ packet: null })));
+    const { container } = renderRoutes(ROUTES, PATH);
+
+    expect(await screen.findByText(/has not been prepared yet/)).toBeInTheDocument();
+    expect(container.querySelector("iframe")).toBeNull();
+    // §19.12 — a missing packet never blocks the decision.
+    expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
   });
 
   it("shows NO decision bar when the server offers no actions", async () => {

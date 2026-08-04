@@ -48,8 +48,14 @@ from office_connect.core.documents.snapshots import find_active
 from office_connect.core.time import to_manila, utc_now
 from office_connect.modules.reimbursement.documents import registry  # noqa: F401
 from office_connect.modules.reimbursement.documents.context import (
+    PacketSection,
     build_document_context,
+    build_packet_context,
     is_draft_claim,
+)
+from office_connect.modules.reimbursement.documents.registry import (
+    PACKET,
+    PACKET_TITLE,
 )
 from office_connect.modules.reimbursement.models import (
     ReimbClaim,
@@ -76,6 +82,10 @@ class GeneratedDocument:
     outcome: str  # 'generated' | 'unchanged' | 'failed'
     attachment_id: int | None = None
     detail: str | None = None
+    #: The live copy's content hash — from this pass when it rendered, from the
+    #: existing snapshot when it did not. The packet's cover prints these, which
+    #: is why an 'unchanged' result must still carry one.
+    content_sha256: str | None = None
 
 
 async def _bindings(
@@ -95,7 +105,7 @@ async def _bindings(
     return list(rows)
 
 
-def _filename(claim: ReimbClaim, binding: ReimbTemplateMap, stamp: datetime) -> str:
+def _filename(claim: ReimbClaim, suffix: str, stamp: datetime) -> str:
     """Spec §5.7's convention: ``[RefNo]_[YYYYMMDD]_[HHMMSS]``.
 
     A draft has no reference number, so it is stamped ``DRAFT-<claim id>``
@@ -104,9 +114,26 @@ def _filename(claim: ReimbClaim, binding: ReimbTemplateMap, stamp: datetime) -> 
     """
     local = to_manila(stamp)
     stem = claim.ref_no or f"DRAFT-{claim.id}"
-    return (
-        f"{stem}_{local:%Y%m%d}_{local:%H%M%S}_{binding.checklist_code}.pdf"
-    )
+    return f"{stem}_{local:%Y%m%d}_{local:%H%M%S}_{suffix}.pdf"
+
+
+def comparable_context(context: dict) -> dict:
+    """The context as it is HASHED, rather than as it is rendered.
+
+    Two fields are excluded, for the same underlying reason — both are outputs
+    of the pass, not inputs to it, so including either would make every
+    regeneration look different and defeat fingerprint idempotence entirely:
+
+    ``doc.generated_at``  changes on every pass by construction.
+    ``doc.fingerprint``   IS the value being computed (the packet prints it, so
+                          it must be in the render context but cannot be in the
+                          hashed one — a hash cannot contain itself).
+
+    Every document path must hash through this one function. Two call sites
+    computing "comparable" slightly differently would make one of them look
+    permanently stale.
+    """
+    return {**context, "doc": {**context["doc"], "generated_at": None, "fingerprint": None}}
 
 
 async def generate_claim_documents(
@@ -133,7 +160,8 @@ async def generate_claim_documents(
     revision_no = None
     results: list[GeneratedDocument] = []
 
-    for binding in await _bindings(session, claim_kind=claim.kind):
+    bindings = await _bindings(session, claim_kind=claim.kind)
+    for binding in bindings:
         result = await _generate_one(
             session,
             claim=claim,
@@ -145,6 +173,36 @@ async def generate_claim_documents(
             renderer=renderer,
         )
         results.append(result)
+
+    # The packet goes LAST, deliberately: its cover prints the content hash of
+    # every form it contains, so those forms must already exist this pass.
+    by_key = {result.document_key: result for result in results}
+    sections = [
+        PacketSection(
+            document_key=binding.document_key,
+            checklist_code=binding.checklist_code,
+            title=binding.title,
+            form_no=binding.form_no,
+            content_sha256=(
+                by_key[binding.document_key].content_sha256
+                if binding.document_key in by_key
+                else None
+            ),
+        )
+        for binding in bindings
+    ]
+    results.append(
+        await _generate_packet(
+            session,
+            claim=claim,
+            sections=sections,
+            draft=draft,
+            revision_no=revision_no,
+            actor_user_id=actor_user_id,
+            stamp=stamp,
+            renderer=renderer,
+        )
+    )
 
     return results
 
@@ -185,11 +243,10 @@ async def _generate_one(
             detail=str(exc),
         )
 
-    # The idempotence check. `generated_at` is excluded from the comparison —
-    # it changes on every pass by construction, so including it would make every
-    # regeneration "different" and defeat the whole mechanism.
-    comparable = {**context, "doc": {**context["doc"], "generated_at": None}}
-    fingerprint = fingerprint_context(comparable)
+    # The idempotence check — see `comparable_context` for what is excluded and
+    # why. Equal fingerprint and equal draft-ness means the stored PDF is
+    # already correct: no render, no attachment, no audit row.
+    fingerprint = fingerprint_context(comparable_context(context))
 
     existing = await find_active(
         session,
@@ -207,6 +264,7 @@ async def _generate_one(
             checklist_code=binding.checklist_code,
             outcome="unchanged",
             attachment_id=existing.attachment_id,
+            content_sha256=existing.content_sha256,
         )
 
     try:
@@ -244,7 +302,7 @@ async def _generate_one(
         claim_id=claim.id,
         checklist_item_id=item.id,
         data=rendered.pdf,
-        filename=_filename(claim, binding, stamp),
+        filename=_filename(claim, binding.checklist_code, stamp),
         actor_user_id=actor_user_id,
     )
 
@@ -278,4 +336,126 @@ async def _generate_one(
         checklist_code=binding.checklist_code,
         outcome="generated",
         attachment_id=attachment_id,
+        content_sha256=rendered.content_sha256,
+    )
+
+
+async def _generate_packet(
+    session: AsyncSession,
+    *,
+    claim: ReimbClaim,
+    sections: list[PacketSection],
+    draft: bool,
+    revision_no: int | None,
+    actor_user_id: int | None,
+    stamp: datetime,
+    renderer: PdfRenderer | None,
+) -> GeneratedDocument:
+    """Render the combined packet — the same pipeline, minus the checklist.
+
+    Three deliberate differences from ``_generate_one``, all following from the
+    packet being a **claim-level artifact** rather than a checklist document:
+
+    - no ``materialize_generated_item`` and no ``mark_generated``. No COA
+      circular names a "packet"; the circulars name the documents inside it. A
+      catalog row invented for the folder would put a system artifact into the
+      FS-BD-01 checklist and give a claimant a requirement they cannot satisfy.
+    - ``checklist_item_id=None`` on the join row. ``claim_evidence`` and
+      ``evidence_counts`` both already filter ``checklist_item_id IS NOT NULL``,
+      so the packet is invisible to the Documents task list and uncountable as
+      evidence with **no filter change anywhere**.
+    - the fingerprint is injected back into the context before rendering, so the
+      cover can print it (see ``comparable_context``).
+
+    Failure is non-blocking and symmetrical (§19.12): a packet that cannot
+    render leaves the three forms exactly as they are, and vice versa.
+    """
+    try:
+        context = await build_packet_context(
+            session, claim=claim, sections=sections, now=stamp
+        )
+    except Exception as exc:  # missing totals, vanished staff row, …
+        logger.warning(
+            "packet context failed",
+            extra={"claim_id": claim.id, "document_key": PACKET, "error": str(exc)},
+        )
+        return GeneratedDocument(
+            document_key=PACKET,
+            checklist_code=PACKET_TITLE,
+            outcome="failed",
+            detail=str(exc),
+        )
+
+    fingerprint = fingerprint_context(comparable_context(context))
+    # Render-only: `comparable_context` nulls it again on the next pass, so the
+    # packet can print its own fingerprint without the value chasing itself.
+    context["doc"]["fingerprint"] = fingerprint
+
+    existing = await find_active(
+        session,
+        subject_kind=SUBJECT_KIND,
+        subject_id=claim.id,
+        document_key=PACKET,
+    )
+    if (
+        existing is not None
+        and existing.source_fingerprint == fingerprint
+        and existing.is_draft == draft
+    ):
+        return GeneratedDocument(
+            document_key=PACKET,
+            checklist_code=PACKET_TITLE,
+            outcome="unchanged",
+            attachment_id=existing.attachment_id,
+            content_sha256=existing.content_sha256,
+        )
+
+    try:
+        rendered = render_document(
+            key=PACKET,
+            context=context,
+            branding=context.get("branding"),
+            renderer=renderer,
+        )
+    except RenderFailed as exc:
+        logger.warning(
+            "packet render failed",
+            extra={"claim_id": claim.id, "document_key": PACKET, "error": str(exc)},
+        )
+        return GeneratedDocument(
+            document_key=PACKET,
+            checklist_code=PACKET_TITLE,
+            outcome="failed",
+            detail=str(exc),
+        )
+
+    _join, attachment_id = await evidence.store_generated_document(
+        session,
+        claim_id=claim.id,
+        checklist_item_id=None,
+        data=rendered.pdf,
+        filename=_filename(claim, "PACKET", stamp),
+        actor_user_id=actor_user_id,
+    )
+
+    await freeze_snapshot(
+        session,
+        subject_kind=SUBJECT_KIND,
+        subject_id=claim.id,
+        document_key=PACKET,
+        attachment_id=attachment_id,
+        content_sha256=rendered.content_sha256,
+        source_fingerprint=fingerprint,
+        revision_no=revision_no,
+        is_draft=draft,
+        actor_id=actor_user_id,
+        now=stamp,
+    )
+
+    return GeneratedDocument(
+        document_key=PACKET,
+        checklist_code=PACKET_TITLE,
+        outcome="generated",
+        attachment_id=attachment_id,
+        content_sha256=rendered.content_sha256,
     )

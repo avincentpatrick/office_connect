@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C R-5-packet: the combined printable packet + the §9.2 approver-screen PDF preview, closing module-doc row 58 and completing R-5.**
+> **Resume Office-Connect — Stage C R-6: liquidation + settlement (the 30-day clock, cash-advance records, refund/spawn math), opening with the R-0 calendar-vs-working-days confirmation.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -11,56 +11,62 @@ expand it into the full task and confirm with you before starting.
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
 - **Phase:** **Stage C IN PROGRESS** — **R-1 ✅ + R-2 ✅ + R-3 ✅ + R-4 ✅ +
-  R-5-gen ✅**. **Objective 1 is live: the module now writes its own paperwork.**
-  A claim runs file → 5-step wizard → Documents → submit (refused if a required
-  item is missing) → approve/return → resubmit → FMS → paid & closed, and the
-  three `generated_doc` items (IOT-45 / AR-01 / DV-32) are no longer inert —
-  they render as real PDFs, preview inline, and regenerate authoritatively at
-  submit. **Migration head `0018`.**
-  **Verified: pytest 649 passed (+34) on a freshly migrated scratch database
-  with 1 PRE-EXISTING failure (see below), lint-imports 3/3, `0018` reversible +
-  `alembic check` clean, FE gate green (tsc + eslint + 140 vitest, +3), and a
-  23/23 live smoke** through the real Celery worker and real WeasyPrint.
-  **`module.reimbursement` is ON in dev** (it had been switched OFF in the dev DB;
-  re-enabled this session via `ops.bootstrap set-flag`). Prod default stays OFF.
+  R-5 ✅ (gen + packet)**. **Objective 1 is complete: the module writes its own
+  paperwork AND assembles it.** A claim runs file → 5-step wizard → Documents →
+  submit (refused if a required item is missing) → approve/return → resubmit →
+  FMS → paid & closed; the three `generated_doc` items render as real PDFs, and
+  a **fourth document — the combined packet** — now carries cover + COA checklist
+  + evidence manifest + all three forms as **one 6-page printable PDF**, embedded
+  on the approver's screen. **Migration head `0018` (R-5-packet added none).**
+  **Verified: pytest 658 passed (+9) on a migrated database with 1 PRE-EXISTING
+  failure (see below), lint-imports 3/3, `alembic check` clean, FE gate green
+  (tsc + eslint + 150 vitest, +10), and a live smoke** through the real Celery
+  worker and real WeasyPrint (6-page packet; attach → void → regenerate → the new
+  file on the manifest).
+  **`module.reimbursement` is ON in dev.** Prod default stays OFF.
   **NOT pushed** — push cadence: **once at the Stage C QA gate**.
-- **Last session:** #19 — 2026-08-04 — **Stage C R-5-gen: template auto-assembly**.
-  Shipped **core-service #8** (`core/documents/` — an ENGINE, not a form library:
-  consumers register their own template dir + `DocumentSpec`s, so core renders a
-  GAM form without ever learning what a claim is; autoescape-on + `StrictUndefined`
-  Jinja; print stylesheet built from `core/ui/tokens.py` so PDFs inherit tenant
-  branding with no raw hex; **injectable** `PdfRenderer` with WeasyPrint lazy-imported
-  inside it, which is what lets the suite run on a Windows host with no Pango) and
-  the **snapshot half of core-service #3** (`core_document_snapshots` — freeze /
-  supersede / void, `stale_snapshots()` as the modified-after-signature re-flag).
-  Module side: `documents/` (context + three templates + the orchestration),
-  `reimb_template_maps` as a **binding** table (the Jinja template IS the field map,
-  so the spec's placeholder dictionary was not rebuilt), `checklist.mark_generated`,
-  and the submit/resubmit enqueue hooks. **Docs: api-standards §9c NEW;
-  tech-stack §2 + §3; ui-standards §3 usage note; module doc +9 delta rows with
-  row 31 CLOSED; master-plan #8 and #3 marked SHIPPED.**
-- **Decisions this session** (all four user-confirmed at kickoff): **WeasyPrint +
-  Jinja2, Drive dropped from the generation path entirely** (master-plan §1.1 #8
-  outranks the reference spec on precedence); **draft pre-submit + authoritative
-  regeneration at submit** — the only way to honour §9.3 step 4's in-wizard
-  `Generated ✓` cards when `ref_no` is not allocated until submit; **snapshot half
-  of #3 now, signature capture at R-6** (the A/B/C chain is still an open question
-  with the resident COA auditor — building it now would encode a chain nobody has
-  confirmed); **R-5 split into R-5-gen / R-5-packet**, mirroring R-2 and R-4.
-  Design: **two hashes** (bytes = tamper evidence, canonical-context fingerprint =
-  change detection, because PDF bytes embed a creation timestamp and could never
-  answer “did the data move?”) — the fingerprint is also what makes generation
-  idempotent; **one new core column doing three jobs** (`core_attachments.origin`:
-  born-clean scan, inline-preview disposition, and excluding generated files from
-  the evidence tally); **`superseded` kept distinct from `voided`** because a
-  routine reissue and an invalidate-after-edit are exactly the two things an
-  auditor needs to tell apart.
-- **Bug found by the live smoke, not the unit tests:** packet invalidation was keyed
-  on `_COMPUTE_INPUTS`, but **`purpose` is printed on all three documents and moves
-  no money** — so editing it left an ACTIVE snapshot asserting a purpose the claim no
-  longer had. `drafts.update_draft_fields` now tracks money-staleness and
-  packet-staleness as two separate questions. Regression test added.
+- **Last session:** #20 — 2026-08-04 — **Stage C R-5-packet: the printable packet
+  + the §9.2 approver preview**. Closes module-doc **row 58** and completes R-5.
+  `reimb.packet` is a **claim-level artifact**: registered with core-service #8,
+  deliberately **absent from `reimb_template_maps`**, generated beside the bindings
+  loop, storing its join row with `checklist_item_id = NULL` — which makes it
+  invisible to the Documents task list and uncountable as evidence with **no filter
+  change anywhere**. `packet.html.j2` composes **by Jinja include, not PDF merge**
+  (each form's body extracted to a `_*_body.html.j2` partial the standalone template
+  also includes), so no `pypdf` was added. The manifest **indexes** uploads with
+  their SHA-256 rather than embedding them. Also: `comparable_context` as the one
+  shared hashing helper, attach/detach now voiding the packet, `PacketOut` on
+  `ClaimDetail`, the generate endpoint's **second door**, and `PacketPreview` on
+  `/claims/:id` + Review + confirmation. **Docs: api-standards §9c corollary +
+  §9d NEW; ui-standards §3 embedded-preview usage note; module doc +6 delta rows
+  with row 58 CLOSED.**
+- **Decisions this session** (three user-confirmed at kickoff, one decided-and-recorded):
+  **INDEX, don't embed** — COA takes the ORIGINAL receipts (which is why
+  `custody` exists), and merging a claimant's PDF into a file served
+  `Content-Disposition: inline` *because we authored every byte of it* would break
+  the whole §9c born-clean chain, preview included; **same pass as the three
+  forms**, so the packet is idempotent by fingerprint and always current rather
+  than a second generation door with its own staleness rules; **embedded frame
+  from `lg` up, link at every width** — iOS Safari renders no PDF in an iframe, so
+  an embedded-always frame fails on exactly the device §9.2 calls phone-first;
+  and **claim-level, not checklist-bound** (the brief said decide and record) —
+  no COA circular names the folder its documents travel in.
+- **Design notes worth remembering:** the cover prints the **`source_fingerprint`**,
+  not a hash of its own bytes (that is circular) — computed over the context, then
+  injected for rendering only, with `comparable_context` nulling both
+  `generated_at` and `fingerprint` before hashing; the cover also prints each
+  embedded form's `content_sha256`, which is what ties a single loose page back to
+  its packet. **Attach/detach had to become void triggers**: the manifest is part
+  of what the packet asserts, so a file arriving or leaving dates it — the same
+  argument that made `purpose` a trigger at R-5-gen, one level out. It voids only
+  and never enqueues, or every upload would rebuild the packet mid-wizard.
+- **Accepted side effect:** adding the nulled `fingerprint` key to the hashed
+  context changed the three forms' fingerprints, so every pre-existing snapshot
+  re-renders once. Dev-only data, and the pass is idempotent thereafter.
 - **Blockers / waiting on user:** none.
+- **⚠ Still failing, still not ours — `test_reminder_ladder_counts_working_days`**
+  (re-confirmed session 20: 658 passed, this one failure, unchanged in shape).
+  The session-18 characterisation below still stands.
 - **⚠ CORRECTION to the session-18 note — `test_reminder_ladder_counts_working_days`
   is NOT a dev-contamination artefact.** It fails on a **freshly created, freshly
   migrated database**, in isolation, with `NoResultFound` — and it fails identically
@@ -85,59 +91,56 @@ expand it into the full task and confirm with you before starting.
 ```text
 Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS - DONE: the shared core
 workflow engine (#11), R-1 (#12), R-2-engine (#13), R-2-shell (#14), R-4-app (#15),
-R-2-wizard (#16), R-4-screens (#17), R-3 (#18) and R-5-gen (#19).
-R-5-gen shipped core-service #8 (template -> PDF) and the SNAPSHOT HALF of core-service
-#3 (frozen snapshots). The three generated_doc checklist items (IOT-45 Itinerary,
-AR-01 accomplishment report, DV-32 Disbursement Voucher) now render as real PDFs,
-preview inline on the Documents step, and are regenerated authoritatively at submit.
-What is MISSING is the other half of what 9.2/9.3 promise: there is no COMBINED
-printable packet (one PDF an Admin Officer can print and walk to Accounting), and the
-approver still has no packet preview on /claims/:id - module-doc row 58 deferred it to
-R-5 and R-5-gen deliberately left it. NEXT_ACTION[admin_review] already reads
-'Final check & print packet', pointing at a screen that cannot yet print a packet.
-Available to build on:
-CORE - core/documents/ (#8): register_document/register_template_dir, render_document
-(injectable renderer - pass a fake in tests, WeasyPrint is lazy-imported), the
-token-built print stylesheet, and core/documents/queue.py's register_enqueuer seam.
-core/documents/snapshots.py (#3): freeze_snapshot / void_snapshots / active_snapshots /
-stale_snapshots. core_attachments.origin='generated' makes a PDF born-clean AND
-inline-servable (api-standards 9c) - a packet is just another generated document, so it
-should ride the same path rather than inventing a second one. core/attachments (#2) -
-do not rebuild.
-MODULE - modules/reimbursement/documents/{registry,context,service}.py is where a fourth
-DocumentSpec ('reimb.packet') and its template would go; note generate_claim_documents
-iterates reimb_template_maps, so a packet that is NOT a checklist item needs a decision
-about whether it belongs in that table or beside it. ops/document_tasks.py already
-dispatches by subject_kind.
-FRONTEND - web/src/pages/reimbursement/ClaimPage.tsx renders DetailPage with sections
-Trip -> Itinerary -> Money; the packet preview is a fourth section or a rail Card.
-GeneratedDocCard.tsx is the existing preview affordance (link to a new tab, deliberately
-not an embedded frame on the wizard - the approver screen is where an EMBEDDED preview
-is warranted, and the ui-standards 4 z-index ladder applies: sticky page regions z-30 ->
-dialog overlay z-40 -> dialog content/toast z-50).
-Migration head 0018. pytest 649 on a clean DB (+1 pre-existing SLA-ladder failure,
-characterised in Current Status - NOT yours), lint-imports 3/3, FE gate green (140).
-Dev flag ON. Push cadence: once at the Stage C QA gate.
-Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - rows 58, 67 and the
-nine R-5 rows), master-plan 1.1 #8/#3/#2, api-standards 9/9a/9b/9c, ui-standards 3
-(inventory + the R-5 usage note) + 4 (templates + the z-index ladder), and spec 9.2
-(approval screen: 'single card: summary, computed totals, flags, packet PDF preview'),
-9.3 step 5, 10 and 19.12.
-Task: Stage C R-5-packet - the printable packet + the approver preview.
-Build the combined packet PDF (the three generated forms plus the claimant's uploaded
-evidence, in COA checklist order, with a cover sheet carrying the reference number,
-claimant, totals and the packet's own hash), store and freeze it exactly like the
-individual documents, and surface it (a) to the claimant on Review/confirmation and
-(b) to the approver on /claims/:id as the 9.2 preview. Decide and record whether the
-packet is a checklist-bound document or a claim-level artifact. Worker-down must degrade
-non-blockingly (19.12) - never a 500, never a blocked decision.
+R-2-wizard (#16), R-4-screens (#17), R-3 (#18), R-5-gen (#19) and R-5-packet (#20).
+R-5 is COMPLETE: the module writes its own paperwork AND assembles it. IOT-45 / AR-01 /
+DV-32 render as real PDFs, and a fourth document 'reimb.packet' combines cover + COA
+checklist + evidence manifest + all three forms into one 6-page printable PDF, embedded
+on /claims/:id for the approver. Module-doc row 58 is CLOSED.
+Task: Stage C R-6 - LIQUIDATION + SETTLEMENT (spec 6.2, 5.4, 8 settlement, 12, 14 R-6).
+The other half of the module's scope: a cash advance is taken, the trip happens, and the
+traveller must liquidate it within 30 days or COA starts charging interest.
+Build: reimb_cash_advances (spec 5.4: dv_no/dv_date/amount/dpo_no/date_return ->
+the clock, status open|liquidation_started|settled|overdue, settled_at); the LQ-YYYY-NNNN
+sequence (core-service #5 already exists - allocate_reference_number, do NOT rebuild);
+the 6.2 liquidation state machine as a SECOND workflow definition on the shared engine
+(reimbursement.liquidation) - NOT new tables, see rule 10 and the R-4-app precedent;
+the 30-day countdown from cash_advance.date_return with the D-7/D-3/D-0/overdue
+notification ladder (spec 12; ops/reimb_sla_reminders is the pattern - dedup_key
+idempotency, holder-only); settlement math server-side in services/per_diem.py::settle
+(advance - actual: positive = refund, records the DOH OR no./date; negative =
+'Reimbursement Due', spawns a linked pre-filled claim of the difference); GAM App 44
+Liquidation Report as a fifth DocumentSpec + a packet binding (the machinery is built -
+add a template + a reimb_template_maps row with claim_kind='liquidation'); the
+liquidation tracker screen with the countdown (spec 9.2 'same as claim tracker +
+30-day countdown ring').
+OPEN R-0 ITEM TO CONFIRM AT KICKOFF - blocking: does the 30-day clock count CALENDAR or
+WORKING days at DOH practice? Research default is CALENDAR days from date of return
+(COA 97-002), and the seeded config key is 'liquidation.deadline' (NOT the spec's
+'liquidation.deadline_working_days'). This is a single config value either way but it
+changes every deadline in the module - do not guess. Also still open with the resident
+COA auditor: the A/B/C certification chain + wet-sign capture (deferred FROM R-5 to
+here), and whether CTC-47 belongs on reimbursement at all or is a liquidation artifact
+(module-doc Current Status).
+Available to build on - do NOT rebuild any of it:
+CORE - the workflow engine (#11: definitions are DATA, author a second one), reference
+numbers (#5), checklist engine (#7, core/checklist/ is pure - liquidation gets its own
+catalog rows, not a second engine), documents (#8) + snapshots (#3: signature capture is
+R-6's, and freeze/void/stale_snapshots is everything a signature binds to), attachments
+(#2), notifications outbox + the enqueuer seam.
+MODULE - services/lifecycle.py is the ONLY sanctioned caller of start_instance/
+execute_action (workflow-standards 1); services/per_diem.py::settle already computes
+to_reimburse/to_refund; documents/registry.py + _*_body.html.j2 partials show how a form
+is added; reimb_template_maps rows are keyed (claim_kind, checklist_code) and
+claim_kind='liquidation' is already a legal value.
+Migration head 0018 (R-5-packet added none) - R-6 WILL need one for reimb_cash_advances.
+pytest 658 (+1 PRE-EXISTING SLA-ladder failure, characterised in Current Status - NOT
+yours), lint-imports 3/3, FE gate green (150). Dev flag ON.
+Push cadence: once at the Stage C QA gate.
+Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - the R-5 rows, 67,
+and section 3's R-0 tracker), docs/standards/workflow-standards.md (authoring a second
+definition), master-plan 1.1 #3/#5/#7/#8, api-standards 9/9a/9b/9c/9d, ui-standards 3+4,
+and spec 5.4, 6.2, 8 (settlement), 9.2 liquidation tracker, 12 and 14's R-6 row.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed.
-Open questions for the user (confirm at kickoff): (1) does the packet EMBED the
-claimant's uploaded receipts (real merge - needs a PDF concatenator and image->PDF
-conversion, and images are the common case) or only INDEX them; (2) is the packet
-regenerated on every claim change like the three forms, or produced on demand at
-admin_review only; (3) does the approver preview embed inline (iframe) or open in a new
-tab like the wizard's cards.
 ```
 
 ## Stage tracker *(rule 4 — commit per session, push per phase/stage gate)*
@@ -148,7 +151,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5-gen ✅** templates/snapshots) | 11–19 | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet) | 11–20 | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
@@ -169,6 +172,88 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-04 (session 20 — Stage C R-5-packet: the printable packet + the §9.2
+  approver preview)** — **completes R-5 and closes module-doc row 58.** An Admin
+  Officer can now print one thing and walk it to Accounting. Kickoff choices
+  (user-confirmed): **index, don't embed**; **same pass as the three forms**;
+  **embedded frame from `lg` up, link at every width**. Decided and recorded
+  rather than asked: the packet is a **claim-level artifact**.
+  - **`reimb.packet` is registered but deliberately UNBOUND.** No COA circular
+    names the folder its documents travel in — the circulars name the documents
+    inside it. So the packet is generated *beside* the `reimb_template_maps`
+    loop, calls neither `materialize_generated_item` nor `mark_generated`, and
+    stores its join row with `checklist_item_id = NULL`. Because
+    `claim_evidence()` and `evidence_counts()` already filter
+    `checklist_item_id IS NOT NULL`, it is invisible to the Documents task list
+    and uncountable as evidence with **no filter change anywhere** — the shape
+    R-3 chose paid for this a session before it was needed. A test pins the
+    asymmetry so nobody "fixes" it later by seeding a binding row.
+  - **Composed by Jinja include, not by PDF merge.** Each form's body moved into
+    a `_*_body.html.j2` partial that both its standalone template and
+    `packet.html.j2` include, so **one** WeasyPrint pass yields cover → COA
+    checklist → evidence manifest → the three forms in full. Live-verified at
+    **6 pages**. Stitching three finished PDFs would have cost a `pypdf`
+    dependency (rule 9) to reproduce markup we already had. Two generic print
+    primitives went into core's stylesheet for it — `.page-break` and `.mono` —
+    neither of which is knowledge about claims. The dynamic `{% include %}`
+    resolves through a **code-side** `BODY_PARTIALS` dict, never through
+    `reimb_template_maps.document_key`: deriving a template path from
+    admin-editable data would hand the R-9 catalog editor a template-injection
+    surface.
+  - **The manifest indexes; it never embeds.** Each uploaded file is listed with
+    its checklist code, filename, size, **SHA-256 of the original bytes**, scan
+    state and custody. Three reasons, and the second is the load-bearing one:
+    COA takes delivery of the **originals** (which is why
+    `reimb_attachments.custody` exists), so a printed scan is not the evidence;
+    and merging a claimant's PDF into a file that is served
+    `Content-Disposition: inline` **precisely because we authored every byte of
+    it** would break the entire §9c born-clean chain, taking the preview with
+    it. A quarantined file is listed and marked, never silently dropped — a
+    clerk counting envelopes needs to know a receipt was rejected.
+  - **A document cannot carry the hash of its own bytes.** The cover prints the
+    **`source_fingerprint`** instead: computed over the context, then injected
+    into it for rendering only, with the new shared `comparable_context` nulling
+    **both** `doc.generated_at` and `doc.fingerprint` before hashing. One helper
+    for all four documents — two call sites computing "comparable" differently
+    would make one of them look permanently stale. The cover also prints each
+    embedded form's `content_sha256`, which is what ties a single loose page
+    back to the packet it came from.
+  - **Attach/detach became void triggers.** R-5-gen's invalidation was complete
+    while the generated documents printed only claim data; the packet also
+    prints a manifest of the uploads, so a file arriving or leaving dates it.
+    Same argument that made `purpose` a trigger at R-5-gen, one level out.
+    `services/checklist.py` calls `core.documents.void_snapshots` directly —
+    `drafts → lifecycle → checklist` already exists, so importing `drafts` there
+    would close the cycle. It voids only and never enqueues, or every upload
+    would rebuild the whole packet mid-wizard.
+  - **The generate endpoint grew a second door** (api-standards **§9d**, new):
+    owner-while-editable, **or** a scoped `reimb.claim.review`/`approve` holder.
+    Without it an Admin Officer whose next action literally reads *"Final check
+    & print packet"*, and whose worker was down at submit, faces that
+    instruction with no packet and no way to ask. Not widened to "anyone who may
+    read it" — the `staff` read grant is global — and a refused bystander gets
+    the owner path's error verbatim so the message is not an existence oracle.
+  - **FE:** `PacketPreview` on `/claims/:id` (fourth section, above the sticky
+    decision bar), on Review (marked **Draft copy**) and on the confirmation
+    page. The frame is `lg`-only because **iOS Safari renders no PDF in an
+    iframe** — an embedded-always frame would be a blank box on exactly the
+    device §9.2 calls phone-first — so the new-tab link is the affordance at
+    every width and only the frame is hidden. `test/a11y.ts` now runs axe with
+    `iframes: false` (jsdom gives a frame no real window and axe throws trying
+    to message it; the frame element's own rules still run).
+  - **Docs:** api-standards **§9c corollary** (a generated document may contain
+    only bytes we authored) + **§9d** NEW (two doors onto one endpoint);
+    ui-standards §3 embedded-preview usage note (frame needs a `title`; frame
+    enhances a link, never replaces it; absence is copy, not an empty frame);
+    module doc **+6 delta rows** with **row 58 CLOSED**.
+  - Verified: **pytest 658 (+9)** (1 pre-existing SLA-ladder failure, unchanged),
+    lint-imports 3/3, `alembic check` clean with **no new migration** (head stays
+    `0018`), FE gate green (tsc + eslint + **150 vitest**, +10), and a live smoke
+    through the real Celery worker and real WeasyPrint: 6-page packet with every
+    section present and the ref no. printed, `checklist_item_id NULL`,
+    `origin=generated`/`scan=clean`, attach → 4 snapshots voided (reason kept,
+    rows kept) → regenerate → the new receipt on the manifest.
 
 - **2026-08-04 (session 19 — Stage C R-5-gen: template auto-assembly)** — shipped
   **core-service #8** and the **snapshot half of core-service #3**, and with them

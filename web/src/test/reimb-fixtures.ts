@@ -8,6 +8,7 @@ import type {
   ClaimDetail,
   ClaimTotals,
   MyWorkResponse,
+  PacketSummary,
   TimelineEvent,
   WorkItem,
 } from "../api/reimbursement";
@@ -55,8 +56,23 @@ export function makeClaim(overrides: Partial<ClaimDetail> = {}): ClaimDetail {
     // A fresh draft has no checklist yet — the required SET is unknowable
     // before Money computes (the rules read totals.other and the legs).
     checklist: makeChecklistSummary(),
+    // No packet on a fresh draft — nothing has been generated yet. Tests that
+    // want one pass `packet: makePacket()`.
+    packet: null,
     created_at: "2026-07-30T00:00:00Z",
     updated_at: "2026-07-30T00:00:00Z",
+    ...overrides,
+  };
+}
+
+export function makePacket(overrides: Partial<PacketSummary> = {}): PacketSummary {
+  return {
+    attachment_id: 42,
+    download_path: "/api/v1/attachments/42/content",
+    generated_at: "2026-08-04T02:00:00Z",
+    is_draft: false,
+    content_sha256: "a".repeat(64),
+    source_fingerprint: "b".repeat(64),
     ...overrides,
   };
 }

@@ -220,6 +220,28 @@ class ChecklistOut(BaseModel):
     summary: ChecklistSummaryOut
 
 
+class PacketOut(BaseModel):
+    """The live combined packet — spec §9.2's "packet PDF preview" (R-5-packet).
+
+    A claim-level artifact, not a checklist row: it satisfies no COA code, so it
+    rides ``ClaimDetail`` rather than the item list. ``null`` on ``ClaimDetail``
+    means no packet has been generated yet — a real state (a fresh draft, or a
+    submit that happened while the worker was down), which the UI must render as
+    an honest notice rather than an empty frame.
+    """
+
+    attachment_id: int
+    #: Always populated: a generated PDF is born scan-clean, so unlike an upload
+    #: there is no window where the row exists but the bytes are unservable.
+    download_path: str
+    generated_at: datetime
+    #: True while the claim was still editable — the PDF carries the DRAFT
+    #: watermark and no reference number, and the UI must say so.
+    is_draft: bool
+    content_sha256: str
+    source_fingerprint: str
+
+
 class GenerateDocumentsOut(BaseModel):
     """The 202 body of ``POST /claims/{id}/documents/generate``.
 
@@ -272,6 +294,10 @@ class ClaimDetail(BaseModel):
     # read); the SUMMARY rides here because the button and the reason it is
     # absent must refresh in one response.
     checklist: ChecklistSummaryOut = ChecklistSummaryOut()
+    # --- R-5-packet: the §9.2 preview. Embedded for the same reason the action
+    # set is (delta row 59) — the approver's decision and the document they are
+    # deciding on must never arrive in two responses that can disagree.
+    packet: PacketOut | None = None
     created_at: datetime
     updated_at: datetime
 

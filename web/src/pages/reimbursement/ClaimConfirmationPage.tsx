@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { Card } from "../../components/Card/Card";
 import { ConfirmationPanel } from "../../components/ConfirmationPanel/ConfirmationPanel";
 import { ClaimStepGuard } from "./ClaimStepGuard";
+import { PacketPreview } from "./PacketPreview";
 
 /**
  * Post-submit confirmation — a plain content page inside the App shell
@@ -32,6 +33,12 @@ export function ClaimConfirmationPage() {
               flight” with the holder and next action.
             </p>
           </Card>
+          {/* The filed packet, the moment it exists. `canPrepare` is false here:
+              submit already queued the authoritative render, and offering a
+              button that re-asks for work already in flight would invite a
+              claimant to press it at the one moment it cannot help. If the
+              worker was down, the card says so honestly instead. */}
+          <PacketPreview claim={claim} />
           <div className="flex flex-wrap gap-4">
             <Link
               to={`/reimbursement/claims/${claim.id}`}

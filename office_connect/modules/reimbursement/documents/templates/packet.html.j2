@@ -1,0 +1,234 @@
+{# The combined printable packet (R-5-packet).
+
+   One PDF an Admin Officer can print and walk to Accounting: a cover sheet that
+   identifies and vouches for the claim, the COA checklist as a final-check
+   sheet, a manifest of the originals that must travel with it, and then the
+   three generated forms in full.
+
+   **Composed, not concatenated.** The forms are the SAME partials their
+   standalone PDFs include, printed here under the packet's own frame. That is
+   why this needs no PDF-merge library: WeasyPrint makes one document out of one
+   HTML, and the alternative — stitching three finished PDFs — would have bought
+   a dependency to reproduce markup we already have.
+
+   **The manifest indexes; it does not embed.** COA takes the ORIGINAL receipts,
+   so a printed scan is not the evidence; and a packet containing bytes we did
+   not author could not honestly be served `inline` (api-standards §9c). Each
+   file is vouched for by SHA-256 instead.
+
+   `packet.sections[].body` is resolved from the code-side `BODY_PARTIALS` table,
+   never from `reimb_template_maps` — a dynamic include whose name came from
+   admin-editable data would be a template-injection surface. #}
+{% extends "_base.html.j2" %}
+
+{% block content %}
+
+{# --- Cover sheet ------------------------------------------------------- #}
+<div class="field-grid">
+  <span class="field-label">Reference no.</span>
+  <span class="field-value">{{ claim.ref_no or "Not yet assigned" }}</span>
+  <span class="field-label">Claimant</span>
+  <span class="field-value">{{ claimant.full_name }}</span>
+
+  <span class="field-label">Position</span>
+  <span class="field-value">{{ claimant.position_title or "—" }}</span>
+  <span class="field-label">Division</span>
+  <span class="field-value">{{ claimant.division or "—" }}</span>
+
+  <span class="field-label">Travel order</span>
+  <span class="field-value">
+    {{ claim.dpo_no or "—" }}
+    {% if claim.dpo_date %}dated {{ claim.dpo_date | manila_date }}{% endif %}
+  </span>
+  <span class="field-label">Fund source</span>
+  <span class="field-value">{{ claim.fund_source or "—" }}</span>
+
+  <span class="field-label">Destination</span>
+  <span class="field-value">{{ claim.destination or "—" }}</span>
+  <span class="field-label">Inclusive dates</span>
+  <span class="field-value">
+    {{ claim.date_depart | manila_date }} – {{ claim.date_return | manila_date }}
+  </span>
+</div>
+
+<h2>Purpose of travel</h2>
+<p>{{ claim.purpose or "—" }}</p>
+
+<h2>Amount claimed</h2>
+<table>
+  <tbody>
+    <tr>
+      <td>Per diem</td>
+      <td class="amount">{{ totals.per_diem | money }}</td>
+    </tr>
+    <tr>
+      <td>Transport</td>
+      <td class="amount">{{ totals.transport | money }}</td>
+    </tr>
+    <tr>
+      <td>Other expenses</td>
+      <td class="amount">{{ totals.other | money }}</td>
+    </tr>
+    <tr class="total">
+      <td>Total claim</td>
+      <td class="amount">{{ totals.grand | money }}</td>
+    </tr>
+    {% if totals.advance %}
+    <tr>
+      <td>Less: cash advance</td>
+      <td class="amount">({{ totals.advance | money }})</td>
+    </tr>
+    {% endif %}
+    <tr class="total">
+      <td>{% if totals.to_refund and totals.to_refund != "0.00" %}Amount refundable
+          {% else %}Amount due the payee{% endif %}</td>
+      <td class="amount">
+        {% if totals.to_refund and totals.to_refund != "0.00" %}
+        {{ totals.to_refund | money }}
+        {% else %}
+        {{ totals.to_reimburse | money }}
+        {% endif %}
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Contents of this packet</h2>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Document</th>
+      <th>Form no.</th>
+      <th>Checklist</th>
+      <th>Document hash (SHA-256)</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for section in packet.sections %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ section.title }}</td>
+      <td>{{ section.form_no or "—" }}</td>
+      <td>{{ section.checklist_code }}</td>
+      {# The hash of the STANDALONE copy of this form. Printing it here is what
+         lets someone holding a single loose page prove it belongs to this
+         packet — the two were rendered from one set of facts. #}
+      <td class="mono">{{ section.content_sha256 or "not yet generated" }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5">No documents have been generated for this claim.</td></tr>
+    {% endfor %}
+    <tr>
+      <td>{{ packet.sections | length + 1 }}</td>
+      <td>Supporting documents (originals — see manifest)</td>
+      <td>—</td>
+      <td>—</td>
+      <td>{{ packet.counts.evidence_files }} file(s) listed</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Integrity</h2>
+<p class="note">
+  Source fingerprint
+  <span class="mono">{{ doc.fingerprint }}</span>
+  — the SHA-256 of the claim data this packet was rendered from. Re-rendering
+  the same claim data reproduces this value; any change to the facts above
+  changes it, and voids the frozen copy.
+</p>
+
+{# --- COA checklist ----------------------------------------------------- #}
+<h2 class="page-break">Checklist (COA)</h2>
+<p class="note">
+  {{ packet.counts.required_done }} of {{ packet.counts.required_total }}
+  required items done.
+  {% if not packet.counts.complete %}
+  This packet is incomplete — the items marked “Not attached” below are still
+  outstanding.
+  {% endif %}
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>Code</th>
+      <th>Item</th>
+      <th>Required</th>
+      <th>Evidence</th>
+      <th>Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in packet.checklist %}
+    {% if loop.first or row.group_label != loop.previtem.group_label %}
+    <tr class="total"><td colspan="5">{{ row.group_label }}</td></tr>
+    {% endif %}
+    <tr>
+      <td>{{ row.code }}</td>
+      <td>{{ row.label }}</td>
+      <td>{{ "Yes" if row.required else "No" }}</td>
+      <td>{{ row.evidence_label }}</td>
+      <td>
+        {{ row.status_label }}
+        {% if row.flagged %}<br><span class="note">Flagged for review</span>{% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5">No checklist items apply to this claim.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{# --- Evidence manifest ------------------------------------------------- #}
+<h2 class="page-break">Supporting documents — manifest</h2>
+<p class="note">
+  The files below were attached to this claim. The ORIGINAL documents travel
+  separately and must be attached to this packet before it is forwarded; each
+  line carries the SHA-256 of the copy on file so the two can be matched.
+</p>
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Checklist</th>
+      <th>File</th>
+      <th>Size</th>
+      <th>Status</th>
+      <th>Custody</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for file in packet.evidence %}
+    <tr>
+      <td>{{ loop.index }}</td>
+      <td>{{ file.code }}<br><span class="note">{{ file.label }}</span></td>
+      <td>
+        {{ file.filename }}
+        <br><span class="note mono">{{ file.sha256 }}</span>
+      </td>
+      <td>{{ file.size_label }}</td>
+      <td>{{ file.scan_label }}</td>
+      <td>{{ file.custody_label }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6">No supporting documents have been attached.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{# --- The generated forms, in full -------------------------------------- #}
+{% for section in packet.sections %}
+{% if section.body %}
+<div class="page-break">
+  <div class="doc-header">
+    <p class="doc-agency">{{ doc.agency }}</p>
+    <p class="doc-title">{{ section.title }}</p>
+    {% if section.form_no %}
+    <p class="doc-form-no">{{ section.form_no }}</p>
+    {% endif %}
+  </div>
+  {% include section.body %}
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}

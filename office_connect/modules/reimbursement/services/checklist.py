@@ -30,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from office_connect.core import checklist as engine
+from office_connect.core.documents import void_snapshots
 from office_connect.core.session import set_audit_context
 from office_connect.core.soft_delete import soft_delete
 from office_connect.core.time import utc_now
@@ -406,6 +407,43 @@ async def mark_generated(
     )
 
 
+async def _invalidate_packet(
+    session: AsyncSession, *, claim: ReimbClaim, reason: str, actor_user_id: int
+) -> None:
+    """Void the claim's live snapshots because its EVIDENCE changed (R-5-packet).
+
+    R-5-gen voided on any change to a printed *field* (``drafts.py``). That was
+    complete while the generated documents only printed claim data. The combined
+    packet also prints a manifest of the claimant's uploads — filename, size,
+    SHA-256, scan state — so attaching or detaching a file makes the frozen
+    packet describe a set of documents the claim no longer has. Exactly the same
+    argument that made ``purpose`` a void trigger at R-5-gen, one level out.
+
+    Calls ``void_snapshots`` directly rather than reusing
+    ``drafts.invalidate_packet``: ``drafts`` imports ``lifecycle`` which imports
+    this module, so importing ``drafts`` here would close the cycle. Core is
+    always safe to import.
+
+    Voids only; does **not** enqueue a regeneration. A render per upload would
+    mean rendering the whole packet four or five times while a claimant works
+    through the Documents step. Submit regenerates authoritatively, and the
+    wizard already offers "Prepare my documents" for a claimant who wants the
+    draft refreshed sooner.
+
+    The generator's own writes are untouched: it stores through
+    ``store_generated_document`` / ``mark_generated``, never through the two
+    functions below, so a generation pass cannot void the snapshot it just
+    froze.
+    """
+    await void_snapshots(
+        session,
+        subject_kind=evidence.HOLDER_KIND,
+        subject_id=claim.id,
+        reason=reason,
+        actor_id=actor_user_id,
+    )
+
+
 async def attach_evidence(
     session: AsyncSession,
     *,
@@ -435,6 +473,12 @@ async def attach_evidence(
     )
     evidence.mirror_attachment_ids(
         item, [*(item.attachment_ids or []), attachment_id]
+    )
+    await _invalidate_packet(
+        session,
+        claim=claim,
+        reason="evidence attached",
+        actor_user_id=actor_user_id,
     )
     await session.flush()
     return (
@@ -482,6 +526,12 @@ async def detach_evidence(
     )
     evidence.mirror_attachment_ids(
         item, [i for i in (item.attachment_ids or []) if i != attachment_id]
+    )
+    await _invalidate_packet(
+        session,
+        claim=claim,
+        reason="evidence detached",
+        actor_user_id=actor_user_id,
     )
     await session.flush()
     return await refresh_checklist(

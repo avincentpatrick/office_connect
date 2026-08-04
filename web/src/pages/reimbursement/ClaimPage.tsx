@@ -11,10 +11,12 @@ import { formatManilaDate, formatPeso } from "../../lib/format";
 import { NotFoundPage } from "../NotFoundPage";
 import { ClaimActions } from "./ClaimActions";
 import { ClaimTimeline } from "./ClaimTimeline";
+import { PacketPreview } from "./PacketPreview";
 import {
   CLAIM_STATUS_TO_SEMANTIC,
   SLA_STATE_LABEL,
   SLA_STATE_TO_SEMANTIC,
+  canPreparePacket,
 } from "./claim-status";
 import { parseClaimId, useClaim } from "./use-claim";
 import { firstIncompleteStep, stepPath } from "./wizard-steps";
@@ -170,6 +172,10 @@ export function ClaimDetailView({ claim }: { claim: ClaimDetail }) {
             />
           </section>
         ) : null}
+        {/* Spec §9.2's "packet PDF preview" — in the main column with the record
+            it describes, not in the rail, and above the sticky decision bar so
+            an approver reads the packet before the buttons come into reach. */}
+        <PacketPreview claim={claim} canPrepare={canPreparePacket(claim)} />
       </div>
     </DetailPage>
   );

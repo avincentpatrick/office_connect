@@ -383,3 +383,32 @@ router. The conventions this establishes:
   document the system generated for them — a missing optional dependency turned
   into a permanently broken packet by the fail-closed download gate. The type
   allowlist still applies, so a renderer bug that emitted HTML is still refused.
+  - **Corollary, added R-5-packet:** a generated document may only ever contain
+    bytes this platform authored. A combined packet therefore **indexes** the
+    claimant's uploads (filename + SHA-256) instead of merging them. Merging one
+    in would make the whole file untrusted while still carrying `origin =
+    'generated'`, and the `inline` disposition above would then be serving a
+    claimant's bytes in our own origin — the exact thing this rule prevents.
+
+### 9d. Two doors onto one endpoint (Stage C R-5-packet, 2026-08-04)
+
+`POST /reimbursement/claims/{id}/documents/generate` accepts **either** the owner
+while the claim is still editable **or** an actor holding a scoped
+`reimb.claim.review`/`approve` grant on the claim's org unit. The pattern, for
+any endpoint whose audience genuinely widens after a workflow transition:
+
+- **The route gate stays coarse and the real rule lives in the service** (§9's
+  standing doctrine). The gate relaxed from `reimb.claim.create` to
+  `reimb.claim.read` because an approver is not a creator; that is a *narrowing*
+  of what the route asserts, not a widening of who gets in.
+- **Never widen to "anyone who may read it."** Read grants are global on the
+  `staff` role, so a read-derived rule would expose the endpoint to the whole
+  bureau. Name the gates that may act.
+- **The second door re-raises the FIRST door's error.** A caller refused by both
+  must not be able to tell from the message which door they failed, or the
+  response becomes an existence-and-status oracle for records they cannot see.
+- **Ask why the second door is needed before adding one.** Here it is because
+  `NEXT_ACTION[admin_review]` instructs the holder to print a packet: an
+  instruction the UI cannot carry out, with no way to ask, is the dead end
+  §9.1 principle 4 forbids. An endpoint with no such instruction behind it does
+  not need a second door.
