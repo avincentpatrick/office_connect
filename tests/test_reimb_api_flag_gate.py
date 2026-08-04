@@ -170,3 +170,33 @@ async def test_csrf_still_precedes_the_un_gated_action_routes(
     resp = await client.post("/api/v1/reimbursement/claims/1/approve", json={})
     assert resp.status_code == 403
     assert resp.json()["error"]["code"] == "csrf_failed"
+
+
+async def test_the_flag_gates_every_cash_advance_route(
+    client, session_redis, make_user, reimb_flag_off
+):
+    """R-6-clock: recording a cash advance is NEW work, so it sits on the GATED
+    router — flag OFF → 404 on all four routes, authenticated or not.
+
+    Deliberately unlike the approve/return pair above: that exemption exists so
+    the flag can never refuse a decision on an instance already in the chain
+    (workflow-standards §9). Starting a 30-day clock is not finishing one.
+    """
+    user, pw = await make_user(roles=("admin_officer",))
+    await login(client, user, pw)
+
+    probes = (
+        ("get", "/api/v1/reimbursement/cash-advances", None),
+        ("get", "/api/v1/reimbursement/cash-advances/1", None),
+        ("post", "/api/v1/reimbursement/cash-advances", {}),
+        ("patch", "/api/v1/reimbursement/cash-advances/1", {}),
+    )
+    for method, path, body in probes:
+        call = getattr(client, method)
+        resp = (
+            await call(path, json=body, headers=CSRF)
+            if body is not None
+            else await call(path, headers=CSRF)
+        )
+        assert resp.status_code == 404, f"{method} {path} → {resp.status_code}"
+        assert resp.json()["error"]["code"] == "not_found", resp.text

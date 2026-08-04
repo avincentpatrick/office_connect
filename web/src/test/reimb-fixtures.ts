@@ -1,6 +1,7 @@
 /** ClaimDetail / My-Work fixtures for the reimbursement page tests. */
 
 import type {
+  CashAdvance,
   ChecklistFile,
   ChecklistItem,
   ChecklistResponse,
@@ -412,4 +413,36 @@ export function documentsPending(
     checklist: makeChecklistSummary({ required_total: 2, required_done: 0 }),
     ...overrides,
   });
+}
+
+
+/**
+ * A live cash advance with its COA countdown (R-6-clock). Defaults to the
+ * seeded calendar basis, 12 days out — comfortably on track, so a test that
+ * cares about urgency has to say so.
+ */
+export function makeCashAdvance(
+  overrides: Partial<CashAdvance> = {},
+): CashAdvance {
+  return {
+    id: 41,
+    claimant_id: 3,
+    claimant_name: "Maria Santos",
+    dv_no: "DV-2026-0042",
+    dv_date: "2026-06-25",
+    dpo_no: "DPO-2026-0100",
+    amount: "5000.00",
+    date_return: "2026-07-03",
+    status: "open",
+    status_label: "Open",
+    settled_at: null,
+    deadline_date: "2026-08-02",
+    deadline_basis: "calendar",
+    days_remaining: 12,
+    deadline_state: "on_track",
+    overdue_note: null,
+    created_at: "2026-06-25T02:00:00+00:00",
+    updated_at: "2026-06-25T02:00:00+00:00",
+    ...overrides,
+  };
 }

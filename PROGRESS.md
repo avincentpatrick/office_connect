@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C R-6: liquidation + settlement (the 30-day clock, cash-advance records, refund/spawn math), opening with the R-0 calendar-vs-working-days confirmation.**
+> **Resume Office-Connect — Stage C R-6-liq: the liquidation workflow + settlement (the A/B/C certification chain, LQ- numbers, GAM App 44, refund-OR and the over-advance spawn).**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -11,135 +11,164 @@ expand it into the full task and confirm with you before starting.
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
 - **Phase:** **Stage C IN PROGRESS** — **R-1 ✅ + R-2 ✅ + R-3 ✅ + R-4 ✅ +
-  R-5 ✅ (gen + packet)**. **Objective 1 is complete: the module writes its own
-  paperwork AND assembles it.** A claim runs file → 5-step wizard → Documents →
-  submit (refused if a required item is missing) → approve/return → resubmit →
-  FMS → paid & closed; the three `generated_doc` items render as real PDFs, and
-  a **fourth document — the combined packet** — now carries cover + COA checklist
-  + evidence manifest + all three forms as **one 6-page printable PDF**, embedded
-  on the approver's screen. **Migration head `0018` (R-5-packet added none).**
-  **Verified: pytest 658 passed (+9) on a migrated database with 1 PRE-EXISTING
-  failure (see below), lint-imports 3/3, `alembic check` clean, FE gate green
-  (tsc + eslint + 150 vitest, +10), and a live smoke** through the real Celery
-  worker and real WeasyPrint (6-page packet; attach → void → regenerate → the new
-  file on the manifest).
+  R-5 ✅ (gen + packet) + R-6-clock ✅**. **The module now has both halves of a
+  travel claim's money story: what is owed, and what is owed BACK.** A cash
+  advance is recorded by Accounting, its COA 30-day deadline is computed and
+  **pinned**, a countdown ring shows it on My-Work / the register / the claim
+  rail, and a daily ladder warns the traveller at **D-7 / D-3 / D-0 / overdue**
+  (email at D-3 and D-0 per spec §12) before flipping the advance to `overdue`.
+  `deadline_check` is **live** after three sessions registered-but-inert.
+  **Migration head `0019`** (`deadline_date` + `deadline_basis`, backfilled).
+  **Verified: pytest 737 passed (+79) with ZERO failures** — the SLA-ladder test
+  that had failed since session 18 is fixed, not skipped — plus lint-imports
+  3/3, `alembic check` clean, `0019` reversible, seeds ×2 no-op, FE gate green
+  (tsc + eslint + **168 vitest**, +18, + build), and a live smoke through the
+  **real Celery worker** (pinned clock, §89 409, the whole D-ladder, idempotent
+  re-beats, authenticated HTTP round-trip).
   **`module.reimbursement` is ON in dev.** Prod default stays OFF.
   **NOT pushed** — push cadence: **once at the Stage C QA gate**.
-- **Last session:** #20 — 2026-08-04 — **Stage C R-5-packet: the printable packet
-  + the §9.2 approver preview**. Closes module-doc **row 58** and completes R-5.
-  `reimb.packet` is a **claim-level artifact**: registered with core-service #8,
-  deliberately **absent from `reimb_template_maps`**, generated beside the bindings
-  loop, storing its join row with `checklist_item_id = NULL` — which makes it
-  invisible to the Documents task list and uncountable as evidence with **no filter
-  change anywhere**. `packet.html.j2` composes **by Jinja include, not PDF merge**
-  (each form's body extracted to a `_*_body.html.j2` partial the standalone template
-  also includes), so no `pypdf` was added. The manifest **indexes** uploads with
-  their SHA-256 rather than embedding them. Also: `comparable_context` as the one
-  shared hashing helper, attach/detach now voiding the packet, `PacketOut` on
-  `ClaimDetail`, the generate endpoint's **second door**, and `PacketPreview` on
-  `/claims/:id` + Review + confirmation. **Docs: api-standards §9c corollary +
-  §9d NEW; ui-standards §3 embedded-preview usage note; module doc +6 delta rows
-  with row 58 CLOSED.**
-- **Decisions this session** (three user-confirmed at kickoff, one decided-and-recorded):
-  **INDEX, don't embed** — COA takes the ORIGINAL receipts (which is why
-  `custody` exists), and merging a claimant's PDF into a file served
-  `Content-Disposition: inline` *because we authored every byte of it* would break
-  the whole §9c born-clean chain, preview included; **same pass as the three
-  forms**, so the packet is idempotent by fingerprint and always current rather
-  than a second generation door with its own staleness rules; **embedded frame
-  from `lg` up, link at every width** — iOS Safari renders no PDF in an iframe, so
-  an embedded-always frame fails on exactly the device §9.2 calls phone-first;
-  and **claim-level, not checklist-bound** (the brief said decide and record) —
-  no COA circular names the folder its documents travel in.
-- **Design notes worth remembering:** the cover prints the **`source_fingerprint`**,
-  not a hash of its own bytes (that is circular) — computed over the context, then
-  injected for rendering only, with `comparable_context` nulling both
-  `generated_at` and `fingerprint` before hashing; the cover also prints each
-  embedded form's `content_sha256`, which is what ties a single loose page back to
-  its packet. **Attach/detach had to become void triggers**: the manifest is part
-  of what the packet asserts, so a file arriving or leaving dates it — the same
-  argument that made `purpose` a trigger at R-5-gen, one level out. It voids only
-  and never enqueues, or every upload would rebuild the packet mid-wizard.
-- **Accepted side effect:** adding the nulled `fingerprint` key to the hashed
-  context changed the three forms' fingerprints, so every pre-existing snapshot
-  re-renders once. Dev-only data, and the pass is idempotent thereafter.
+- **Last session:** #21 — 2026-08-04 — **Stage C R-6-clock: cash advances + the
+  COA 30-day liquidation clock**. R-6 split into **R-6-clock / R-6-liq** (the
+  fourth such split, after R-2/R-4/R-5) because the briefed scope was roughly
+  double any prior increment. **R-0 item 1 is CLOSED**: calendar days per COA
+  97-002, with `basis` honoured as a **live config switch** so confirming DOH
+  working-day practice later is a config edit rather than a code change plus a
+  data migration — and the guess would have mattered, because the same "30 days"
+  is **12 calendar days apart** between the two bases. Built:
+  `services/deadline.py` (pure), `services/cash_advance.py` (the single
+  sanctioned writer), migration `0019`, `reimb.cash_advance.manage` +
+  the `liquidation.overdue_note` seed, four routes on the gated router with a
+  **server-derived** countdown, the `deadlines` fact (`FACTS_VERSION` → 2),
+  `sweep_liquidation_reminders` + `ops.reimb_liquidation_reminders` (daily 08:35
+  Manila), `CashAdvanceOut` on `ClaimDetail`, and FE: **CountdownRing**
+  (inventory row 22), the CA card, the Accounting register, the My-Work section
+  and the claim rail.
+- **⚠→✅ THE 3-SESSION-OLD FAILURE IS FIXED, AND IT WAS THE SESSION-17
+  PRODUCTION DEFECT ALL ALONG.** `sweep_sla_reminders` budgeted its work-list as
+  `ORDER BY WorkflowStep.id ASC LIMIT 200` — a budget that always starts at the
+  same end of the queue, so once ~200 steps are permanently stuck, every
+  newly-overdue item sits behind them **forever** (spec §7.5 inverted). It
+  surfaced as a test failure at **session 18** purely because that is the session
+  that added 146 tests and pushed the suite's accumulated backlog past 200; the
+  dev DB held **450** such steps when measured. Fixed by ordering
+  most-overdue-first **and draining in keyset pages** — ordering alone fixes the
+  priority but not the starvation, because the newest overdue item is by
+  definition the *least* overdue. Truncation is now logged, never silent. Two
+  regression tests pin it; the new liquidation ladder was written drained from
+  the start rather than inheriting the shape.
+- **Decisions this session** (four user-confirmed at kickoff): **calendar days
+  with `basis` as a live switch**; **split R-6-clock / R-6-liq**; **Accounting
+  records a cash advance** (new `reimb.cash_advance.manage`; `dv_no`/`dv_date`
+  are data only Accounting holds, and the PD 1445 §89 block is only worth having
+  if the record it guards is authoritative); and **fix both SLA-ladder problems
+  here**, because R-6 owns the clocks and going green before adding a second
+  ladder on the same machinery was the cheapest it would ever be.
+- **Design notes worth remembering:** the deadline is **PINNED, not derived** —
+  the sweep's range query and the `liquidation_deadline` precedent are the
+  practical reasons, but the decisive one is that a date a traveller was *told*
+  must not silently move when an admin edits a config row; recomputed on exactly
+  one trigger (`date_return`), the R-5-gen `purpose` lesson applied to a clock.
+  **Compliance clocks fail SHORT** — the opposite direction to the checklist
+  grammar's fail-OPEN for an unparseable rule, because a rule failing open leaves
+  a visible flag someone can action while a deadline failing open quietly grants
+  time that does not exist. **PD 1445 §89 became a sentence**: the hard-block has
+  been a DB index since R-1, which meant an Admin Officer hitting it got a 500.
+  **Milestones are "most urgent threshold REACHED"**, so a missed beat still
+  warns — at the level that is now true, never a stale "7 days left". The dedup
+  key carries the **channel**, because D-3/D-0 send twice and without it the
+  email would silently dedup away against the in-app row.
+- **Two findings, neither introduced here:** **`created_by`/`updated_by` are NULL
+  platform-wide** (0 of ~1,450 live `reimb_claims`) — the ownership columns exist
+  on every business table and nothing populates them, so standing rule 5 rests
+  entirely on the hash-chained `core_audit_logs` trail today. Recorded, not
+  widened into this increment: it is a foundation change touching every table.
+  And **`FormDialog` now sets `noValidate`** — native constraint validation was
+  BLOCKING the submit event on an empty required field, so react-hook-form never
+  ran and the user saw a browser bubble instead of the GOV.UK error that
+  ui-standards §3.14 requires to match the server's wording.
+- **Test-hygiene note:** a full-suite run can leave `module.reimbursement` OFF in
+  dev — `test_reimb_api_flag_gate.py`'s `reimb_flag_off` fixture restores
+  whatever state it captured, so an interleaved run can persist the OFF. Flip it
+  back with `python -m office_connect.ops.bootstrap set-flag module.reimbursement --on`.
 - **Blockers / waiting on user:** none.
-- **⚠ Still failing, still not ours — `test_reminder_ladder_counts_working_days`**
-  (re-confirmed session 20: 658 passed, this one failure, unchanged in shape).
-  The session-18 characterisation below still stands.
-- **⚠ CORRECTION to the session-18 note — `test_reminder_ladder_counts_working_days`
-  is NOT a dev-contamination artefact.** It fails on a **freshly created, freshly
-  migrated database**, in isolation, with `NoResultFound` — and it fails identically
-  on **stashed (pre-R-5) code**, so it is not a regression from this session. The
-  session-18 characterisation (“fails on dev, passes on a clean DB”) no longer holds;
-  something has moved under it. Deliberately left untouched — diagnosing the SLA
-  ladder is R-6/hardening work, and changing reminder semantics mid-R-5 would be
-  scope creep. **The separable production flaw named in session 17 still stands:**
-  ordering the nudge budget by `WorkflowStep.id ASC LIMIT 200` means that once ~200
-  steps are permanently stuck, newly-overdue items are never nudged — the exact
-  opposite of spec §7.5. Most-overdue-first (`sla_due_at ASC`) is the semantically
-  right priority.
-- **⚠ Open question for the accountant / resident COA auditor (unchanged, not a
-  coding decision):** **CTC-47** (“Certificate of Travel Completed”) is seeded
-  `claim_kind='reimbursement'`, `{"always": true}`, `external_wet_sign` — so it is a
-  permanent always-on submit blocker. But it is signed *after* the trip and reads
-  like a liquidation artifact. Built as seeded (spec-faithful); re-scoping it to
-  liquidation is a policy call.
+- **⚠ Open questions for the accountant / resident COA auditor (unchanged, not
+  coding decisions):** the **A/B/C certification chain + wet-sign capture** (R-6-liq
+  needs it), and whether **CTC-47** ("Certificate of Travel Completed", seeded
+  `claim_kind='reimbursement'`, `{"always": true}`, `external_wet_sign`) belongs
+  on reimbursement at all — it is signed *after* the trip and reads like a
+  liquidation artifact. Built as seeded (spec-faithful); re-scoping it is a
+  policy call, best taken when R-6-liq authors the liquidation catalog.
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
 Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS - DONE: the shared core
 workflow engine (#11), R-1 (#12), R-2-engine (#13), R-2-shell (#14), R-4-app (#15),
-R-2-wizard (#16), R-4-screens (#17), R-3 (#18), R-5-gen (#19) and R-5-packet (#20).
-R-5 is COMPLETE: the module writes its own paperwork AND assembles it. IOT-45 / AR-01 /
-DV-32 render as real PDFs, and a fourth document 'reimb.packet' combines cover + COA
-checklist + evidence manifest + all three forms into one 6-page printable PDF, embedded
-on /claims/:id for the approver. Module-doc row 58 is CLOSED.
-Task: Stage C R-6 - LIQUIDATION + SETTLEMENT (spec 6.2, 5.4, 8 settlement, 12, 14 R-6).
-The other half of the module's scope: a cash advance is taken, the trip happens, and the
-traveller must liquidate it within 30 days or COA starts charging interest.
-Build: reimb_cash_advances (spec 5.4: dv_no/dv_date/amount/dpo_no/date_return ->
-the clock, status open|liquidation_started|settled|overdue, settled_at); the LQ-YYYY-NNNN
-sequence (core-service #5 already exists - allocate_reference_number, do NOT rebuild);
-the 6.2 liquidation state machine as a SECOND workflow definition on the shared engine
-(reimbursement.liquidation) - NOT new tables, see rule 10 and the R-4-app precedent;
-the 30-day countdown from cash_advance.date_return with the D-7/D-3/D-0/overdue
-notification ladder (spec 12; ops/reimb_sla_reminders is the pattern - dedup_key
-idempotency, holder-only); settlement math server-side in services/per_diem.py::settle
-(advance - actual: positive = refund, records the DOH OR no./date; negative =
-'Reimbursement Due', spawns a linked pre-filled claim of the difference); GAM App 44
-Liquidation Report as a fifth DocumentSpec + a packet binding (the machinery is built -
-add a template + a reimb_template_maps row with claim_kind='liquidation'); the
-liquidation tracker screen with the countdown (spec 9.2 'same as claim tracker +
-30-day countdown ring').
-OPEN R-0 ITEM TO CONFIRM AT KICKOFF - blocking: does the 30-day clock count CALENDAR or
-WORKING days at DOH practice? Research default is CALENDAR days from date of return
-(COA 97-002), and the seeded config key is 'liquidation.deadline' (NOT the spec's
-'liquidation.deadline_working_days'). This is a single config value either way but it
-changes every deadline in the module - do not guess. Also still open with the resident
-COA auditor: the A/B/C certification chain + wet-sign capture (deferred FROM R-5 to
-here), and whether CTC-47 belongs on reimbursement at all or is a liquidation artifact
-(module-doc Current Status).
+R-2-wizard (#16), R-4-screens (#17), R-3 (#18), R-5-gen (#19), R-5-packet (#20) and
+R-6-clock (#21). R-6 was SPLIT: R-6-clock shipped the cash-advance record, the pinned
+COA 30-day deadline, the D-7/D-3/D-0/overdue ladder, the countdown UI and the live
+deadline_check. R-0 item 1 is CLOSED (calendar days; `basis` is a live config switch).
+The suite is at 737 passed with ZERO failures - the SLA-ladder failure that stood from
+session 18 was the session-17 LIMIT-200 starvation defect and is fixed.
+Task: Stage C R-6-liq - THE LIQUIDATION WORKFLOW + SETTLEMENT (spec 6.2, 5.5, 8
+settlement, 9.2 liquidation tracker, 10, 14 R-6). The clock exists; now build what
+answers it.
+Build: the `reimbursement.liquidation` workflow definition as a SECOND definition on
+the shared engine (rule 10 + the R-4-app precedent - definitions are DATA, NOT new
+tables). Spec 6.2 reads `CA Open -> Liquidation Draft -> Submitted -> Certifications
+(A->B->C in order) -> Handed to FMS -> ... -> Settled`; per the R-4-app decision
+A = claimant IS THE MAKER and is folded into submit, never a checker slot, so the
+authored chain is draft -> certify_b (Director IV) -> certify_c (Head, Accounting Unit,
+external wet-sign captured by the Admin Officer) -> handed_to_fms -> settled, plus the
+returned loop + cancelled. NOTE two things that MUST be generalized first:
+`workflow.py::_assert_graph_invariants` asserts authored states == services.status
+ALL_STATES (claim-only today), and services/status.py's CLAIMANT_STATES /
+EXTERNAL_STATES / NEXT_ACTION are read by lifecycle.resolve_holder and
+_sync_claim_from_event - both need to become kind-aware, not forked.
+Also: LQ-YYYY-NNNN via core-service #5 (allocate_reference_number, scope="LQ" - do NOT
+rebuild); the liquidation checklist catalog rows (claim_kind='liquidation' is already
+legal and services/checklist.py is already kind-aware) INCLUDING the first seeded
+`deadline_check` (its substrate shipped at R-6-clock: facts["deadlines"] is populated
+from the linked advance, keyed "liquidation.deadline"); GAM App 44 Liquidation Report
+as a fifth DocumentSpec + a `_lr44_body.html.j2` partial + a reimb_template_maps row
+with claim_kind='liquidation' (the packet machinery is built - add a template and a
+binding, and register the partial in registry.BODY_PARTIALS); settlement recording -
+services/per_diem.py::settle ALREADY computes (to_reimburse, to_refund), so what is
+missing is the RECORDING: the refund side-step captures the DOH OR no./date and settles
+the advance (cash_advance.mark_settled), and the over-advance side spawns a linked
+pre-filled reimbursement claim of the difference (needs a claim<->claim link column -
+migration 0020); the spec 9.2 liquidation tracker screen ("same as claim tracker +
+30-day countdown ring" - CountdownRing is inventory row 22 and ships).
+OPEN WITH THE RESIDENT COA AUDITOR - blocking for the chain: (1) confirm the A/B/C
+certification chain and that external wet-sign capture (Admin Officer uploads the signed
+page and checks the step) is acceptable for certification C - they are FMS, outside the
+platform; (2) whether CTC-47 belongs on reimbursement at all or is a liquidation
+artifact - it is seeded always-on `external_wet_sign` on reimbursement today and reads
+like a liquidation document. Best answered now, while the liquidation catalog is being
+authored. Signature CAPTURE was deferred FROM R-5 to here (module-doc row 98) - the
+snapshot half of core-service #3 is built and is everything a signature binds to
+(frozen bytes, both hashes, signer identity, timestamp, void-on-edit, stale_snapshots()).
 Available to build on - do NOT rebuild any of it:
-CORE - the workflow engine (#11: definitions are DATA, author a second one), reference
-numbers (#5), checklist engine (#7, core/checklist/ is pure - liquidation gets its own
-catalog rows, not a second engine), documents (#8) + snapshots (#3: signature capture is
-R-6's, and freeze/void/stale_snapshots is everything a signature binds to), attachments
-(#2), notifications outbox + the enqueuer seam.
+CORE - the workflow engine (#11), reference numbers (#5), checklist engine (#7),
+documents (#8) + snapshots (#3), attachments (#2), notifications outbox + the enqueuer
+seam, core/workdays.py.
 MODULE - services/lifecycle.py is the ONLY sanctioned caller of start_instance/
-execute_action (workflow-standards 1); services/per_diem.py::settle already computes
-to_reimburse/to_refund; documents/registry.py + _*_body.html.j2 partials show how a form
-is added; reimb_template_maps rows are keyed (claim_kind, checklist_code) and
-claim_kind='liquidation' is already a legal value.
-Migration head 0018 (R-5-packet added none) - R-6 WILL need one for reimb_cash_advances.
-pytest 658 (+1 PRE-EXISTING SLA-ladder failure, characterised in Current Status - NOT
-yours), lint-imports 3/3, FE gate green (150). Dev flag ON.
+execute_action (workflow-standards 1); services/cash_advance.py is the ONLY writer of
+reimb_cash_advances and already exposes mark_liquidation_started / mark_settled /
+link_claim / open_cash_advance_for; services/deadline.py is the pure clock;
+documents/registry.py + the _*_body.html.j2 partials show how a form is added;
+notify.py shows the drained-page sweep shape BOTH ladders now use - copy that, never a
+single LIMIT.
+Migration head 0019 - R-6-liq WILL need 0020 (the spawned-claim link + any refund-OR
+columns).
+pytest 737 (0 failures), lint-imports 3/3, FE gate green (168). Dev flag ON - but a full
+suite run can leave it OFF; `python -m office_connect.ops.bootstrap set-flag
+module.reimbursement --on` restores it.
 Push cadence: once at the Stage C QA gate.
-Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - the R-5 rows, 67,
+Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - the R-6-clock rows
 and section 3's R-0 tracker), docs/standards/workflow-standards.md (authoring a second
-definition), master-plan 1.1 #3/#5/#7/#8, api-standards 9/9a/9b/9c/9d, ui-standards 3+4,
-and spec 5.4, 6.2, 8 (settlement), 9.2 liquidation tracker, 12 and 14's R-6 row.
+definition), master-plan 1.1 #3/#5/#7/#8, api-standards 9/9a/9b/9c/9d/9e, ui-standards
+3+4, and spec 5.5, 6.2, 8 (settlement), 9.2 liquidation tracker, 10 and 14's R-6 row.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed.
 ```
 
@@ -151,7 +180,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet) | 11–20 | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet + **R-6-clock ✅**) | 11–21 | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
@@ -172,6 +201,96 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-04 (session 21 — Stage C R-6-clock: cash advances + the COA 30-day
+  liquidation clock)** — the module gains the other half of a travel claim's
+  money story. **R-6 was SPLIT** (R-6-clock / R-6-liq) at kickoff — the briefed
+  scope was roughly double any prior increment, the fourth such split after R-2,
+  R-4 and R-5. Kickoff choices (user-confirmed): **calendar days with `basis` as
+  a live switch**, **the split**, **Accounting records the advance**, and **fix
+  both SLA-ladder problems here**.
+  - **R-0 item 1 CLOSED — and closing it with a switch, not an answer, is the
+    point.** COA 97-002 says "30 days" with no working-day qualifier, so the
+    seed stays calendar; but the R-0 question was always whether DOH *practice*
+    differs, which is a question about an agency rather than about arithmetic.
+    `services/deadline.py` reads `basis` and routes to
+    `core/workdays.py::add_working_days` when it says `working`, so a later
+    confirmation is a config edit rather than a code change plus a data
+    migration of every deadline in flight. Two lines of branch — and the guess
+    would have mattered: the same "30 days" is **12 calendar days apart**
+    between the bases (pinned by test).
+  - **The deadline is PINNED, not derived** (migration `0019`:
+    `deadline_date` + `deadline_basis`, backfilled). The practical reasons are
+    the sweep's range query and the existing `liquidation_deadline` precedent;
+    the decisive one is that a date a traveller was *told* must not silently
+    move when an admin edits `liquidation.deadline` or a holiday lands in
+    `core_holidays`. Recomputed on exactly one trigger — `date_return` moving —
+    which is the R-5-gen `purpose` lesson (track which question an edit actually
+    answers) applied to a clock. Re-dating also clears a stale `overdue`,
+    because that verdict was about the OLD deadline.
+  - **Compliance clocks fail SHORT.** An unreadable config row falls back to 30
+    calendar days *and names the reason*; an unreadable *basis* keeps the
+    configured day count, since discarding a legitimate `45` over a typo would
+    be a second wrong answer on top of the first. This is the OPPOSITE direction
+    to the checklist grammar's fail-OPEN for an unparseable rule — deliberately:
+    a rule failing open leaves a **visible flag** a reviewer can action, while a
+    deadline failing open quietly grants time that does not exist.
+  - **PD 1445 §89 finally became a sentence.** The hard-block has been a partial
+    unique index since R-1, which meant an Admin Officer who hit it got a raw
+    `IntegrityError` → 500. It now names the blocking DV and its deadline, with
+    the index still the actual guarantee and a pre-flight that races it
+    deliberately — both paths raise the identical error, so losing the race is
+    indistinguishable. §9.1 principle 4 applies to constraints too.
+  - **The ladder warns at the level that is TRUE, not the level scheduled.**
+    Milestones are "the most urgent threshold reached", so a beat missed to a
+    worker restart still warns — and never sends "7 days left" on the day 3
+    remain. The dedup key carries the **channel** (`…:<rung>:<channel>`) because
+    D-3/D-0 send twice, in-app *and* email; without it the email spec §12
+    promises would have silently deduped away against the in-app row. Overdue
+    repeats stay in-app and carry their index. The class is `transactional`, so
+    it bypasses opt-outs: a traveller may mute workflow chatter, never COA
+    telling them their salary is about to be deducted. Deadline in calendar
+    days, nudge cadence in working days — two different questions.
+  - **`deadline_check` is live**, three sessions after R-3 registered it inert.
+    `FACTS_VERSION` → **2**, because that is a change of MEANING for a key the
+    catalog addresses by name. The seeded RULE deliberately waits for R-6-liq's
+    catalog — a deadline check belongs on a liquidation — so what ships is the
+    substrate plus a test proving `skipped → passed → flagged`.
+  - **The 3-session-old test failure was the session-17 production defect.**
+    `sweep_sla_reminders` budgeted `ORDER BY WorkflowStep.id ASC LIMIT 200` — a
+    budget that always starts at the same end, so once ~200 steps are stuck,
+    newly-overdue items are never nudged (spec §7.5 inverted). It surfaced at
+    **session 18** only because that session added 146 tests and pushed the
+    suite's accumulated backlog past 200; the dev DB held **450** such steps when
+    measured. Fixed by most-overdue-first ordering **plus keyset-page draining**
+    — ordering alone would not have fixed it, since the newest overdue item is
+    by definition the *least* overdue and last in line under either ordering.
+    Truncation is now logged. Two regression tests pin it, and the liquidation
+    ladder was written drained from the start.
+  - **Two findings, neither introduced here.** `created_by`/`updated_by` are
+    **NULL platform-wide** (0 of ~1,450 live `reimb_claims`): the ownership
+    columns exist on every business table and nothing populates them, so
+    standing rule 5 rests entirely on the hash-chained `core_audit_logs` trail
+    today. Recorded rather than widened into this increment — it touches every
+    table. And **`FormDialog` now sets `noValidate`**: native constraint
+    validation was BLOCKING the submit event on an empty required field, so
+    react-hook-form never ran and the user got a browser bubble instead of the
+    GOV.UK error ui-standards §3.14 requires to match the server's wording.
+  - **UI:** **CountdownRing** promoted to inventory row 22 — unlike R-5's two
+    page-local compositions it had three consumers on day one (My-Work, the
+    register, the claim rail), which is exactly what "promote when a second
+    appears" waits for. The ring is `aria-hidden` decoration and every fact it
+    depicts is real text beside it; it displays a server value and derives
+    nothing; "no deadline yet" is a state with words, because a full ring reads
+    as plenty of time and an empty one as overdue. The status chip is dropped
+    when it would only repeat the ring — R-5's "a second chip must earn itself"
+    rule, applied.
+  - **Verified:** pytest **737 passed, 0 failures** (+79), lint-imports 3/3,
+    `0019` reversible + `alembic check` clean, seeds ×2 no-op, FE gate green
+    (tsc + eslint + **168 vitest**, +18, + build), and a live smoke through the
+    **real Celery worker**: pinned clock, §89 409, D-7 → D-3 → D-0 → overdue →
+    repeat, idempotent re-beats, and an authenticated HTTP round-trip returning
+    the server-derived countdown.
 
 - **2026-08-04 (session 20 — Stage C R-5-packet: the printable packet + the §9.2
   approver preview)** — **completes R-5 and closes module-doc row 58.** An Admin

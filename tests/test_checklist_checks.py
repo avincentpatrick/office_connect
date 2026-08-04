@@ -207,12 +207,18 @@ def test_keyword_absent_works_the_moment_ocr_text_exists():
     assert (dirty.outcome, dirty.detail["hits"]) == (FLAGGED, ["business class"])
 
 
-# --- deadline_check (implemented; inert until R-6) --------------------------
+# --- deadline_check (live since R-6-clock) ----------------------------------
+#
+# The substrate arrived with the liquidation clock: the module's fact builder
+# now fills `deadlines` from the claim's linked cash advance (see
+# test_reimb_checklist_facts.py). The skip branch below is no longer "not built
+# yet" — it is the honest answer for a claim with NO cash advance, which has no
+# deadline to be late against.
 
 DEADLINE = {"type": "deadline_check", "key": "liquidation.deadline"}
 
 
-def test_deadline_check_skips_while_the_clock_is_unbuilt():
+def test_deadline_check_skips_when_the_claim_has_no_clock():
     assert one(DEADLINE, TRIP).reason == "deadline_clock_unavailable"
 
 

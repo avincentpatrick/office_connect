@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends
 
 from office_connect.core.auth.dependencies import require_feature
 from office_connect.modules.reimbursement.api import (
+    cash_advances,
     checklist,
     claims,
     my_work,
@@ -34,6 +35,7 @@ router = APIRouter(
     dependencies=[Depends(require_feature(FEATURE_FLAG_KEY))],
 )
 router.include_router(claims.router)
+router.include_router(cash_advances.router)
 router.include_router(checklist.router)
 router.include_router(my_work.router)
 router.include_router(reference.router)

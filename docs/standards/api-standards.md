@@ -412,3 +412,41 @@ any endpoint whose audience genuinely widens after a workflow transition:
   instruction the UI cannot carry out, with no way to ask, is the dead end
   §9.1 principle 4 forbids. An endpoint with no such instruction behind it does
   not need a second door.
+
+---
+
+## §9e. A second resource under a module router (R-6-clock, 2026-08-04)
+
+`reimb_cash_advances` is the module's second first-class resource, and the first
+one that is **not** the claim. It confirms §9's split rather than amending it,
+but three things are worth stating because they were decided rather than
+inherited:
+
+- **New work sits on the GATED router.** The four cash-advance routes are behind
+  `require_feature`, so flag-OFF they 404 like the rest of the module surface.
+  §9a's un-gated exemption is deliberately *not* extended to them: that
+  exemption exists so the flag can never refuse a decision on an instance
+  already in the chain (workflow-standards §9). **Starting a clock is not
+  finishing one.** The test for whether a route earns the exemption is whether
+  refusing it would strand in-flight work, not whether it is important.
+
+- **A second resource needs its own read rule; it may not borrow the first's.**
+  `can_read_cash_advance` is a sibling of `can_read_claim`, not a call into it.
+  The two answer different questions about different rows, and the tempting
+  shortcut — "anyone who may read the claim may read its advance" — is wrong in
+  both directions: the `staff` role's read grant is GLOBAL (spec §3.2), so it
+  would publish every colleague's DV numbers and peso amounts, and an advance
+  can exist with no claim linked at all.
+
+- **A derived value that decides money or deadlines ships ON the record,
+  computed server-side.** `days_remaining` and `deadline_state` ride every
+  cash-advance response for the same reason `sla_state` does (§9a) and money
+  does (§2): a browser with a wrong clock, or one running outside Manila, must
+  not be able to tell a traveller they still have time to liquidate. The
+  corollary is that such fields are absent from the REQUEST schema — a client
+  that could post a deadline could post one the regulation never gave.
+
+- **Copy that states a legal consequence comes from config, with no code-side
+  fallback.** `liquidation.overdue_note` reaches the client only once it applies.
+  A missing row renders nothing rather than a developer's paraphrase, because a
+  paraphrase of a COA consequence is indistinguishable from the real thing.

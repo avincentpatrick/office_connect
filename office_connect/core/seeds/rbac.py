@@ -83,6 +83,11 @@ _PERMISSION_CATALOG: tuple[tuple[str, str, str], ...] = (
     ("reimb.claim.approve", "Approve a reimbursement claim", "reimb"),
     ("reimb.claim.review", "Perform the admin review of a reimbursement claim", "reimb"),
     ("reimb.claim.fms_update", "Record FMS handoff and updates for a reimbursement claim", "reimb"),
+    # R-6-clock: recording a travel cash advance is ACCOUNTING's act, not the
+    # traveller's — dv_no/dv_date are data only Accounting holds, and the
+    # PD 1445 §89 one-advance-at-a-time block is only meaningful if the record
+    # it guards is authoritative. Claimants READ their own under reimb.claim.read.
+    ("reimb.cash_advance.manage", "Record and edit travel cash advances", "reimb"),
 )
 
 _ALL_PERMISSION_CODES: tuple[str, ...] = tuple(c for c, _, _ in _PERMISSION_CATALOG)
@@ -130,6 +135,7 @@ ROLE_GRANTS: dict[str, tuple[str, ...]] = {
         "reimb.claim.read",
         "reimb.claim.review",
         "reimb.claim.fms_update",
+        "reimb.cash_advance.manage",
         "attachment.read",
         "attachment.download",
     ),

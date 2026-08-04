@@ -318,3 +318,55 @@ def claim_cancelled() -> APIError:
         "This claim was cancelled — cancelled claims cannot be revived. "
         "Start a new claim instead.",
     )
+
+
+# --- R-6-clock cash advances + the 30-day liquidation clock -----------------
+
+
+def cash_advance_not_found() -> APIError:
+    return APIError(404, "reimb_cash_advance_not_found", "Cash advance not found.")
+
+
+def cash_advance_unliquidated(*, dv_no: str | None, deadline: date | None) -> APIError:
+    """PD 1445 §89 — one unliquidated travel advance per person, at a time.
+
+    The rule is a partial-unique DB index (R-1 decision: a data-integrity rule,
+    not a workflow guard), so without this the violation surfaces as a raw
+    ``IntegrityError`` → 500. A 500 tells the Admin Officer nothing; this names
+    the blocking advance and what clears it, per §9.1 principle 4.
+    """
+    which = f"DV {dv_no}" if dv_no else "an earlier advance"
+    due = f" (due {deadline.isoformat()})" if deadline else ""
+    return APIError(
+        409,
+        "reimb_cash_advance_unliquidated",
+        f"This claimant still has an unliquidated cash advance — {which}{due}. "
+        "PD 1445 §89 allows only one at a time: liquidate or settle that one "
+        "before recording another.",
+    )
+
+
+def cash_advance_settled() -> APIError:
+    return APIError(
+        409,
+        "reimb_cash_advance_settled",
+        "This cash advance is already settled — settled advances are a closed "
+        "record and cannot be edited.",
+    )
+
+
+def cash_advance_amount_invalid() -> APIError:
+    return APIError(
+        422,
+        "reimb_cash_advance_amount_invalid",
+        "A cash advance must be for more than ₱0.00.",
+    )
+
+
+def cash_advance_dates_invalid() -> APIError:
+    return APIError(
+        422,
+        "reimb_cash_advance_dates_invalid",
+        "The return date is before the DV date — a travel advance cannot be "
+        "liquidated before it was issued. Check the dates.",
+    )

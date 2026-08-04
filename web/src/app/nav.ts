@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Home, Palette, ReceiptText } from "lucide-react";
+import { Banknote, Home, Palette, ReceiptText } from "lucide-react";
 import { isFeatureOn } from "../lib/flags";
 
 /**
@@ -40,6 +40,16 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: ReceiptText,
         requiredModule: "module.reimbursement",
         intentKeywords: ["travel", "claim", "reimbursement", "per diem"],
+      },
+      {
+        // R-6-clock. Role-gated in the NAV only (discoverability, not
+        // authorization — the server enforces reimb.cash_advance.manage).
+        label: "Cash advances",
+        to: "/reimbursement/cash-advances",
+        icon: Banknote,
+        requiredModule: "module.reimbursement",
+        requiredRoles: ["admin_officer", "system_admin"],
+        intentKeywords: ["cash advance", "liquidation", "deadline", "COA"],
       },
       { label: "UI foundation", to: "/ui-foundation", icon: Palette, devOnly: true },
     ],

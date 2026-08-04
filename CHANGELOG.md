@@ -12,6 +12,42 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-6-clock — the 30-day liquidation clock** (2026-08-04): a travel
+  **cash advance** is now a record the system tracks, and COA's 30-day
+  liquidation deadline runs on it automatically.
+  **Accounting records the advance** — DV number and date, amount, DPO number,
+  and the date the traveller returned to their official station. That last date
+  starts the clock: the system works out the deadline (**30 calendar days**, per
+  COA Circular 97-002) and **pins it**, so a later change to the office's
+  settings can never quietly move a deadline a traveller was already told.
+  **Everyone sees the same countdown, in the same place.** A ring shows the days
+  left — green on track, amber inside the last week, red once past — on the
+  traveller's My Work page, on the cash-advance register and beside any claim
+  filed against the advance. The number and the due date are always written out
+  in words next to it, so the colour is never carrying the meaning on its own.
+  **Reminders arrive before the deadline, not after it.** The traveller gets a
+  notice at **7 days**, **3 days** and **on the day** — the last two by email as
+  well — and repeat nudges once it is overdue, each carrying COA's warning that
+  unliquidated advances may accrue 6% interest and be deducted from salary.
+  Nobody's supervisor is copied; the reminders go to the traveller only. If the
+  reminder service is down for a day, the next run warns at the level that is
+  actually true rather than sending a stale "7 days left".
+  **One advance at a time, explained properly.** PD 1445 §89 allows a person only
+  one unliquidated travel advance; recording a second now says exactly which
+  earlier advance is in the way and when it is due, instead of failing with an
+  unhelpful error.
+
+### Fixed
+- **Overdue approvals could stop being chased entirely** (2026-08-04): the
+  reminder ladder examined only the first 200 waiting items, always in the same
+  order — so in an office with a long-standing backlog, newly overdue approvals
+  sat behind it and were **never** nudged. Reminders now work through the whole
+  queue, most overdue first, and a run that cannot finish says so in the logs
+  instead of looking identical to one that did.
+- **Forms in a dialog now show the service's own error message** rather than the
+  browser's built-in pop-up, which was appearing instead of — and suppressing —
+  the guidance that says what to do next.
+
 - **Stage C R-5-packet — one packet you can print and hand over** (2026-08-04):
   the three generated forms stop being three separate downloads. Office-Connect
   now builds a **single printable packet** for every claim: a **cover sheet**

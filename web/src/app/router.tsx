@@ -6,6 +6,7 @@ import { MfaVerifyPage } from "../pages/MfaVerifyPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { PasswordChangePage } from "../pages/PasswordChangePage";
 import { ClaimConfirmationPage } from "../pages/reimbursement/ClaimConfirmationPage";
+import { CashAdvancesPage } from "../pages/reimbursement/CashAdvancesPage";
 import { ClaimPage } from "../pages/reimbursement/ClaimPage";
 import { ItineraryStepPage } from "../pages/reimbursement/ItineraryStepPage";
 import { DocumentsStepPage } from "../pages/reimbursement/DocumentsStepPage";
@@ -37,6 +38,10 @@ export const router = createBrowserRouter([
         ),
         children: [
           { index: true, element: <MyWorkPage /> },
+          // R-6-clock. No client-side role gate: the SERVER decides what an
+          // actor may see (a 403 renders as an explanation), and a nav item
+          // hidden by role is not a security boundary.
+          { path: "cash-advances", element: <CashAdvancesPage /> },
           { path: "claims/:claimId", element: <ClaimPage /> },
           { path: "claims/:claimId/trip", element: <TripStepPage /> },
           { path: "claims/:claimId/itinerary", element: <ItineraryStepPage /> },

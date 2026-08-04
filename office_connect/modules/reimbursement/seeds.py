@@ -59,11 +59,23 @@ REIMB_CONFIGS = SeedDataset(
              "50% of daily rate on the departure/return day", "EO 77 s.2019"),
         _cfg("per_diem.radius_km", {"km": 50},
              "Full DTE only beyond 50 km from the official station", "EO 77 s.2019"),
+        # R-0 item 1, CLOSED 2026-08-04: calendar days per COA's text, with the
+        # basis honoured as data (services/deadline.py reads it) so confirming
+        # DOH working-day practice later is a config edit, not a code change.
         _cfg("liquidation.deadline", {"days": 30, "basis": "calendar"},
              "30 calendar days after return to official station",
              "COA Circular 97-002"),
         _cfg("liquidation.accountant_verify_days", {"days": 10},
              "Accountant verifies within 10 days (informational)",
+             "COA Circular 97-002"),
+        # The D-0 warning copy. Config rather than a Python string because it
+        # states a legal consequence and must be displayed WITH its source
+        # (spec §4: "displayed with their legal source") — and because the
+        # resident COA auditor, not a developer, owns that wording.
+        _cfg("liquidation.overdue_note",
+             {"text": "Unliquidated advances may accrue 6% interest and be "
+                      "deducted from your salary."},
+             "COA warning shown at and past the liquidation deadline",
              "COA Circular 97-002"),
         _cfg("receipts.cenrr_max", {"amount": "300.00"},
              "No-receipt fares up to ₱300 → CENRR", "COA Circular 2021-001"),

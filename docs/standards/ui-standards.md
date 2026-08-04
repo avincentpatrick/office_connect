@@ -88,6 +88,7 @@ first**. Required states in parentheses.
 | **Form dialog** | dialog whose body is a form — a decision that needs input before it can be made. Submit does NOT close the dialog; the caller closes it on success. |
 | **File upload** | a real, label-associated `<input type="file">` with a keyboard-reachable drop zone as its `<label>`; drag-and-drop is a mouse-only enhancement over that one control (never a drop-only affordance). States: idle / dragging / busy / error / disabled. Announces completion in a polite live region; resets its value after every emit so the same file can be re-picked. `capture` is opt-in only — on mobile it FORCES the camera and removes the gallery option. |
 | **Callout** | inline, status-coloured aside (§2 semantics) explaining a condition next to the decision it affects. `<section aria-labelledby>`; the status word is `sr-only` text so meaning never rides colour alone (§6). **Does not take focus and is not `role=alert`** — that is Error summary's job. |
+| **Countdown ring** | a deadline rendered as remaining time against a total, in semantic colour (§2): green on track / amber due soon / red overdue. The ring itself is **decorative and `aria-hidden`** — the state is carried by adjacent real text ("12 days left · due Aug 2, 2026"), never by the arc or its colour. Takes a server-derived state and day count; it **computes nothing**, because a deadline a browser worked out is a deadline a wrong clock can get wrong. Renders an honest "not started" when there is no deadline yet, never a full or empty ring. |
 
 > **Inventory amendment 2026-07-28 (R-2-shell):** **Error summary** added as
 > the fourteenth component. master-plan §2 R-2 names it as a deliverable; it is
@@ -204,6 +205,35 @@ first**. Required states in parentheses.
 >
 > A frame sits inside the page flow, so the §4 z-index ladder is unchanged: it
 > never overlaps the sticky decision bar (`z-30`) or a dialog above it.
+
+> **Inventory amendment 2026-08-04 (R-6-clock):** row 22, **Countdown ring**.
+> Spec §9.2 names a "30-day countdown ring" on the liquidation tracker, and
+> §6.2 puts the same countdown "on every liquidation surface from CA creation" —
+> so unlike the two page-local compositions above, this one has three consumers
+> on the day it ships (My-Work, the cash-advance list, the claim rail). Three
+> consumers is what the "promote when a second appears" rule is waiting for.
+>
+> Three rules it establishes, binding on any future progress indicator:
+> 1. **The ring is decoration; the text is the information.** The arc is
+>    `aria-hidden` and every fact it depicts — days left, the date, the state
+>    word — is present as real text beside it. A screen-reader user gets the
+>    same content, not a description of a shape. This is §6's "never colour
+>    alone" applied to a graphic: the ring encodes urgency twice over (sweep and
+>    hue) and both are unavailable to a non-visual reader.
+> 2. **A countdown displays a server value; it never derives one.** `days_left`
+>    and the on-track/due-soon/overdue verdict arrive on the record already
+>    computed (api-standards §2). A browser in the wrong timezone, or with a
+>    wrong clock, must not be able to tell a traveller they still have time to
+>    liquidate — the same doctrine that keeps money server-side.
+> 3. **"No deadline yet" is a state with words.** An advance whose trip has not
+>    happened has no clock. Rendering a full ring (looks like plenty of time) or
+>    an empty one (looks overdue) would both be lies; the component says "not
+>    started" instead.
+>
+> **No new Table row, again.** The cash-advance list reuses **Work-item row**,
+> whose contract ("reference + title, StatusChip right, one muted meta line") is
+> exactly an advance's shape — DV number, amount, status, deadline. The §3
+> deferral recorded at R-2-wizard therefore still stands unclaimed.
 >
 > **Test-harness note:** `test/a11y.ts` runs axe with `iframes: false`. jsdom
 > gives an `<iframe>` no real window, so axe throws while trying to message it.
@@ -338,6 +368,7 @@ under `web/src/components/<Name>/`.
 | Error summary | `role="alert"`, `tabIndex=-1` + focused on mount; "There is a problem" heading; list of anchor links (`#field-id`) with wording identical to inline errors; `border-2 border-status-blocked`. |
 | Chip group | `<fieldset>` (bare group `id` for ErrorSummary anchors) + `<legend>`; wrapped `flex` of chips, each a `sr-only` checkbox + `<label>` `min-h-11 rounded-lg border-border`; selected = `peer-checked:border-brand bg-brand text-brand-contrast`; focus ring via `peer-focus-visible:`. |
 | Form dialog | Dialog chrome (above) with a `<form>` body: title, optional muted description, caller's fields, then Cancel (secondary, wrapped in `Dialog.Close`) + submit (`type="submit"`, danger when destructive, `loading` while in flight). Submit is NOT wrapped in `Close`. Panel scrolls (`max-h-[90vh] overflow-y-auto`) — dialog forms grow on a phone. |
+| Countdown ring | inline SVG: a track circle plus a `stroke-dasharray`/`dashoffset` arc in `currentColor`, the wrapper coloured `status-done` / `status-due` / `status-blocked` from the **server's** state. `<svg aria-hidden focusable="false">` with the number centered as SVG text for sighted readers, and the full sentence ("12 days left · due Aug 2, 2026 · On track") as real text beside the ring for everyone. `null` state renders a dashed track and "Not started" — never a full or empty arc. Sizes `sm` (list rows) / `md` (detail rails); both ≥44 px so a linked ring is a legal touch target. |
 
 **Template notes (§4 as-built):** all six templates exist in
 `web/src/layouts/`. The **App shell** takes a `minimal` mode (brand bar only)

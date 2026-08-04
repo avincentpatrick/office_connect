@@ -35,6 +35,7 @@ from office_connect.core.session import OCSession, set_audit_context
 from office_connect.core.workflow import register_sla_enqueuer
 from office_connect.modules.reimbursement.services.notify import (
     notify_escalation,
+    sweep_liquidation_reminders,
     sweep_sla_reminders,
 )
 from office_connect.worker import celery_app
@@ -79,12 +80,34 @@ def notify_workflow_escalation(self, step_id: int) -> dict[str, Any]:
 
 
 @celery_app.task(name="ops.reimb_sla_reminders", bind=True, acks_late=True)
-def reimb_sla_reminders(self, limit: int = 200) -> dict[str, Any]:
-    """The repeating holder-only ladder (beat: daily 08:30 Asia/Manila)."""
+def reimb_sla_reminders(self, page_size: int = 200) -> dict[str, Any]:
+    """The repeating holder-only ladder (beat: daily 08:30 Asia/Manila).
+
+    ``page_size`` bounds each query, not the whole beat — the sweep drains its
+    work-list across pages so a backlog can never starve newly-overdue items.
+    """
     return asyncio.run(
         _with_app_session(
-            lambda s: sweep_sla_reminders(s, limit=limit),
+            lambda s: sweep_sla_reminders(s, page_size=page_size),
             request_id="reimb-sla-ladder",
+        )
+    )
+
+
+@celery_app.task(name="ops.reimb_liquidation_reminders", bind=True, acks_late=True)
+def reimb_liquidation_reminders(self, page_size: int = 200) -> dict[str, Any]:
+    """The COA 30-day liquidation ladder — D-7 / D-3 / D-0 / overdue.
+
+    Beat: daily 08:35 Asia/Manila. Day-granular by nature (a deadline moves once
+    per day), and idempotent through outbox dedup keys, so a missed or repeated
+    beat costs nothing. Also the writer that flips an advance past its deadline
+    to ``overdue`` — spec §5.4's status, which spec §13's "overdue CAs count + ₱"
+    report has to be able to sum.
+    """
+    return asyncio.run(
+        _with_app_session(
+            lambda s: sweep_liquidation_reminders(s, page_size=page_size),
+            request_id="reimb-liquidation-ladder",
         )
     )
 

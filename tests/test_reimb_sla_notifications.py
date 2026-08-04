@@ -272,3 +272,76 @@ async def test_ladder_ignores_non_reimbursement_subjects(
         )
     ).scalars().all()
     assert rows == []
+
+
+async def test_ladder_drains_past_a_backlog_of_stuck_steps(
+    app_session, seed_rbac, make_user, reimb_flag_on
+):
+    """A newly-overdue step is nudged even when older stuck steps come first.
+
+    The regression this pins is a real one (sessions 18–20): the ladder took
+    ``ORDER BY id ASC LIMIT 200``, so once the queue held 200 permanently stuck
+    steps, nothing newer was EVER nudged — spec §7.5 inverted. A small
+    ``page_size`` reproduces that starvation cheaply: our step is the NEWEST
+    and therefore the LEAST overdue, so it sorts last under most-overdue-first
+    and no single page can reach it. Only draining does.
+    """
+    await _clear_holidays(app_session, date(2027, 7, 26), date(2027, 8, 22))
+    cast = await standard_cast(app_session, make_user)
+    claim = await submit_claim(
+        app_session, claim_id=cast.claim.id, actor_user_id=cast.owner.id,
+        now=datetime(2027, 8, 2, 2, 0, tzinfo=UTC),
+    )
+    (step,) = await _division_steps(app_session, claim)
+
+    wf_sla.register_sla_enqueuer(None)
+    await _sweep_until_escalated(
+        app_session, step, now=datetime(2027, 8, 6, 0, 0, tzinfo=UTC)
+    )
+
+    # Thu 08-05 due → Thu 08-12 is 5 WD later → k = 5 // 2 = 2.
+    # page_size is deliberately far below the backlog the suite leaves behind,
+    # and max_pages far above it — the point is to force MANY pages, not to
+    # measure how many the shared dev DB happens to need.
+    ladder_now = datetime(2027, 8, 12, 2, 0, tzinfo=UTC)
+    result = await sweep_sla_reminders(
+        app_session, now=ladder_now, page_size=10, max_pages=5_000
+    )
+    assert result["drained"] is True
+    assert result["checked"] > 10  # more than one page was actually consumed
+
+    row = (
+        await app_session.execute(
+            select(NotificationOutbox).where(
+                NotificationOutbox.dedup_key == f"reimb.claim.sla:{step.id}:2"
+            )
+        )
+    ).scalar_one()
+    assert row.recipient_user_id == cast.approver.id
+
+
+async def test_ladder_reports_an_exhausted_page_budget(
+    app_session, seed_rbac, make_user, reimb_flag_on
+):
+    """A truncated sweep says so. ``drained=False`` is what the ops task logs
+    on — a budget that looks identical whether it finished or gave up is how a
+    reminder ladder quietly stops reminding."""
+    cast = await standard_cast(app_session, make_user)
+    claim = await submit_claim(
+        app_session, claim_id=cast.claim.id, actor_user_id=cast.owner.id,
+        now=datetime(2027, 9, 6, 2, 0, tzinfo=UTC),
+    )
+    (step,) = await _division_steps(app_session, claim)
+    wf_sla.register_sla_enqueuer(None)
+    await _sweep_until_escalated(
+        app_session, step, now=datetime(2027, 9, 10, 0, 0, tzinfo=UTC)
+    )
+
+    result = await sweep_sla_reminders(
+        app_session,
+        now=datetime(2027, 9, 17, 2, 0, tzinfo=UTC),
+        page_size=1,
+        max_pages=1,
+    )
+    assert result["drained"] is False
+    assert result["checked"] == 1

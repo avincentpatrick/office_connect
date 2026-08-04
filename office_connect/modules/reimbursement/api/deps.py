@@ -14,6 +14,8 @@ Everything here is read-only; the routers own the commit.
 
 from __future__ import annotations
 
+from datetime import date
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +24,7 @@ from office_connect.core.models import Attachment, OrgUnit, Staff, User, Workflo
 from office_connect.core.money import money_str
 from office_connect.core.org_units import authorize_scoped
 from office_connect.modules.reimbursement.api.schemas import (
+    CashAdvanceOut,
     ChecklistBlockerOut,
     ChecklistFileOut,
     ChecklistFlagOut,
@@ -39,11 +42,15 @@ from office_connect.modules.reimbursement.api.schemas import (
 # every request that reads a claim.
 from office_connect.modules.reimbursement.documents.registry import PACKET
 from office_connect.modules.reimbursement.models import (
+    ReimbCashAdvance,
     ReimbClaim,
     ReimbItineraryLeg,
 )
+from office_connect.core.time import to_manila, utc_now
 from office_connect.modules.reimbursement.services import actions, checklist, errors
+from office_connect.modules.reimbursement.services import cash_advance as ca_service
 from office_connect.modules.reimbursement.services import attachments as evidence
+from office_connect.modules.reimbursement.services import deadline as dl
 from office_connect.modules.reimbursement.services import status as st
 
 _SCOPED_READ_PERMS = (
@@ -332,6 +339,94 @@ async def claim_packet(session: AsyncSession, claim: ReimbClaim) -> PacketOut | 
     )
 
 
+# --- R-6-clock: cash advances ------------------------------------------------
+
+#: Spec §5.4 statuses, in the claimant's language.
+CA_STATUS_LABELS = {
+    "open": "Open",
+    "liquidation_started": "Liquidation started",
+    "settled": "Settled",
+    "overdue": "Overdue",
+}
+
+
+async def can_manage_cash_advances(
+    session: AsyncSession, *, actor_user_id: int, claimant_id: int
+) -> bool:
+    """Does this actor's ``reimb.cash_advance.manage`` grant cover the
+    claimant's org unit? The route gate is coarse (the grant exists at all);
+    this is the exact rule — api-standards §9's coarse-at-route/exact-in-service
+    doctrine, the same split ``can_read_claim`` implements for reads."""
+    staff = await _display_staff(session, claimant_id)
+    org_unit_id = (staff.section_id or staff.division_id) if staff else None
+    if org_unit_id is None:
+        return False
+    return await authorize_scoped(
+        session, actor_user_id, "reimb.cash_advance.manage", org_unit_id
+    )
+
+
+async def can_read_cash_advance(
+    session: AsyncSession, *, actor_user_id: int, claimant_id: int
+) -> bool:
+    """Owner, or a scoped manager/reviewer. Deliberately NOT "anyone who may
+    read a claim": the ``staff`` role's read grant is GLOBAL (spec §3.2), so
+    leaning on it would make every colleague's advances — DV numbers and peso
+    amounts — bureau-public."""
+    actor = await session.get(User, actor_user_id)
+    if actor is not None and actor.staff_id == claimant_id:
+        return True
+    if await can_manage_cash_advances(
+        session, actor_user_id=actor_user_id, claimant_id=claimant_id
+    ):
+        return True
+    staff = await _display_staff(session, claimant_id)
+    org_unit_id = (staff.section_id or staff.division_id) if staff else None
+    if org_unit_id is None:
+        return False
+    return await authorize_scoped(
+        session, actor_user_id, "reimb.claim.review", org_unit_id
+    )
+
+
+async def cash_advance_out(
+    session: AsyncSession,
+    advance: ReimbCashAdvance,
+    *,
+    today: date,
+    overdue_note: str | None = None,
+) -> CashAdvanceOut:
+    """Map an advance onto the wire, deriving the countdown server-side."""
+    state = dl.deadline_state(deadline=advance.deadline_date, today=today)
+    staff = await _display_staff(session, advance.claimant_id)
+    return CashAdvanceOut(
+        id=advance.id,
+        claimant_id=advance.claimant_id,
+        claimant_name=staff.full_name if staff else None,
+        dv_no=advance.dv_no,
+        dv_date=advance.dv_date,
+        dpo_no=advance.dpo_no,
+        amount=money_str(advance.amount),
+        date_return=advance.date_return,
+        status=advance.status,
+        status_label=CA_STATUS_LABELS.get(advance.status, advance.status),
+        settled_at=advance.settled_at,
+        deadline_date=advance.deadline_date,
+        deadline_basis=advance.deadline_basis,
+        days_remaining=dl.days_remaining(
+            deadline=advance.deadline_date, today=today
+        ),
+        deadline_state=state,
+        # Only once it bites. A permanent banner is wallpaper; one that appears
+        # at D-7 is a warning (spec §9.1 principle 4).
+        overdue_note=(
+            overdue_note if state in (dl.DUE_SOON, dl.OVERDUE) else None
+        ),
+        created_at=advance.created_at,
+        updated_at=advance.updated_at,
+    )
+
+
 async def claim_detail(
     session: AsyncSession, claim: ReimbClaim, *, actor_user_id: int
 ) -> ClaimDetail:
@@ -354,6 +449,23 @@ async def claim_detail(
         .all()
     )
     sla_due_at, sla_state = await actions.claim_sla(session, claim=claim)
+    today = to_manila(utc_now()).date()
+    advance_out = None
+    if claim.cash_advance_id is not None:
+        advance = (
+            await session.execute(
+                select(ReimbCashAdvance).where(
+                    ReimbCashAdvance.id == claim.cash_advance_id
+                )
+            )
+        ).scalar_one_or_none()
+        if advance is not None:
+            advance_out = await cash_advance_out(
+                session,
+                advance,
+                today=today,
+                overdue_note=await ca_service.overdue_note(session, today=today),
+            )
     return ClaimDetail(
         id=claim.id,
         ref_no=claim.ref_no,
@@ -390,6 +502,7 @@ async def claim_detail(
         sla_state=sla_state,
         checklist=await claim_checklist_summary(session, claim),
         packet=await claim_packet(session, claim),
+        cash_advance=advance_out,
         created_at=claim.created_at,
         updated_at=claim.updated_at,
     )

@@ -95,6 +95,78 @@ class ReturnIn(BaseModel):
     expected_version: int | None = None
 
 
+# --- R-6-clock: cash advances ------------------------------------------------
+
+
+class CashAdvanceIn(BaseModel):
+    """Record a travel cash advance (Accounting's data, Accounting's act).
+
+    ``deadline_date``/``deadline_basis``/``status`` are deliberately ABSENT from
+    the wire: the clock is computed and pinned by ``services/cash_advance.py``
+    from ``date_return``, and a client that could post a deadline could post one
+    COA never gave. Same doctrine as money — the server computes, the UI
+    displays (api-standards §2).
+    """
+
+    claimant_id: int
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    dv_no: str | None = Field(default=None, max_length=100)
+    dv_date: date | None = None
+    dpo_no: str | None = Field(default=None, max_length=100)
+    date_return: date | None = None
+
+
+class CashAdvancePatch(BaseModel):
+    """Edit the recorded facts. ``exclude_unset`` at the router keeps "cleared
+    to null" and "not mentioned" distinct — the ``drafts.py`` convention.
+    ``claimant_id`` is absent: re-pointing an advance at a different person
+    would move the §89 slot silently. Void and re-record instead."""
+
+    amount: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    dv_no: str | None = Field(default=None, max_length=100)
+    dv_date: date | None = None
+    dpo_no: str | None = Field(default=None, max_length=100)
+    date_return: date | None = None
+
+
+class CashAdvanceOut(BaseModel):
+    """One advance plus its SERVER-DERIVED countdown.
+
+    ``days_remaining``/``deadline_state`` ride the record rather than being
+    computed client-side for the same reason ``sla_state`` does (delta row 60):
+    a browser with a wrong clock, or one running outside Manila, must not be
+    able to tell a traveller they still have time to liquidate.
+    """
+
+    id: int
+    claimant_id: int
+    claimant_name: str | None = None
+    dv_no: str | None = None
+    dv_date: date | None = None
+    dpo_no: str | None = None
+    amount: str
+    date_return: date | None = None
+    status: str
+    status_label: str
+    settled_at: datetime | None = None
+    # The clock. All three are null together when there is no return date yet —
+    # a trip that has not happened has no deadline, and a zero would be a lie.
+    deadline_date: date | None = None
+    deadline_basis: str | None = None
+    days_remaining: int | None = None
+    deadline_state: str | None = None
+    #: The COA consequence copy, from config with its legal source — present
+    #: only once it applies (due-soon or past), so it reads as a warning rather
+    #: than boilerplate every advance carries from birth.
+    overdue_note: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class CashAdvanceListOut(BaseModel):
+    items: list[CashAdvanceOut]
+
+
 # --- Responses ---------------------------------------------------------------
 
 
@@ -298,6 +370,11 @@ class ClaimDetail(BaseModel):
     # set is (delta row 59) — the approver's decision and the document they are
     # deciding on must never arrive in two responses that can disagree.
     packet: PacketOut | None = None
+    # --- R-6-clock: the linked cash advance and its countdown. Embedded on the
+    # same reasoning again — a claim rail showing "12 days left" that came from
+    # a second request could disagree with the claim it sits beside. `None` is
+    # the ordinary case: most claims are not against an advance.
+    cash_advance: CashAdvanceOut | None = None
     created_at: datetime
     updated_at: datetime
 

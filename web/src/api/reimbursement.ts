@@ -258,6 +258,13 @@ export interface ClaimDetail {
    * rather than show an empty frame.
    */
   packet?: PacketSummary | null;
+  /**
+   * The linked cash advance and its COA countdown (R-6-clock), or null — most
+   * claims are not against an advance. Embedded for the same reason `packet`
+   * and `available_actions` are: a rail reading "12 days left" that arrived in
+   * a second response could disagree with the claim beside it.
+   */
+  cash_advance?: CashAdvance | null;
   created_at: string;
   updated_at: string;
 }
@@ -382,7 +389,93 @@ export const reimbKeys = {
   checklist: (id: number) => [...reimbKeys.all, "claim", id, "checklist"] as const,
   regions: () => [...reimbKeys.all, "regions"] as const,
   returnReasons: () => [...reimbKeys.all, "return-reasons"] as const,
+  // `claimantId` is part of the key because the same endpoint serves both the
+  // traveller's own list and Accounting's view of someone else's — caching them
+  // under one key would show an Admin Officer the last claimant they looked at.
+  cashAdvances: (claimantId?: number) =>
+    [...reimbKeys.all, "cash-advances", claimantId ?? "mine"] as const,
+  cashAdvance: (id: number) =>
+    [...reimbKeys.all, "cash-advance", id] as const,
 };
+
+// --- R-6-clock: cash advances + the COA 30-day liquidation clock ------------
+
+/** Spec §5.4 statuses. `overdue` is a real stored status, not a derived badge —
+ *  spec §13 asks for the count and peso total of overdue advances. */
+export type CashAdvanceStatus =
+  | "open"
+  | "liquidation_started"
+  | "settled"
+  | "overdue";
+
+/** The server's urgency verdict (`services/deadline.py`). Never recomputed. */
+export type DeadlineState = "on_track" | "due_soon" | "overdue";
+
+export interface CashAdvance {
+  id: number;
+  claimant_id: number;
+  claimant_name: string | null;
+  dv_no: string | null;
+  dv_date: string | null;
+  dpo_no: string | null;
+  /** 2-dp string — server-computed money, displayed never calculated. */
+  amount: string;
+  date_return: string | null;
+  status: CashAdvanceStatus;
+  status_label: string;
+  settled_at: string | null;
+  /**
+   * The clock. All four are null together when there is no return date yet —
+   * a trip that has not happened has no deadline, and a zero would be a lie.
+   */
+  deadline_date: string | null;
+  deadline_basis: string | null;
+  days_remaining: number | null;
+  deadline_state: DeadlineState | null;
+  /** COA consequence copy from config — present only once it applies. */
+  overdue_note: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CashAdvanceInput {
+  claimant_id: number;
+  amount: string;
+  dv_no?: string | null;
+  dv_date?: string | null;
+  dpo_no?: string | null;
+  date_return?: string | null;
+}
+
+export type CashAdvancePatch = Partial<Omit<CashAdvanceInput, "claimant_id">>;
+
+export function fetchCashAdvances(claimantId?: number): Promise<CashAdvance[]> {
+  const query = claimantId === undefined ? "" : `?claimant_id=${claimantId}`;
+  return api<{ items: CashAdvance[] }>(
+    `/reimbursement/cash-advances${query}`,
+  ).then((r) => r.items);
+}
+
+export function fetchCashAdvance(id: number): Promise<CashAdvance> {
+  return api<CashAdvance>(`/reimbursement/cash-advances/${id}`);
+}
+
+export function createCashAdvance(body: CashAdvanceInput): Promise<CashAdvance> {
+  return api<CashAdvance>("/reimbursement/cash-advances", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateCashAdvance(
+  id: number,
+  patch: CashAdvancePatch,
+): Promise<CashAdvance> {
+  return api<CashAdvance>(`/reimbursement/cash-advances/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+}
 
 export function createClaim(): Promise<ClaimDetail> {
   return api<ClaimDetail>("/reimbursement/claims", {

@@ -5,6 +5,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
+  fetchCashAdvance,
+  fetchCashAdvances,
   fetchChecklist,
   fetchClaim,
   fetchMyWork,
@@ -62,6 +64,28 @@ export function useChecklist(id: number | null) {
   return useQuery({
     queryKey: reimbKeys.checklist(id ?? -1),
     queryFn: () => fetchChecklist(id as number),
+    enabled: id !== null,
+    retry: false,
+  });
+}
+
+/**
+ * The caller's own cash advances (R-6-clock), or a specific claimant's for an
+ * actor holding `reimb.cash_advance.manage`. Omitting `claimantId` means "mine"
+ * — resolved server-side from the session's staff link, never from a client id.
+ */
+export function useCashAdvances(claimantId?: number) {
+  return useQuery({
+    queryKey: reimbKeys.cashAdvances(claimantId),
+    queryFn: () => fetchCashAdvances(claimantId),
+    retry: false,
+  });
+}
+
+export function useCashAdvance(id: number | null) {
+  return useQuery({
+    queryKey: reimbKeys.cashAdvance(id ?? -1),
+    queryFn: () => fetchCashAdvance(id as number),
     enabled: id !== null,
     retry: false,
   });

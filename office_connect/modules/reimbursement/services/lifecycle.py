@@ -95,8 +95,14 @@ async def _locked_claim(session: AsyncSession, claim_id: int) -> ReimbClaim:
     return claim
 
 
-async def _owner_user(session: AsyncSession, claimant_id: int) -> User | None:
-    """The claimant's live login account (``core_users.staff_id`` bridge)."""
+async def owner_user(session: AsyncSession, claimant_id: int) -> User | None:
+    """The claimant's live login account (``core_users.staff_id`` bridge).
+
+    Public since R-6-clock: the liquidation reminder ladder needs the same
+    staff→login bridge to address a cash advance's holder, and two functions
+    resolving "who is this claimant, as a user" differently is precisely how a
+    nudge ends up in the wrong inbox.
+    """
     return (
         await session.execute(
             select(User).where(
@@ -200,7 +206,7 @@ async def resolve_holder(
     if state.kind == "terminal":
         return (None, None)
     if state.code in st.CLAIMANT_STATES:
-        owner = await _owner_user(session, claim.claimant_id)
+        owner = await owner_user(session, claim.claimant_id)
         holder_id = owner.id if owner else instance.originator_user_id
         return ("user", holder_id)
     if state.code in st.EXTERNAL_STATES:

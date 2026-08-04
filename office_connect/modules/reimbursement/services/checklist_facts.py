@@ -25,14 +25,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from office_connect.core.money import money_str
 from office_connect.core.time import to_manila, utc_now
 from office_connect.modules.reimbursement.models import (
+    ReimbCashAdvance,
     ReimbClaim,
     ReimbConfig,
     ReimbItineraryLeg,
 )
+from office_connect.modules.reimbursement.services.deadline import DEADLINE_KEY
 
 #: Bump when a key changes meaning or disappears — the catalog references these
 #: by name, so a rename is a data migration.
-FACTS_VERSION = 1
+#:
+#: v2 (R-6-clock): ``deadlines`` stopped being a permanent empty stub and now
+#: carries the liquidation clock, which flips every seeded ``deadline_check``
+#: from ``skipped`` to a real verdict. That is a change of MEANING for a key the
+#: catalog addresses by name — exactly what this counter exists to mark.
+FACTS_VERSION = 2
 
 
 async def effective_config(session: AsyncSession, *, today) -> dict[str, Any]:
@@ -70,6 +77,31 @@ async def effective_config(session: AsyncSession, *, today) -> dict[str, Any]:
         if newer:
             best[row.key] = row
     return {key: row.value for key, row in best.items()}
+
+
+async def _deadline_facts(
+    session: AsyncSession, *, claim: ReimbClaim
+) -> dict[str, Any]:
+    """Statutory deadlines this claim is measured against, by config key.
+
+    Read from the linked cash advance rather than from
+    ``claim.liquidation_deadline``: the claim column is a display MIRROR
+    (``services/cash_advance.py`` owns it), and a check that decides what a
+    reviewer is told must read the source of truth, not a copy that a failed
+    re-mirror could have left stale.
+    """
+    if claim.cash_advance_id is None:
+        return {}
+    advance = (
+        await session.execute(
+            select(ReimbCashAdvance).where(
+                ReimbCashAdvance.id == claim.cash_advance_id
+            )
+        )
+    ).scalar_one_or_none()
+    if advance is None or advance.deadline_date is None:
+        return {}
+    return {DEADLINE_KEY: advance.deadline_date.isoformat()}
 
 
 async def build_claim_facts(
@@ -144,9 +176,15 @@ async def build_claim_facts(
             "other": money_str(claim.other_total or 0),
         },
         "config": await effective_config(session, today=today),
+        # The liquidation clock (R-6-clock). Keyed by CONFIG KEY, because that
+        # is what a `deadline_check` names: {"type": "deadline_check",
+        # "key": "liquidation.deadline"}. Absent when the claim has no cash
+        # advance linked — and absent is the honest answer, because the check
+        # then reports `skipped/deadline_clock_unavailable` rather than passing
+        # a claim that simply has no clock to be late against.
+        "deadlines": await _deadline_facts(session, claim=claim),
         # Substrate that does not exist yet. Present and empty so the checks that
         # read them report "not checked" rather than silently passing.
-        "deadlines": {},  # R-6 (the liquidation clock)
         "evidence_dates": [],  # R-9 (OCR)
         "ocr_text": None,  # R-9 (OCR)
         "today": today.isoformat(),

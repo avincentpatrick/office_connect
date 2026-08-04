@@ -8,6 +8,7 @@ import { Button } from "../../components/Button/Button";
 import { toast } from "../../components/Toast/toast-bus";
 import { WorkItemRow } from "../../components/WorkItemRow/WorkItemRow";
 import { ListPage } from "../../layouts/ListPage";
+import { CashAdvanceCard } from "./CashAdvanceCard";
 import {
   CLAIM_STATUS_TO_SEMANTIC,
   SLA_STATE_LABEL,
@@ -15,7 +16,7 @@ import {
   myWorkMeta,
   workItemTitle,
 } from "./claim-status";
-import { useMyWork } from "./use-claim";
+import { useCashAdvances, useMyWork } from "./use-claim";
 import { stepPath } from "./wizard-steps";
 
 /**
@@ -102,6 +103,7 @@ export function MyWorkPage() {
               </p>
             }
           />
+          <CashAdvanceSection />
           <WorkSection
             heading="Your claims in flight"
             items={data.in_flight}
@@ -112,6 +114,42 @@ export function MyWorkPage() {
         </div>
       ) : null}
     </ListPage>
+  );
+}
+
+/**
+ * Spec §6.2: the 30-day countdown "shows on every liquidation surface from CA
+ * creation" — and the module home is the first surface a traveller sees.
+ *
+ * Placed BETWEEN "Waiting on you" and "Your claims in flight" deliberately: an
+ * unliquidated advance IS waiting on you, but it is not a claim and does not
+ * belong in a list of claim rows. Below the inbox, above the tracker.
+ *
+ * Renders nothing at all when there are no advances (the common case, since
+ * most travellers never take one) — an empty "Your cash advances" heading on
+ * every visit would be permanent furniture reporting nothing.
+ */
+function CashAdvanceSection() {
+  const query = useCashAdvances();
+  const advances = query.data ?? [];
+  // Settled advances are closed records; the clock section is about live ones.
+  const live = advances.filter((a) => a.status !== "settled");
+  if (query.isPending || live.length === 0) return null;
+
+  return (
+    <section className="flex flex-col gap-2" aria-label="Your cash advances">
+      <h2 className="text-lg font-bold text-text">Your cash advances</h2>
+      <p className="text-sm text-text-muted">
+        A travel cash advance must be liquidated within the COA deadline shown.
+      </p>
+      <ul className="flex flex-col gap-3">
+        {live.map((advance) => (
+          <li key={advance.id}>
+            <CashAdvanceCard advance={advance} />
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

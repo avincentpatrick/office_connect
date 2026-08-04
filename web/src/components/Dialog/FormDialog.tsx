@@ -57,7 +57,20 @@ export function FormDialog({
               {description}
             </RadixDialog.Description>
           ) : null}
-          <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-4">
+          {/*
+            `noValidate` turns OFF native constraint validation, deliberately.
+            GOV.UK's form-structure guidance says to: the browser's own bubble
+            appears in a language and wording we do not control, vanishes on
+            blur, is not announced consistently, and — the reason it bit here —
+            it BLOCKS the submit event entirely, so our validation never runs
+            and the user never sees the message ui-standards §3.14 requires to
+            match the server's. Our error text is the only error text.
+          */}
+          <form
+            noValidate
+            onSubmit={handleSubmit}
+            className="mt-4 flex flex-col gap-4"
+          >
             {children}
             <div className="flex justify-end gap-2">
               <RadixDialog.Close asChild>

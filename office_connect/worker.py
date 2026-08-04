@@ -59,6 +59,17 @@ celery_app.conf.update(
             "schedule": crontab(minute=30, hour=8),  # 08:30 Asia/Manila
             "options": {"expires": 3600},
         },
+        # The COA 30-day liquidation ladder (spec §12: D-7 / D-3 / D-0 /
+        # overdue to the cash-advance holder). Deliberately five minutes after
+        # the SLA ladder rather than alongside it: both are drained sweeps over
+        # the whole live work-list, and a single-worker on-prem box should not
+        # run them shoulder to shoulder. A deadline moves once a day, so the
+        # offset costs nothing.
+        "reimb-liquidation-reminders": {
+            "task": "ops.reimb_liquidation_reminders",
+            "schedule": crontab(minute=35, hour=8),  # 08:35 Asia/Manila
+            "options": {"expires": 3600},
+        },
     },
 )
 

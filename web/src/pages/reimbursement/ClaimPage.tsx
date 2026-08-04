@@ -11,6 +11,7 @@ import { formatManilaDate, formatPeso } from "../../lib/format";
 import { NotFoundPage } from "../NotFoundPage";
 import { ClaimActions } from "./ClaimActions";
 import { ClaimTimeline } from "./ClaimTimeline";
+import { CashAdvanceCard } from "./CashAdvanceCard";
 import { PacketPreview } from "./PacketPreview";
 import {
   CLAIM_STATUS_TO_SEMANTIC,
@@ -175,6 +176,15 @@ export function ClaimDetailView({ claim }: { claim: ClaimDetail }) {
         {/* Spec §9.2's "packet PDF preview" — in the main column with the record
             it describes, not in the rail, and above the sticky decision bar so
             an approver reads the packet before the buttons come into reach. */}
+        {/*
+          Spec §6.2: the countdown shows on EVERY liquidation surface. When a
+          claim is filed against an advance, the clock belongs beside it — an
+          approver looking at the claim needs to see that the advance behind it
+          is three days from COA interest.
+        */}
+        {claim.cash_advance ? (
+          <CashAdvanceCard advance={claim.cash_advance} />
+        ) : null}
         <PacketPreview claim={claim} canPrepare={canPreparePacket(claim)} />
       </div>
     </DetailPage>
