@@ -88,6 +88,16 @@ _PERMISSION_CATALOG: tuple[tuple[str, str, str], ...] = (
     # PD 1445 §89 one-advance-at-a-time block is only meaningful if the record
     # it guards is authoritative. Claimants READ their own under reimb.claim.read.
     ("reimb.cash_advance.manage", "Record and edit travel cash advances", "reimb"),
+    # R-6-liq-chain: certification B on a liquidation — spec §5.5's "Director
+    # IV". A PERMISSION, not a role: which person holds it at which org unit is
+    # grant data, and lifecycle.resolve_holder's nearest-org-unit-first ranking
+    # then picks the right one. A `director` role would encode a chain DOH DO
+    # 2019-0225 has not confirmed (R-0 item still open) — the same deferral that
+    # keeps the claim chain's amount tiers unauthored.
+    # Certification A is the claimant's, discharged by SUBMITTING (they are the
+    # maker); certification C is FMS's Head of Accounting, signed on paper and
+    # recorded by an Admin Officer under the existing reimb.claim.review.
+    ("reimb.liquidation.certify", "Certify a liquidation (certification B)", "reimb"),
 )
 
 _ALL_PERMISSION_CODES: tuple[str, ...] = tuple(c for c, _, _ in _PERMISSION_CATALOG)
@@ -128,6 +138,12 @@ ROLE_GRANTS: dict[str, tuple[str, ...]] = {
     "approver": (
         "reimb.claim.read",
         "reimb.claim.approve",
+        # Certification B rides the approver role because it IS an approval —
+        # a distinct permission so a tenant can grant the liquidation
+        # certification to the Director without also granting claim approval
+        # (and vice versa), which is exactly the amount-tier flexibility the
+        # unobtained DO would need.
+        "reimb.liquidation.certify",
         "attachment.read",
         "attachment.download",
     ),

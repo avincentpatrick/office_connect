@@ -69,6 +69,10 @@ from office_connect.modules.reimbursement.services.lifecycle import (
     resolve_holder,
     submit_claim,
 )
+from office_connect.modules.reimbursement.services.liquidation import (
+    liquidation_for_advance,
+    start_liquidation,
+)
 from office_connect.modules.reimbursement.services.notify import (
     notify_escalation,
     sweep_liquidation_reminders,
@@ -87,6 +91,8 @@ from office_connect.modules.reimbursement.services.per_diem import (
 
 __all__ = [
     "assert_packet_complete",
+    "liquidation_for_advance",
+    "start_liquidation",
     "assert_persisted_packet_complete",
     "attach_evidence",
     "build_claim_facts",

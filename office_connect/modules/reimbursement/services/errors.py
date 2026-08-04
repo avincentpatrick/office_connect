@@ -370,3 +370,48 @@ def cash_advance_dates_invalid() -> APIError:
         "The return date is before the DV date — a travel advance cannot be "
         "liquidated before it was issued. Check the dates.",
     )
+
+
+# --- R-6-liq-chain: the liquidation workflow -------------------------------
+
+
+def liquidation_exists(*, claim_id: int, ref_no: str | None) -> APIError:
+    """One live liquidation per advance.
+
+    Names the existing one so the caller can open it — a bare "already exists"
+    would leave a traveller with a button that fails and no way to find the
+    liquidation they already started (§9.1 principle 4).
+    """
+    which = f"{ref_no} " if ref_no else ""
+    return APIError(
+        409,
+        "reimb_liquidation_exists",
+        f"This cash advance already has a liquidation ({which}#{claim_id}). "
+        "Open that one instead of starting another.",
+        details=[{"claim_id": claim_id, "ref_no": ref_no}],
+    )
+
+
+def cash_advance_already_settled_for_liquidation() -> APIError:
+    return APIError(
+        409,
+        "reimb_cash_advance_settled",
+        "This cash advance is already settled — there is nothing left to "
+        "liquidate.",
+    )
+
+
+def not_advance_holder() -> APIError:
+    """Only the traveller who holds the advance may liquidate it.
+
+    Deliberately the same shape as ``not_claim_owner``: liquidating is
+    certification A, and A certifies that the CLAIMANT incurred the expenses.
+    An Admin Officer filing on their behalf would put the wrong person's name
+    against a COA certification (the same reasoning that keeps submit
+    owner-only — delta row 43).
+    """
+    return APIError(
+        403,
+        "reimb_not_advance_holder",
+        "Only the traveller this cash advance was issued to can liquidate it.",
+    )

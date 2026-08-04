@@ -200,6 +200,54 @@ REIMB_CHECKLIST = SeedDataset(
                "report", "generated_doc", {"always": True}, sort=7),
         _check("DV-32", "Disbursement Voucher (GAM App 32)",
                "financial", "generated_doc", {"always": True}, sort=8),
+
+        # --- Liquidation set (R-6-liq-chain) -------------------------------
+        # The natural key is (claim_kind, code), so TO-01 and CTC-47 appear
+        # under BOTH kinds deliberately: a traveller who took an advance files
+        # a LIQUIDATION, one who did not files a REIMBURSEMENT, and the trip and
+        # its documentary proof are identical either way. No claimant is asked
+        # twice — a claim is exactly one kind.
+        _check("TO-01", "Approved Travel Order / Authority to Travel",
+               "authority", "upload", {"always": True}, sort=1,
+               claim_kind="liquidation"),
+        _check("CTC-47", "Certificate of Travel Completed (GAM App 47)",
+               "proof_of_travel", "external_wet_sign", {"always": True}, sort=2,
+               claim_kind="liquidation"),
+        _check("OR-01", "Official receipts / RERs for the actual expenses",
+               "financial", "upload", {"always": True}, sort=3,
+               claim_kind="liquidation"),
+        # THE FIRST SEEDED `deadline_check` — its substrate shipped at R-6-clock
+        # (facts["deadlines"] keyed by CONFIG KEY, FACTS_VERSION 2), and this is
+        # the rule that discharges it. `data_only` on purpose: the claim's own
+        # dates ARE the evidence, there is nothing to attach, and a data_only
+        # item never blocks (delta row 67) while still being able to flag. That
+        # is exactly right for a passed deadline — the approver must SEE it and
+        # decide, but a late traveller must never be trapped unable to file the
+        # very liquidation that ends the lateness.
+        _check("LIQ-30", "Filed within the 30-day liquidation deadline",
+               "financial", "data_only", {"always": True},
+               auto_checks=(
+                   {"type": "deadline_check", "key": "liquidation.deadline"},
+               ), sort=4, claim_kind="liquidation"),
+        # Inert until R-6-liq-settle binds it to GAM App 44: a generated_doc
+        # item never blocks, so an unbound row is visibly "not produced yet"
+        # rather than a silent pass — the same honest-inertness doctrine that
+        # kept `deadline_check` registered-but-skipped for three sessions.
+        _check("LR-44", "Liquidation Report (GAM App 44)",
+               "financial", "generated_doc", {"always": True}, sort=5,
+               claim_kind="liquidation"),
+        # Certification C's wet-signed page. Deliberately NOT required: the
+        # checklist gate is a PRE-workflow gate (it runs at submit and at every
+        # approve), so a required row here would block submit and certification
+        # B as well — demanding the Accounting head's signature before the
+        # chain that obtains it has even started. That is delta row 67's
+        # argument ("a system-produced artifact cannot be a precondition of the
+        # workflow that produces it") one level out. The row exists so the
+        # signed page has a home; the RECORD of certification C is the Admin
+        # Officer clearing the gate under its mandatory comment.
+        _check("CRT-C", "Certification C — signed page (Head, Accounting Unit)",
+               "financial", "external_wet_sign", {"always": False}, sort=6,
+               claim_kind="liquidation"),
     ),
 )
 
@@ -236,10 +284,12 @@ REIMB_RETURN_REASONS = SeedDataset(
 # ``modules/reimbursement/documents/registry.py`` — the pair is asserted by
 # test_reimb_documents.py so a rename on either side cannot ship half-done.
 #
-# Only the three `generated_doc` catalog rows appear here. CTC-47 is
-# external_wet_sign and RER-46 is an upload: both are documents a HUMAN signs or
-# supplies, so generating them would assert something the system cannot know.
-# App 44 (Liquidation Report) and the liquidation-side forms arrive with R-6.
+# Only the three reimbursement `generated_doc` catalog rows appear here. CTC-47
+# is external_wet_sign and RER-46 is an upload: both are documents a HUMAN signs
+# or supplies, so generating them would assert something the system cannot know.
+# The liquidation catalog's LR-44 (GAM App 44) is seeded but NOT yet bound —
+# its DocumentSpec, body partial and binding row land with the settlement
+# figures it prints, at R-6-liq-settle.
 REIMB_TEMPLATE_MAPS = SeedDataset(
     name="reimb_template_maps",
     owner="Accounting Unit / resident COA auditor",

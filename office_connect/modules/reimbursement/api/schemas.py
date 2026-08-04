@@ -159,6 +159,14 @@ class CashAdvanceOut(BaseModel):
     #: only once it applies (due-soon or past), so it reads as a warning rather
     #: than boilerplate every advance carries from birth.
     overdue_note: str | None = None
+    #: The liquidation started against this advance, if any (R-6-liq-chain).
+    #: Rides the advance rather than a sibling lookup so the card can offer
+    #: "Liquidate" or "Open LQ-2026-0001" from ONE response — two requests could
+    #: disagree, and the disagreement would show as a button that 409s (the same
+    #: reasoning that embeds `available_actions` in ClaimDetail, delta row 59).
+    liquidation_claim_id: int | None = None
+    liquidation_ref_no: str | None = None
+    liquidation_status: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

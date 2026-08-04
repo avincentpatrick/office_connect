@@ -13,7 +13,12 @@ from datetime import date
 from types import SimpleNamespace
 
 from office_connect.modules.reimbursement.seeds import apply_reimbursement_seeds
-from office_connect.modules.reimbursement.workflow import ensure_claim_definition
+from office_connect.core.workflow import get_published_version
+from office_connect.modules.reimbursement.workflow import (
+    DEFINITION_CODE,
+    LIQUIDATION_DEFINITION_CODE,
+    ensure_definitions,
+)
 from tests.reimbursement_helpers import make_claim, make_leg, make_staff
 from tests.workflow_helpers import grant_scoped_role, make_org_unit
 
@@ -21,11 +26,24 @@ JUL1, JUL3 = date(2026, 7, 1), date(2026, 7, 3)
 
 
 async def ensure_reimb_workflow(session):
-    """Module reference seeds + the published claim definition (idempotent)."""
+    """Module reference seeds + BOTH published definitions (idempotent).
+
+    Returns the CLAIM version, which is what every pre-R-6-liq caller wants.
+    Authoring both is deliberate: a fixture that published only the claim chain
+    would let a liquidation test fail with "definition not published" instead of
+    the thing it was actually asserting.
+    """
     await apply_reimbursement_seeds(session)
-    version = await ensure_claim_definition(session)
+    await ensure_definitions(session)
+    version = await get_published_version(session, DEFINITION_CODE)
     await session.flush()
     return version
+
+
+async def ensure_reimb_liquidation_workflow(session):
+    """The published ``reimbursement.liquidation`` version (idempotent)."""
+    await ensure_reimb_workflow(session)
+    return await get_published_version(session, LIQUIDATION_DEFINITION_CODE)
 
 
 async def trip_claim(session, *, staff, packet=True, owner_user_id=None, **claim_kw):
@@ -125,7 +143,7 @@ def assert_holder_invariant(claim) -> None:
     never does."""
     from office_connect.modules.reimbursement.services import status as st
 
-    if claim.status in st.TERMINAL_STATES:
+    if claim.status in st.vocabulary(claim.kind).terminal:
         assert claim.holder_kind is None, claim.status
         assert claim.holder_id is None, claim.status
         assert claim.next_action is None, claim.status

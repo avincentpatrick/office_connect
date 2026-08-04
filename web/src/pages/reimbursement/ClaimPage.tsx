@@ -71,10 +71,22 @@ export function ClaimPage() {
   return <ClaimDetailView claim={claim} />;
 }
 
+/** "LQ-2026-0001 — Liquidation" / "RB-2026-0007 — Travel claim". */
+function claimTitle(claim: ClaimDetail): string {
+  const noun = claim.kind === "liquidation" ? "Liquidation" : "Travel claim";
+  return claim.ref_no ? `${claim.ref_no} — ${noun}` : noun;
+}
+
 export function ClaimDetailView({ claim }: { claim: ClaimDetail }) {
   return (
     <DetailPage
-      title={claim.ref_no ? `${claim.ref_no} — Travel claim` : "Travel claim"}
+      // The kind is in the TITLE, not a chip: a liquidation and a
+      // reimbursement look identical on this page (same schema, same wizard,
+      // same rail) but answer different questions to COA, and the one place a
+      // reader always looks is the heading. The chip slot stays with STATUS —
+      // spec §9.2's liquidation tracker is "the claim tracker + the countdown
+      // ring", and both of those already ship.
+      title={claimTitle(claim)}
       status={
         <StatusChip status={CLAIM_STATUS_TO_SEMANTIC[claim.status]}>
           {claim.status_label}

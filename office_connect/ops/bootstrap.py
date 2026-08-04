@@ -85,8 +85,8 @@ from office_connect.core.workflow import get_published_version
 # core→modules / core→ops; module seeds live in the module, wiring lives here).
 from office_connect.modules.reimbursement.seeds import apply_reimbursement_seeds
 from office_connect.modules.reimbursement.workflow import (
-    DEFINITION_CODE as REIMB_DEFINITION_CODE,
-    ensure_claim_definition,
+    DEFINITION_CODES as REIMB_DEFINITION_CODES,
+    ensure_definitions as ensure_reimb_definitions,
 )
 
 # Canonical module flags (mirrors migration 0001 seeds — kept in sync on rename).
@@ -329,18 +329,33 @@ async def _load_reference(
 
 # ------------------------------------------------------------ seed-workflows
 async def _seed_workflows(session: AsyncSession) -> dict[str, Any]:
-    """Idempotently author + publish the module workflow definitions (today:
-    ``reimbursement.claim``). A re-run NEVER mints a new version — a chain
-    change is an explicit authored v2 (e.g. the DO 2019-0225 tiered chain).
-    Canonical sequence: init → load-reference → seed-rbac → seed-workflows →
-    promote-admin."""
-    before = await get_published_version(session, REIMB_DEFINITION_CODE)
-    version = await ensure_claim_definition(session)
+    """Idempotently author + publish the module workflow definitions
+    (``reimbursement.claim`` + ``reimbursement.liquidation``). A re-run NEVER
+    mints a new version — a chain change is an explicit authored v2 (e.g. the
+    DO 2019-0225 tiered chain). Canonical sequence: init → load-reference →
+    seed-rbac → seed-workflows → promote-admin.
+
+    Reports per definition, and reports ``created`` per definition rather than
+    for the batch: a tenant seeded before R-6-liq-chain has the claim chain
+    already and gains only the liquidation one, and a summary that said
+    "created: false" for that run would hide the new chain entirely."""
+    codes = sorted(set(REIMB_DEFINITION_CODES.values()))
+    before = {
+        code: await get_published_version(session, code) for code in codes
+    }
+    await ensure_reimb_definitions(session)
     await session.commit()
     return {
-        "definition": REIMB_DEFINITION_CODE,
-        "version_no": version.version_no,
-        "created": before is None,
+        "definitions": [
+            {
+                "definition": code,
+                "version_no": (
+                    await get_published_version(session, code)
+                ).version_no,
+                "created": before[code] is None,
+            }
+            for code in codes
+        ]
     }
 
 

@@ -72,7 +72,7 @@ async def test_states_shape(app_session):
     version = await ensure_reimb_workflow(app_session)
     states, _ = await _graph(app_session, version.id)
 
-    assert set(states) == set(st.ALL_STATES)
+    assert set(states) == set(st.REIMBURSEMENT.all_states)
     assert states[st.DRAFT].kind == "initial"
     assert {c for c, s in states.items() if s.kind == "terminal"} == {
         st.PAID_CLOSED,
@@ -145,10 +145,11 @@ async def test_vocabulary_covers_definition(app_session):
     states, _ = await _graph(app_session, version.id)
     # The module twin of the engine's replay consistency: mapping drift between
     # the authored graph and the status vocabulary fails loudly here.
-    assert set(st.NEXT_ACTION) == set(states)
-    assert set(st.STATUS_LABELS) == set(states)
+    vocab = st.REIMBURSEMENT
+    assert set(vocab.next_action) == set(states)
+    assert set(vocab.labels) == set(states)
     for code, state in states.items():
         if state.kind == "terminal":
-            assert st.NEXT_ACTION[code] is None
+            assert vocab.next_action[code] is None
         else:
-            assert st.NEXT_ACTION[code]
+            assert vocab.next_action[code]

@@ -108,6 +108,20 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | §4 `liquidation.overdue_note` (never seeded) | **Seeded, and with NO code-side fallback.** The sentence states a legal consequence (6% interest, salary deduction) that the resident COA auditor owns; a developer's paraphrase standing in for a missing row would be indistinguishable from the real thing, so a missing row says nothing at all. It rides the API response only once it APPLIES (due-soon or past) — a banner every advance carries from birth is wallpaper, one that appears at D-7 is a warning | spec §4 "displayed with their legal source" |
 | §5.3 `deadline_check` "registered but inert" (delta row 70) | **LIVE at R-6-clock.** `checklist_facts` now fills `deadlines` from the claim's linked advance, keyed by CONFIG KEY (what a check names). `FACTS_VERSION` → **2**: that is a change of MEANING for a key the catalog addresses by name, which is exactly what the counter exists to mark. **No `deadline_check` seeded yet** — the deadline applies to a *liquidation*, and the liquidation catalog is authored at R-6-liq; the substrate ships now with a test proving `skipped → passed → flagged`, and the seeded rule lands with its catalog. A claim with no advance still reports `skipped/deadline_clock_unavailable`, which is the honest answer, not a gap | delta row 70's condition, met |
 | §5.5 `reimb_approval_step.snapshot_id` FK | **Not built. Signature CAPTURE is deferred to R-6** (user-confirmed at kickoff). Approval steps are `core_workflow_steps`, and R-5 ships the snapshot half of core-service #3 — everything a signature will later bind to (frozen bytes, both hashes, signer identity, timestamp, void-on-edit, and `stale_snapshots()` as the "modified after signature" re-flag). Certification steps A/B/C and external wet-sign need the liquidation chain and the signatory-config question still open with the resident COA auditor; building them now would encode a chain nobody has confirmed. The DV prints Boxes A–D **blank** for the same reason | §14's R-5 row vs what R-6 actually owns |
+| §6.1's status vocabulary as ONE flat set (`ALL_STATES` / `CLAIMANT_STATES` / `NEXT_ACTION`) | **GENERALIZED to one `Vocabulary` per claim kind** (R-6-liq-chain), never forked into a second `liquidation_status.py`: four codes (`draft`/`returned`/`handed_to_fms`/`cancelled`) are genuinely SHARED and mean the same thing in both chains, so two copies would duplicate them and drift the day one chain gains a state. A test pins that a shared code never changes CATEGORY between kinds — only its next-action copy. **The one place a union is still correct is cross-kind SQL**: My-Work's two queries span both kinds in a single statement and so filter on `ALL_TERMINAL_STATES`, which is DERIVED from the vocabularies rather than hand-listed — a `settled` missing from it would have left every finished liquidation in the claimant's inbox forever. `vocabulary()` raises on an unknown kind rather than falling back, because a silent fallback would render a liquidation with claim labels and read as working software | workflow-standards §1 (one read-model, one writer) applied to two chains |
+| §6.2 `CA Open → Liquidation Draft → Submitted → Certifications (A→B→C in order) → Handed to FMS → … → Settled` | **`reimbursement.liquidation` v1** — a SECOND definition on the shared engine (rule 10: definitions are DATA, not tables), authored `draft → certify_b → certify_c → handed_to_fms → settled` + the `returned` loop + `cancelled`. **Two definitions, ONE `SUBJECT_KIND`** (`reimb.claim`): a liquidation is a `reimb_claims` row, so the polymorphic back-ref never forks. **No new engine verb** — the certifications are `approve` at gate states, exactly like the claim chain's approvals, which is why the un-gated `api/actions.py` drives this chain with zero new routes and zero new schemas. `_assert_graph_invariants` now takes the vocabulary as a PARAMETER: checking both graphs against one merged set would have accepted a liquidation state authored into the claim graph, the exact drift the check exists to catch | spec §6.2 + rule 10 + the R-4-app precedent |
+| §5.5 "Certification **A = claimant**" as a chain step | **A is folded into SUBMIT — it has no state at all** (user-confirmed at kickoff). A certifies that the claimant incurred the expenses, and the claimant is the MAKER; the engine's `enforce_segregation` guards `instance.originator_user_id`, so authoring A as a gate would ask the maker to check themselves. Submitting IS certification A, and the event log records who and when. The absence is the decision, pinned by test | the R-4-app maker/checker decision, applied verbatim |
+| §5.5 "C = Head, Accounting Unit (external wet-sign capture)" | **`certify_c` is cleared by the Admin Officer under the existing `reimb.claim.review`**, and its `approve` transition is the ONLY one in either chain carrying `requires_comment` — they are attesting to a signature made on paper by someone outside the platform, so the note naming whose signature and when is the only record of certification C that Office-Connect holds. Segregation still applies (the claimant can never clear it). Binding a frozen snapshot to the step is core-service #3's signature half, still unbuilt and still deferred — now with a written reason rather than a gap | spec §5.5 vs who actually holds a login |
+| §5.5 "B = Director IV" | **A PERMISSION, not a role**: new `reimb.liquidation.certify`, granted to `approver` + `system_admin`. WHICH person holds it at WHICH org unit is grant data, and `resolve_holder`'s nearest-org-unit-first ranking then picks the right one. A `director` role would encode a chain DOH DO 2019-0225 has not confirmed (R-0 item still open) — the same deferral that keeps the claim chain's amount tiers unauthored. Distinct from `reimb.claim.approve` so a tenant can grant one without the other, which is exactly the flexibility the unobtained DO would need | R-0 item 2 still open — do not encode a guess as a role |
+| §6.1 row 7's `fms_returned` relay | **NOT authored on the liquidation chain.** §6.2 names no such state, R-7 owns external tracking, and authoring it now would author a state with no screen. A liquidation FMS bounces goes straight to `returned`. If FMS turns out to return liquidations with comments, that is definition **v2** — versioned definitions make it clean and in-flight items finish on v1, the same answer the DO 2019-0225 tiers get | spec fidelity + not building screens nobody asked for |
+| `LQ-YYYY-NNNN` (module header, unbuilt since R-1) | **Built as `REF_SCOPES = {reimbursement: "RB", liquidation: "LQ"}` in `lifecycle.submit_claim`** — core-service #5 unchanged, and NO seed and NO migration, because `allocate_reference_number` creates the `(scope, year)` counter row on demand. Numbers are never reused across either series | rule 10 — the allocator was already general |
+| §9.3 step 1 "*if a matching open cash advance exists → offer 'Liquidate that instead?'*" | **`POST /cash-advances/{id}/liquidate` + the action on the CASH-ADVANCE CARD**, not a branch inside the New Claim wizard. The ring counting down in front of a traveller is the moment the offer means something; a step-1 field they may never reach is not. Creates a `kind='liquidation'` draft prefilled from the advance (`dpo_no`, `date_return`), links it via `cash_advance.link_claim` (mirroring the deadline, which is what makes the countdown and the seeded `deadline_check` live from the first read) and calls `mark_liquidation_started`. Gated on `reimb.claim.create` at the ROUTE (it creates a claim) with the real rule in the SERVICE — the actor's staff record must BE the advance's claimant, because filing IS certification A. `CashAdvanceOut` carries `liquidation_claim_id`/`ref_no`/`status`, so the card chooses between "Liquidate" and "Open LQ-…" from ONE response; two requests could disagree and the disagreement would surface as a button that 409s | spec §9.3 step 1 + api-standards §9 + delta row 59's one-response doctrine |
+| — (no rule for a second liquidation) | **One LIVE liquidation per advance**, enforced by a service check under a `SELECT … FOR UPDATE` on the advance (lock order advance → claim, which no other path takes, so it cannot deadlock). `cancelled` is deliberately excluded from the live set: a mistaken start must be re-filable or the advance is stuck behind a dead claim forever. The 409 NAMES the existing claim so the button has somewhere to go. A partial-unique index is the DB belt behind it and is a migration `0020` candidate — the same order claim↔instance uniqueness took (service lock at R-4-app, index at `0015`) | §9.1 principle 4 + the R-4-app precedent |
+| §5.3 `deadline_check` (substrate live at R-6-clock, no rule seeded) | **THE FIRST SEEDED `deadline_check`, on a new `LIQ-30` catalog row** (`{"type": "deadline_check", "key": "liquidation.deadline"}`). `data_only` on purpose: the claim's own dates ARE the evidence, so there is nothing to attach, and a `data_only` item never blocks (delta row 67) while still being able to flag. That is exactly right for a passed deadline — the approver must SEE it and decide, but a late traveller must never be trapped unable to file the very liquidation that ends the lateness. Discharges delta rows 70 and 109, three sessions after registration | §5.3 + "a flag never blocks alone" |
+| §10 "Templates seeded from … Liquidation Report" (liquidation catalog unbuilt) | **The liquidation catalog is authored as ONE coherent COA set**: `TO-01` + `CTC-47` (both kinds — see below), `OR-01` receipts, `LIQ-30`, `LR-44` and `CRT-C`. `LR-44` (GAM App 44) is seeded but **unbound** until R-6-liq-settle: a `generated_doc` never blocks, so an unbound row is visibly "not produced yet" rather than a silent pass — the honest-inertness doctrine the `deadline_check` itself lived under. Splitting the catalog across two increments would have risked shipping a partial COA set | delta row 70's doctrine, applied to a form |
+| §5.5/§10 place CTC-47 (Certificate of Travel Completed) on reimbursement only | **BOTH kinds** (user-confirmed at kickoff). The natural key is `(claim_kind, code)`, so a second row is legal; a traveller who took an advance files a LIQUIDATION and one who did not files a REIMBURSEMENT, and the trip and its documentary proof are identical either way. No claimant is asked twice, because a claim is exactly one kind. `TO-01` follows the same reasoning. This closes the R-6-clock open question about whether CTC-47 belonged on reimbursement at all: it belongs on both, and the dichotomy was false — the catalog is per-kind, not exclusive | the catalog's own natural key answers it |
+| — (where the certification-C signed page lives) | **`CRT-C` is seeded `{"always": false}` — deliberately never required.** A required wet-sign row would block SUBMIT and certification B too, because the checklist gate is a PRE-workflow gate by construction (it runs at submit and at every approve): it would demand the Accounting head's signature before the chain that obtains it has started. That is delta row 67's argument ("a system-produced artifact cannot be a precondition of the workflow that produces it") one level out. So the row exists as a home for the page, and the RECORD of certification C is the mandatory comment on its transition | the same asymmetry, one level out |
+| — (a defect found by this increment's FE gate) | **`CashAdvancesPage` passed `<ErrorSummary items={…}>` where the component's prop is `errors`** (R-6-clock). `errors` arrived `undefined`, so `errors.length` threw and the record dialog would have WHITE-SCREENED on any server error — including the PD 1445 §89 409 that R-6-clock built the named message for. Every other call site in the codebase uses `errors`. It survived because `tsc -b` is incremental and the stale build info did not re-check that file; a full typecheck catches it. Fixed here | a typed prop is only a guarantee if the checker actually ran |
 *(Grows as build proceeds — every divergence from the spec lands here.)*
 
 ## 3. R-0 confirmations tracker (spec §15 — user decisions)
@@ -119,10 +133,23 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
       honours a `working` basis if DOH practice is ever confirmed, making that a
       config edit rather than a code change. The guess would have mattered: the
       same "30 days" is 12 calendar days apart between the two bases
-- [ ] Signatory / certification chain (A/B/C) per amount tier — obtain DOH DO
-      2019-0225 / -0225A as the delegation source for the reference tenant
+- [~] **Certification chain (A/B/C) — SHAPE settled at R-6-liq-chain
+      (user-confirmed 2026-08-04, session 22); AMOUNT TIERS still open.** The
+      authored chain is `draft → certify_b (Director IV, the new
+      `reimb.liquidation.certify`) → certify_c (Head, Accounting Unit — signed on
+      paper, recorded by the Admin Officer under a mandatory comment) →
+      handed_to_fms → settled`, with **certification A folded into submit**
+      because the claimant is the maker. What remains open is the same thing that
+      has been open since R-4-app: DOH DO 2019-0225 / -0225A as the peso-band
+      delegation source. Both chains stay untiered until it is obtained, and both
+      gain tiers as an authored **v2** — in-flight items finish on v1
 - [ ] Wet-signature capture points vs digital approvals — settle per artifact
-      with the resident COA auditor (RA 8792 / COA 2021-006; master plan §4 #5)
+      with the resident COA auditor (RA 8792 / COA 2021-006; master plan §4 #5).
+      **R-6-liq-chain narrowed it:** certification C is recorded as a mandatory
+      comment on the transition, and `CRT-C` (`{"always": false}`) is where the
+      signed page is filed. Binding a frozen SNAPSHOT to the step — core-service
+      #3's signature half — is what is still unbuilt, and it is the thing this
+      item actually has to answer
 - [ ] Directory data: greenfield + CSV import is the recommended default
       (shared with Stage B — see `foundation.md` §5)
 - [ ] ~~HUC list~~ **reframed**: seed `reimb_dte_clusters` (EO 77 Annex A
@@ -145,10 +172,80 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | R-5-gen | **Template auto-assembly** — core-service **#8** (`core/documents/`: registry + autoescape/StrictUndefined Jinja env + token-built print stylesheet + **injectable** WeasyPrint renderer + the ops enqueue seam) and the **snapshot half of #3** (`core_document_snapshots`: freeze/supersede/void, content-hash + context-fingerprint, `stale_snapshots()` re-flag). Module consumer generates **IOT-45 / AR-01 / DV-32** from claim data, stores each through core attachments with the new `core_attachments.origin='generated'` (born scan-clean, served **inline** so it previews), joins it to the claim, and flips the item via the new `checklist.mark_generated` — the one bootstrap of a status R-3 could write nowhere. `reimb_template_maps` built as a binding table + seeded. **Draft pre-submit → authoritative regeneration at submit**; any claim edit voids the packet. FE: Generated cards with preview + the §19.12 degrade notice. Migration `0018`. | ✅ complete | 19 |
 | R-5-packet | **The combined printable packet + the §9.2 approver preview** — `reimb.packet` as a **claim-level artifact** (registered with #8, deliberately unbound in `reimb_template_maps`, `checklist_item_id = NULL`); `packet.html.j2` composing cover → COA checklist → evidence manifest → the three forms **by Jinja include, not PDF merge** (form bodies extracted to `_*_body.html.j2` partials); the manifest **indexes** uploads with their SHA-256 rather than embedding them; `build_packet_context` + the shared `comparable_context` (cover prints the source fingerprint + each form's content hash); attach/detach now void the packet; `PacketOut` on `ClaimDetail`; the generate endpoint's **second door** for a scoped reviewer/approver. FE: `PacketPreview` on `/claims/:id`, Review and the confirmation — frame from `lg`, link everywhere. **No migration — head stays `0018`.** Closes module-doc row 58 and completes R-5 | ✅ complete | pytest **658 + 1 pre-existing** (+9), lint-imports 3/3, `alembic check` clean, FE gate green (**150 vitest**, +10); live smoke through the real worker + real WeasyPrint: **6-page packet**, void-on-attach → regenerate, manifest content | 20 |
 | R-6-clock | **Cash advances + the COA 30-day liquidation clock** — R-0 item 1 CLOSED (calendar, `basis` a live switch); `services/deadline.py` (pure calculator + the §6.3 due-soon window) and `services/cash_advance.py` (the single sanctioned writer of `reimb_cash_advances`, §89 as a named 409, deadline pinned on `date_return` only); migration `0019` (`deadline_date` + `deadline_basis`, backfilled); new `reimb.cash_advance.manage` RBAC + the `liquidation.overdue_note` seed; 4 routes on the gated router with a **server-derived** countdown; `deadlines` fact wired so `deadline_check` stops returning `skipped` (`FACTS_VERSION` → 2); the **D-7/D-3/D-0/overdue ladder** (`sweep_liquidation_reminders` + `ops.reimb_liquidation_reminders`, daily 08:35 Manila) which also flips the advance to `overdue`; `CashAdvanceOut` on `ClaimDetail`. FE: **CountdownRing** (inventory row 22), the CA card, the Accounting register, the My-Work section and the claim rail. **Also fixes the 3-session-old SLA-ladder failure and the production defect behind it.** | ✅ complete | pytest **737 (+79), 0 failures** (the pre-existing one is fixed), lint-imports 3/3, `0019` reversible + `alembic check` clean, seeds ×2 no-op, FE gate green (**168 vitest**, +18) + build; live smoke: pinned clock, §89 409, D-7→D-3→D-0→overdue→repeat through the **real Celery worker**, idempotent re-beats, authenticated HTTP round-trip | 21 |
-| R-6-liq | Liquidation workflow + settlement — the `reimbursement.liquidation` definition (certifications A/B/C), `LQ-YYYY-NNNN`, the liquidation checklist catalog + GAM App 44 + its packet, settlement/refund-OR/spawn math, the liquidation tracker screen | not started | — | — |
+| R-6-liq-chain | **The liquidation workflow** — the status vocabulary GENERALIZED to one `Vocabulary` per claim kind (plus the derived `ALL_TERMINAL_STATES` union that cross-kind SQL needs); `reimbursement.liquidation` as a SECOND definition on the shared engine (`draft → certify_b → certify_c → handed_to_fms → settled`, certification A folded into submit, no new engine verb, `_assert_graph_invariants` now vocabulary-parameterized); new `reimb.liquidation.certify` RBAC; `LQ-YYYY-NNNN` via core-service #5; `services/liquidation.py::start_liquidation` (the create-from-advance path, owner-only, one-live-per-advance under a row lock); the liquidation checklist catalog incl. **the first seeded `deadline_check`** (`LIQ-30`) and CTC-47 on both kinds; `POST /cash-advances/{id}/liquidate` + `liquidation_*` on `CashAdvanceOut`. FE: the `ClaimStatus` union + the certification labels/consequences, `LiquidateAction` on the cash-advance card, the kind in the tracker title. **No migration — head stays `0019`.** | ✅ complete | pytest **771 (+34), 0 failures**, lint-imports 3/3, `alembic check` clean, seeds ×2 no-op, FE gate green (**177 vitest**, +9) + build; live smoke **23/23** through the real stack: authenticated HTTP round-trip, §89-style 409s, and the whole chain to `settled` | 22 |
+| R-6-liq-settle | Settlement — GAM App 44 (`DocumentSpec` + `_lr44_body.html.j2` + `BODY_PARTIALS` + the binding row that activates the seeded `LR-44`), settlement recording on `per_diem.settle`, the refund-OR capture + `cash_advance.mark_settled`, the over-advance spawn + migration `0020` | not started | — | — |
 | R-7…R-9 | Per spec §14 (external tracking/pipeline board → insights → hardening/pilot) | not started | — | — |
 
 ## 5. Decisions log
+
+- **2026-08-04 (session 22 — Stage C R-6-liq-chain: the liquidation workflow)** —
+  R-6-clock built the *question* (a pinned COA 30-day deadline with a countdown
+  and a reminder ladder); this increment builds the *answer's chain*. Kickoff
+  decisions, all four user-confirmed: **split R-6-liq into chain / settle** (the
+  fifth such split, after R-2, R-4, R-5 and R-6 — the seam is chain-vs-money, and
+  GAM App 44's entire content *is* the settlement figures); **certification A is
+  folded into submit**; **CTC-47 belongs to BOTH kinds**; and **liquidations
+  reuse the 5-step wizard**, pre-filled from the advance.
+  - **Generalized, not forked.** The obvious move was a second
+    `liquidation_status.py` and a second lifecycle path. Four state codes are
+    genuinely SHARED between the chains, so a fork would have duplicated them and
+    drifted the first time one chain gained a state. Instead there is one
+    `Vocabulary` per kind, and `_assert_graph_invariants` takes the vocabulary as
+    a parameter — checking both graphs against one merged set would have accepted
+    a liquidation state authored into the claim graph, which is the exact drift
+    the check exists to catch.
+  - **The union-terminal trap, and why it is derived.** My-Work's two queries
+    span both kinds in ONE statement, so they cannot resolve a per-row
+    vocabulary — they filter on `ALL_TERMINAL_STATES`. Had that been a
+    hand-written list, `settled` would have been forgotten and every finished
+    liquidation would have sat in its claimant's inbox forever. It is derived
+    from the vocabularies and asserted as a derivation, so the next kind cannot
+    reintroduce the bug.
+  - **Certification A has no state, and that absence is the decision.** A
+    certifies that the claimant incurred the expenses; the claimant is the MAKER,
+    and `enforce_segregation` guards `instance.originator_user_id`. Authoring A
+    as a gate would have asked the maker to check themselves. Submitting IS
+    certification A — the R-4-app maker/checker decision applied verbatim.
+  - **The liquidation chain adds NO engine verb.** Its certifications are
+    `approve` at gate states, exactly like the claim chain's approvals — which is
+    why the un-gated `api/actions.py` drives it with zero new routes, zero new
+    schemas and zero new client code beyond the labels. Rule 10 paying off: the
+    second consumer of a shared engine should cost less than the first, and it
+    did.
+  - **"Director IV" is a SCOPE, not a role.** `reimb.liquidation.certify` is a
+    permission granted to `approver`; which person holds it at which org unit is
+    grant data, and `resolve_holder` ranks nearest-first from there. Inventing a
+    `director` role would have encoded a chain DOH DO 2019-0225 has not
+    confirmed — the same reason the amount tiers are still unauthored.
+  - **Certification C is a sentence, because that is all we honestly have.** The
+    Head of the Accounting Unit is FMS and signs on paper. Its `approve` is the
+    only transition in either chain carrying `requires_comment`: the note naming
+    whose signature and when is the entire record Office-Connect holds. Binding a
+    frozen snapshot to the step is core-service #3's signature half, still
+    deferred — but now deferred with a written reason.
+  - **`CRT-C` is `{"always": false}` for a structural reason, not a lenient
+    one.** A required wet-sign row would block SUBMIT and certification B too,
+    because the checklist gate is a PRE-workflow gate: it would demand the
+    accountant's signature before the chain that obtains it had started. Delta
+    row 67's argument, one level out.
+  - **The first seeded `deadline_check`** lands on `LIQ-30` as `data_only`, so it
+    flags a late filing without ever blocking it — a late traveller must not be
+    trapped unable to file the very liquidation that ends the lateness. Three
+    sessions after the check was registered inert, it now has substrate *and* a
+    rule.
+  - **A real defect found by the gate, not by a test:** `CashAdvancesPage` passed
+    `<ErrorSummary items={…}>` where the prop is `errors`, so the record dialog
+    would have white-screened on any server error — including the PD 1445 §89 409
+    R-6-clock built its named message for. It survived R-6-clock because `tsc -b`
+    is incremental and the stale build info never re-checked that file.
+  - Verified: pytest **771 passed, 0 failures** (+34), lint-imports 3/3,
+    `alembic check` clean with head still `0019` (**no migration** — the kind
+    enum, the varchar status column and the on-demand reference-number counter
+    all already allowed it), seeds ×2 no-op, FE gate green (tsc + eslint +
+    **177 vitest**, +9, + build), and a **23/23 live smoke** through the real
+    stack: an authenticated HTTP round-trip (record → refuse Accounting → file →
+    409 the second → read back), the liquidation catalog served instead of the
+    claim one, and the whole chain walked to `settled`.
 
 - **2026-08-04 (session 21 — Stage C R-6-clock: cash advances + the 30-day
   liquidation clock)** — kickoff decisions (user-confirmed): **R-0 item 1 closed

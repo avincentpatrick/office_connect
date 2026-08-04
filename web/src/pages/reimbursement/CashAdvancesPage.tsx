@@ -21,6 +21,7 @@ import { toast } from "../../components/Toast/toast-bus";
 import { ListPage } from "../../layouts/ListPage";
 import { serverFieldErrors } from "../../lib/form-errors";
 import { CashAdvanceCard } from "./CashAdvanceCard";
+import { LiquidateAction } from "./LiquidateAction";
 import {
   CASH_ADVANCE_FIELDS,
   cashAdvanceSchema,
@@ -95,7 +96,14 @@ export function CashAdvancesPage() {
         <ul className="flex flex-col gap-4">
           {advances.map((advance) => (
             <li key={advance.id}>
-              <CashAdvanceCard advance={advance} />
+              {/* Accounting sees WHETHER a liquidation was started and can
+                  open it, but is never offered the start button: filing is
+                  certification A and the endpoint is owner-only, so the button
+                  would be one that always 403s. */}
+              <CashAdvanceCard
+                advance={advance}
+                actions={<LiquidateAction advance={advance} canStart={false} />}
+              />
             </li>
           ))}
         </ul>
@@ -181,7 +189,7 @@ function RecordDialog({
       busy={record.isPending}
       onSubmit={form.handleSubmit((values) => record.mutate(values))}
     >
-      {serverErrors.length > 0 ? <ErrorSummary items={serverErrors} /> : null}
+      {serverErrors.length > 0 ? <ErrorSummary errors={serverErrors} /> : null}
       {blocked ? (
         <Callout status="blocked" title="Cannot record this advance" live="polite">
           {blocked}

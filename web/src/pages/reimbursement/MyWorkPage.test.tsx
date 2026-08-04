@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { expectNoA11yViolations } from "../../test/a11y";
 import { renderRoutes, stubFetch } from "../../test/harness";
 import { makeCashAdvance, makeMyWork } from "../../test/reimb-fixtures";
@@ -77,7 +78,57 @@ describe("MyWorkPage", () => {
     ).toBeTruthy();
     expect(screen.getByText("Due soon")).toBeInTheDocument();
     expect(screen.getByText(/3 days left/)).toBeInTheDocument();
+    // R-6-liq-chain: the card counts down and now carries the ANSWER to it.
+    expect(
+      screen.getByRole("button", { name: "Liquidate this advance" }),
+    ).toBeInTheDocument();
     await expectNoA11yViolations(container);
+  });
+
+  it("turns Liquidate into a link once the advance names its liquidation", async () => {
+    // The page-level half of LiquidateAction's race test: a `useCashAdvances`
+    // subscriber exists here, so the 409's invalidation actually refetches, and
+    // the refreshed advance renders the link the button should have been.
+    let listed = 0;
+    stubFetch({
+      "GET /api/v1/reimbursement/my-work": () => ({ body: makeMyWork() }),
+      "GET /api/v1/reimbursement/cash-advances": () => {
+        listed += 1;
+        return {
+          body: {
+            items: [
+              listed === 1
+                ? makeCashAdvance()
+                : makeCashAdvance({
+                    status: "liquidation_started",
+                    status_label: "Liquidation started",
+                    liquidation_claim_id: 88,
+                    liquidation_ref_no: "LQ-2026-0001",
+                    liquidation_status: "certify_b",
+                  }),
+            ],
+          },
+        };
+      },
+      "POST /api/v1/reimbursement/cash-advances/41/liquidate": () => ({
+        status: 409,
+        body: {
+          error: {
+            code: "reimb_liquidation_exists",
+            message: "This cash advance already has a liquidation.",
+            details: [{ claim_id: 88, ref_no: "LQ-2026-0001" }],
+          },
+        },
+      }),
+    });
+    renderRoutes(ROUTES, "/reimbursement");
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Liquidate this advance" }),
+    );
+    expect(
+      await screen.findByRole("link", { name: "Open LQ-2026-0001" }),
+    ).toHaveAttribute("href", "/reimbursement/claims/88");
   });
 
   it("renders no cash-advance furniture when there are none", async () => {

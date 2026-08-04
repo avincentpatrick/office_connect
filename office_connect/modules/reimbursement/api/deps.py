@@ -49,6 +49,7 @@ from office_connect.modules.reimbursement.models import (
 from office_connect.core.time import to_manila, utc_now
 from office_connect.modules.reimbursement.services import actions, checklist, errors
 from office_connect.modules.reimbursement.services import cash_advance as ca_service
+from office_connect.modules.reimbursement.services import liquidation
 from office_connect.modules.reimbursement.services import attachments as evidence
 from office_connect.modules.reimbursement.services import deadline as dl
 from office_connect.modules.reimbursement.services import status as st
@@ -399,6 +400,7 @@ async def cash_advance_out(
     """Map an advance onto the wire, deriving the countdown server-side."""
     state = dl.deadline_state(deadline=advance.deadline_date, today=today)
     staff = await _display_staff(session, advance.claimant_id)
+    started = await liquidation.liquidation_for_advance(session, advance.id)
     return CashAdvanceOut(
         id=advance.id,
         claimant_id=advance.claimant_id,
@@ -422,6 +424,9 @@ async def cash_advance_out(
         overdue_note=(
             overdue_note if state in (dl.DUE_SOON, dl.OVERDUE) else None
         ),
+        liquidation_claim_id=started.id if started else None,
+        liquidation_ref_no=started.ref_no if started else None,
+        liquidation_status=started.status if started else None,
         created_at=advance.created_at,
         updated_at=advance.updated_at,
     )
@@ -437,6 +442,7 @@ async def claim_detail(
     claim shows Approve/Return to its gate holder and nothing to a bystander
     (workflow-standards §3)."""
     status_code = claim.status or st.DRAFT
+    vocab = st.vocabulary(claim.kind)
     legs = (
         (
             await session.execute(
@@ -471,8 +477,8 @@ async def claim_detail(
         ref_no=claim.ref_no,
         kind=claim.kind,
         status=status_code,
-        status_label=st.STATUS_LABELS.get(status_code, status_code),
-        next_action=claim.next_action or st.NEXT_ACTION.get(status_code),
+        status_label=vocab.labels.get(status_code, status_code),
+        next_action=claim.next_action or vocab.next_action.get(status_code),
         holder_kind=claim.holder_kind,
         holder_display=await holder_display(
             session, holder_kind=claim.holder_kind, holder_id=claim.holder_id

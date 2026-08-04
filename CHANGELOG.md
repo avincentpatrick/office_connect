@@ -12,6 +12,33 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-6-liq-chain — liquidating a cash advance** (2026-08-04): the
+  countdown now has something to count down *to*. A traveller who holds a cash
+  advance can **start its liquidation from the advance itself** — the card that
+  shows the deadline carries the button — and the new liquidation opens
+  pre-filled with what Accounting already recorded (the DPO number and the date
+  of return), so nothing has to be typed twice. It gets its own reference number
+  in the **LQ-2026-0001** series, keeps the same 30-day countdown on every screen
+  it appears on, and is completed through the same five-step form as a travel
+  claim.
+  **The documents asked for are the liquidation's own.** A liquidation asks for
+  the travel order, the Certificate of Travel Completed, and the receipts for
+  what was actually spent — not the reimbursement checklist. It also shows,
+  for the first time, whether the filing is **inside the 30-day deadline**: past
+  it, the packet carries a flag the certifier can see and act on. Being late
+  never blocks the filing itself — the point is to get the liquidation in.
+  **The certification chain matches the paperwork.** Submitting the liquidation
+  *is* the traveller's own certification, so there is no separate step for it.
+  It then goes to the **Director** to certify, and then to the **Admin Officer**,
+  who records that the Head of the Accounting Unit signed the printed page — that
+  step requires a note saying whose signature and when, because the signature
+  itself lives on paper. From there it goes to FMS, and finally settles.
+  **Only the traveller can file it**, since the first certification is a
+  statement about their own expenses; Accounting can see whether a liquidation
+  has been started, and open it, but not file it on someone's behalf. Starting a
+  second liquidation for the same advance is refused with a link to the one that
+  already exists.
+
 - **Stage C R-6-clock — the 30-day liquidation clock** (2026-08-04): a travel
   **cash advance** is now a record the system tracks, and COA's 30-day
   liquidation deadline runs on it automatically.
@@ -38,6 +65,11 @@ makes the push-per-phase rule auditable.
   unhelpful error.
 
 ### Fixed
+- **The cash-advance form could go blank instead of explaining a refusal**
+  (2026-08-04): when the server rejected a new cash advance — most importantly
+  when the person already had an unliquidated one — the dialog failed to render
+  the explanation and showed nothing at all. The message now appears where it
+  was always meant to.
 - **Overdue approvals could stop being chased entirely** (2026-08-04): the
   reminder ladder examined only the first 200 waiting items, always in the same
   order — so in an office with a long-standing backlog, newly overdue approvals

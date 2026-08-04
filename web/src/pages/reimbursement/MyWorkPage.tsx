@@ -9,6 +9,7 @@ import { toast } from "../../components/Toast/toast-bus";
 import { WorkItemRow } from "../../components/WorkItemRow/WorkItemRow";
 import { ListPage } from "../../layouts/ListPage";
 import { CashAdvanceCard } from "./CashAdvanceCard";
+import { LiquidateAction } from "./LiquidateAction";
 import {
   CLAIM_STATUS_TO_SEMANTIC,
   SLA_STATE_LABEL,
@@ -145,7 +146,14 @@ function CashAdvanceSection() {
       <ul className="flex flex-col gap-3">
         {live.map((advance) => (
           <li key={advance.id}>
-            <CashAdvanceCard advance={advance} />
+            {/* The card counts down; this is what ANSWERS it (R-6-liq-chain).
+                The action lives with the advance, not in the New Claim wizard:
+                the ring in front of the traveller is the moment spec §9.3
+                step 1's "Liquidate that instead?" actually means something. */}
+            <CashAdvanceCard
+              advance={advance}
+              actions={<LiquidateAction advance={advance} />}
+            />
           </li>
         ))}
       </ul>

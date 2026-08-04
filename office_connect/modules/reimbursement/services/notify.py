@@ -99,7 +99,9 @@ async def _send_nudge(
     if await _already_sent(session, key):
         return None
     ref = claim.ref_no or f"claim #{claim.id}"
-    label = st.STATUS_LABELS.get(claim.status or "", claim.status or "?")
+    label = st.vocabulary(claim.kind).labels.get(
+        claim.status or "", claim.status or "?"
+    )
     when = "is past its SLA" if k == 0 else f"is still waiting (reminder #{k})"
     notification_id = await persist_notification(
         session,

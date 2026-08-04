@@ -9,15 +9,31 @@
 
 import { api } from "./http";
 
+/**
+ * Every state either chain can occupy — the union of both server vocabularies
+ * (`services/status.py`). A claim is one `ClaimKind`, so no single claim ever
+ * reaches all of these; keeping them in ONE union is what makes the
+ * `Record<ClaimStatus, ...>` maps below exhaustive, so adding a state to a
+ * chain fails `tsc` here rather than rendering a raw code at a user.
+ */
 export type ClaimStatus =
+  // shared by both chains
   | "draft"
+  | "returned"
+  | "handed_to_fms"
+  | "cancelled"
+  // reimbursement (spec §6.1)
   | "division_approval"
   | "admin_review"
-  | "handed_to_fms"
   | "fms_returned"
-  | "returned"
   | "paid_closed"
-  | "cancelled";
+  // liquidation (spec §6.2) — certification A is the SUBMIT, not a state
+  | "certify_b"
+  | "certify_c"
+  | "settled";
+
+/** Which chain a claim runs. Drives labels, copy and the tracker's heading. */
+export type ClaimKind = "reimbursement" | "liquidation";
 
 export type TransportMode =
   | "plane"
@@ -210,7 +226,7 @@ export interface ChecklistResponse {
 export interface ClaimDetail {
   id: number;
   ref_no: string | null;
-  kind: string;
+  kind: ClaimKind;
   status: ClaimStatus;
   status_label: string;
   next_action: string | null;
@@ -434,6 +450,15 @@ export interface CashAdvance {
   deadline_state: DeadlineState | null;
   /** COA consequence copy from config — present only once it applies. */
   overdue_note: string | null;
+  /**
+   * The liquidation started against this advance (R-6-liq-chain), if any.
+   * Rides the advance so the card decides between "Liquidate" and "Open
+   * LQ-…" from ONE response — two requests could disagree, and the
+   * disagreement would show as a button that 409s.
+   */
+  liquidation_claim_id: number | null;
+  liquidation_ref_no: string | null;
+  liquidation_status: ClaimStatus | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -474,6 +499,13 @@ export function updateCashAdvance(
   return api<CashAdvance>(`/reimbursement/cash-advances/${id}`, {
     method: "PATCH",
     body: JSON.stringify(patch),
+  });
+}
+
+/** Spec §9.3 step 1's "Liquidate that instead?" — 201 with the fresh draft. */
+export function liquidateCashAdvance(id: number): Promise<ClaimDetail> {
+  return api<ClaimDetail>(`/reimbursement/cash-advances/${id}/liquidate`, {
+    method: "POST",
   });
 }
 

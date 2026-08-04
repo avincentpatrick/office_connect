@@ -23,6 +23,12 @@ export const CLAIM_STATUS_TO_SEMANTIC: Record<ClaimStatus, SemanticStatus> = {
   handed_to_fms: "waiting",
   paid_closed: "done",
   cancelled: "blocked",
+  // Liquidation (spec §6.2). The certifications are gates like any other —
+  // grey/waiting, because the ball is with a named person and the claimant has
+  // nothing to do. `settled` is the liquidation's `paid_closed`: done.
+  certify_b: "waiting",
+  certify_c: "waiting",
+  settled: "done",
 };
 
 /**
@@ -55,6 +61,14 @@ export function actionLabel(action: ClaimAction, status: ClaimStatus): string {
         return "Approve & hand to FMS";
       case "handed_to_fms":
         return "Mark paid & close";
+      // The liquidation chain reuses `approve` for its certifications, so the
+      // STATUS is again what tells the actor what they are about to do — and
+      // here the words matter more than usual: "Approve" and "Certify" are
+      // different acts to an auditor.
+      case "certify_b":
+        return "Certify";
+      case "certify_c":
+        return "Record certification & hand to FMS";
       default:
         return "Approve";
     }
@@ -80,6 +94,10 @@ export function approveConsequence(
         return "The packet leaves the bureau and goes to FMS for payment processing. You cannot pull it back.";
       case "handed_to_fms":
         return "This closes the claim as paid. It becomes read-only for everyone.";
+      case "certify_b":
+        return "You are certifying this liquidation as correct. It goes to the Accounting Unit for certification C.";
+      case "certify_c":
+        return "You are recording that the Head of the Accounting Unit signed this liquidation. Name whose signature and when in the comment — it is the only record of that certification the system keeps.";
       default:
         return "The claim moves to the next approver and leaves your queue.";
     }

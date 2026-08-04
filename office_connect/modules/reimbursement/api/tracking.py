@@ -109,6 +109,7 @@ async def claim_timeline(
         .all()
     )
 
+    vocab = st.vocabulary(claim.kind)
     return_rows = [h for h in history if h.to_status in _RETURN_STATUSES]
     paired: dict[int, ReimbReturnEvent] = {}
     if len(return_rows) == len(return_events):
@@ -153,14 +154,12 @@ async def claim_timeline(
                 id=row.id,
                 from_status=row.from_status,
                 from_status_label=(
-                    st.STATUS_LABELS.get(row.from_status, row.from_status)
+                    vocab.labels.get(row.from_status, row.from_status)
                     if row.from_status
                     else None
                 ),
                 to_status=row.to_status,
-                to_status_label=st.STATUS_LABELS.get(
-                    row.to_status, row.to_status
-                ),
+                to_status_label=vocab.labels.get(row.to_status, row.to_status),
                 actor_display=(
                     names.get(row.actor_id) if row.actor_id is not None else None
                 ),

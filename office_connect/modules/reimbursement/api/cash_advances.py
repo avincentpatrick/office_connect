@@ -37,15 +37,18 @@ from office_connect.modules.reimbursement.api.deps import (
     can_manage_cash_advances,
     can_read_cash_advance,
     cash_advance_out,
+    claim_detail,
 )
 from office_connect.modules.reimbursement.api.schemas import (
     CashAdvanceIn,
     CashAdvanceListOut,
     CashAdvanceOut,
     CashAdvancePatch,
+    ClaimDetail,
 )
 from office_connect.modules.reimbursement.services import cash_advance as ca
 from office_connect.modules.reimbursement.services import errors
+from office_connect.modules.reimbursement.services import liquidation
 
 router = APIRouter()
 
@@ -88,6 +91,44 @@ async def create_cash_advance(
         today=today,
         overdue_note=await ca.overdue_note(session, today=today),
     )
+    await session.commit()
+    return out
+
+
+@router.post(
+    "/cash-advances/{cash_advance_id}/liquidate",
+    response_model=ClaimDetail,
+    status_code=201,
+)
+async def liquidate_cash_advance(
+    cash_advance_id: int,
+    principal: Principal = Depends(require_permission("reimb.claim.create")),
+    session: AsyncSession = Depends(get_session),
+):
+    """Open a draft liquidation against this advance — spec §9.3 step 1's
+    *"Liquidate that instead?"*, offered where the advance actually lives.
+
+    Gates on ``reimb.claim.create``, not ``cash_advance.manage``: this creates a
+    CLAIM, and it is the traveller's to create. The route permission is the
+    coarse half; the exact rule — the actor's staff record must BE the advance's
+    claimant — lives in the service, because filing the liquidation IS
+    certification A and A certifies about the claimant (api-standards §9's
+    coarse-at-route / exact-in-service split).
+
+    Returns the full ``ClaimDetail``, so the client navigates straight into the
+    wizard on the same response that created the draft.
+    """
+    now = utc_now()
+    claim = await liquidation.start_liquidation(
+        session,
+        cash_advance_id=cash_advance_id,
+        actor_user_id=principal.user_id,
+        now=now,
+    )
+    # Built BEFORE the commit — post-commit attribute expiry would re-query
+    # every relationship this mapper touches (the house rule, §"Transaction
+    # discipline" in this module's docstring).
+    out = await claim_detail(session, claim, actor_user_id=principal.user_id)
     await session.commit()
     return out
 

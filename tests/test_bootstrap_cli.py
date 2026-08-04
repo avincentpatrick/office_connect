@@ -62,15 +62,18 @@ async def test_load_fixtures_creates_and_is_idempotent(app_session):
 
 
 async def test_seed_workflows_is_idempotent(app_session):
-    """R-4-app: ``seed-workflows`` authors + publishes ``reimbursement.claim``
+    """R-4-app: ``seed-workflows`` authors + publishes the module definitions
     once; a re-run NEVER mints a new version (a chain change is an explicit
-    authored v2)."""
+    authored v2). R-6-liq-chain: BOTH chains, reported per definition."""
     settings = get_settings()
     first = await bootstrap._with_app_session(settings, bootstrap._seed_workflows)
     second = await bootstrap._with_app_session(settings, bootstrap._seed_workflows)
-    assert first["definition"] == "reimbursement.claim"
-    assert second["created"] is False
-    assert second["version_no"] == first["version_no"]
+
+    by_code = {row["definition"]: row for row in first["definitions"]}
+    assert set(by_code) == {"reimbursement.claim", "reimbursement.liquidation"}
+    for row in second["definitions"]:
+        assert row["created"] is False
+        assert row["version_no"] == by_code[row["definition"]]["version_no"]
 
     from office_connect.core.models import (
         WorkflowDefinition,

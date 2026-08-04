@@ -441,6 +441,10 @@ export function makeCashAdvance(
     days_remaining: 12,
     deadline_state: "on_track",
     overdue_note: null,
+    // No liquidation started yet — the card's default offer is "Liquidate".
+    liquidation_claim_id: null,
+    liquidation_ref_no: null,
+    liquidation_status: null,
     created_at: "2026-06-25T02:00:00+00:00",
     updated_at: "2026-06-25T02:00:00+00:00",
     ...overrides,

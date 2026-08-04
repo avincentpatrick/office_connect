@@ -48,6 +48,10 @@ def _work_item(
     sla_due_at: datetime | None = None,
 ) -> WorkItemOut:
     status_code = claim.status or st.DRAFT
+    # Per-row, because My-Work mixes reimbursements and liquidations in one
+    # list — the same code means the same thing in both chains, but the labels
+    # and the next-action copy are that KIND's to supply.
+    vocab = st.vocabulary(claim.kind)
     days = (
         max((now - claim.holder_since).days, 0)
         if claim.holder_since is not None
@@ -60,8 +64,8 @@ def _work_item(
         purpose=claim.purpose,
         destination=claim.destination,
         status=status_code,
-        status_label=st.STATUS_LABELS.get(status_code, status_code),
-        next_action=claim.next_action or st.NEXT_ACTION.get(status_code),
+        status_label=vocab.labels.get(status_code, status_code),
+        next_action=claim.next_action or vocab.next_action.get(status_code),
         holder_kind=claim.holder_kind,
         holder_display=holder_display,
         holder_since=claim.holder_since,
@@ -109,7 +113,7 @@ async def my_work(
                 .where(
                     ReimbClaim.holder_kind == "user",
                     ReimbClaim.holder_id == principal.user_id,
-                    ReimbClaim.status.not_in(st.TERMINAL_STATES),
+                    ReimbClaim.status.not_in(st.ALL_TERMINAL_STATES),
                 )
                 .order_by(
                     ReimbClaim.holder_since.asc().nulls_last(),
@@ -133,7 +137,7 @@ async def my_work(
                         ReimbClaim.claimant_id == actor.staff_id,
                         or_(
                             ReimbClaim.status.is_(None),  # legacy pre-stamp rows
-                            ReimbClaim.status.not_in(st.TERMINAL_STATES),
+                            ReimbClaim.status.not_in(st.ALL_TERMINAL_STATES),
                         ),
                         # Exclude what the first list already shows (NULL-safe).
                         or_(

@@ -63,14 +63,22 @@ from office_connect.modules.reimbursement.services import errors
 from office_connect.modules.reimbursement.services import status as st
 from office_connect.modules.reimbursement.services.compute import compute_claim_totals
 from office_connect.modules.reimbursement.workflow import (
-    DEFINITION_CODE,
     FEATURE_FLAG_KEY,
     SUBJECT_KIND,
+    definition_code,
 )
 from office_connect.core.money import to_money
 
 _CLAIM_ACTIONS = frozenset({"approve", "return", "resubmit", "cancel"})
 _JO_COS_STATUSES = frozenset({"job_order", "contract_of_service"})
+#: claim kind → reference-number scope (core-service #5 mints ``XX-YYYY-NNNN``;
+#: the counter row for a new scope is created on demand, so ``LQ`` needs no seed
+#: and no migration). Numbers are never reused across either series.
+REF_SCOPES: dict[str, str] = {
+    st.REIMBURSEMENT_KIND: "RB",
+    st.LIQUIDATION_KIND: "LQ",
+}
+
 _SLA_WD_KEY = "sla.approval_working_days"
 _SLA_WD_DEFAULT = 3
 _SLA_DUE_LOCAL_TIME = time(17, 0)  # end of the Manila working day
@@ -205,11 +213,12 @@ async def resolve_holder(
     """
     if state.kind == "terminal":
         return (None, None)
-    if state.code in st.CLAIMANT_STATES:
+    vocab = st.vocabulary(claim.kind)
+    if state.code in vocab.claimant:
         owner = await owner_user(session, claim.claimant_id)
         holder_id = owner.id if owner else instance.originator_user_id
         return ("user", holder_id)
-    if state.code in st.EXTERNAL_STATES:
+    if state.code in vocab.external:
         return ("external_fms", None)
 
     holders = await permission_holders(
@@ -259,7 +268,7 @@ async def _sync_claim_from_event(
     claim.holder_kind = holder_kind
     claim.holder_id = holder_id
     claim.holder_since = now if holder_kind is not None else None
-    claim.next_action = st.NEXT_ACTION.get(to_state.code)
+    claim.next_action = st.vocabulary(claim.kind).next_action.get(to_state.code)
     session.add(
         ReimbStatusHistory(
             claim_id=claim.id,
@@ -283,7 +292,7 @@ async def _stamp_sla(
     """Stamp working-day ``sla_due_at`` on freshly activated gate steps (the
     definition authors gates ``sla_hours=None`` — see the module docstring)."""
     state = await session.get(WorkflowState, event.to_state_id)
-    if not state.is_approval_gate or state.code in st.EXTERNAL_STATES:
+    if not state.is_approval_gate or state.code in st.vocabulary(claim.kind).external:
         return
     steps = await gate_steps(
         session,
@@ -319,17 +328,24 @@ async def create_draft_claim(
     session: AsyncSession,
     *,
     actor_user_id: int,
+    kind: str = st.REIMBURSEMENT_KIND,
     now: datetime | None = None,
 ) -> ReimbClaim:
     """Create a draft claim for the actor's own staff record, stamping the
     §6.1 row-1 read-model at birth: status ``draft``, holder = the claimant's
-    login, next action "Complete your packet" — spec §7 rule 1 (one holder,
+    login, next action from that KIND's vocabulary — spec §7 rule 1 (one holder,
     always) holds from the first row, and My-Work's "waiting on you" includes
     drafts with no OR-branch. ``is_jo_cos`` derives from the directory
     employment status (spec §5.1). Business-field prefill belongs to
-    ``services/drafts.py`` — this function is only the status/holder writer.
-    Flushes; the caller owns the commit."""
+    ``services/drafts.py`` (and, for a liquidation, to
+    ``services/liquidation.py``) — this function is only the status/holder
+    writer. Flushes; the caller owns the commit.
+
+    ``kind`` defaults to reimbursement so every pre-R-6-liq caller is unchanged;
+    it is validated by the vocabulary lookup, which raises on an unknown kind
+    rather than minting a claim no chain can run."""
     now = now or utc_now()
+    st.vocabulary(kind)  # fail fast: an unknown kind has no chain and no labels
     set_audit_context(session, actor_id=actor_user_id)
 
     actor = await session.get(User, actor_user_id)
@@ -342,14 +358,14 @@ async def create_draft_claim(
         raise errors.no_staff_link()
 
     claim = ReimbClaim(
-        kind="reimbursement",
+        kind=kind,
         claimant_id=staff.id,
         is_jo_cos=staff.employment_status in _JO_COS_STATUSES,
         status=st.DRAFT,
         holder_kind="user",
         holder_id=actor_user_id,
         holder_since=now,
-        next_action=st.NEXT_ACTION[st.DRAFT],
+        next_action=st.vocabulary(kind).next_action[st.DRAFT],
     )
     session.add(claim)
     await session.flush()
@@ -383,8 +399,12 @@ async def submit_claim(
     set_audit_context(session, actor_id=actor_user_id)
 
     claim = await _locked_claim(session, claim_id)
-    if claim.kind != "reimbursement":
-        raise errors.claim_not_reimbursement()
+    # Routes on the claim's OWN kind (R-6-liq-chain): a liquidation submits onto
+    # ``reimbursement.liquidation`` and burns an ``LQ-`` number, a reimbursement
+    # onto ``reimbursement.claim`` and an ``RB-``. An unknown kind raises here
+    # rather than starting an instance on a guessed chain.
+    chain = definition_code(claim.kind)
+    ref_scope = REF_SCOPES[claim.kind or st.REIMBURSEMENT_KIND]
     if claim.workflow_instance_id is not None:
         raise errors.claim_already_submitted()
     if not await is_claim_owner(session, claim, actor_user_id):
@@ -417,7 +437,7 @@ async def submit_claim(
     # burned (numbers are never reused, so order matters).
     instance = await wf.start_instance(
         session,
-        definition_code=DEFINITION_CODE,
+        definition_code=chain,
         actor_user_id=actor_user_id,
         org_unit_id=org_unit_id,
         subject_kind=SUBJECT_KIND,
@@ -429,7 +449,7 @@ async def submit_claim(
     )
     if claim.ref_no is None:
         claim.ref_no = await allocate_reference_number(
-            session, scope="RB", year=to_manila(now).year
+            session, scope=ref_scope, year=to_manila(now).year
         )
     claim.workflow_instance_id = instance.id
     await session.flush()

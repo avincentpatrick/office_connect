@@ -578,3 +578,116 @@ async def test_the_advance_is_audited_with_its_actor(app_session, accounting):
     # The clock is part of what was asserted, so it must be in the trail.
     assert insert.new_data["deadline_date"] == DUE.isoformat()
     assert insert.new_data["deadline_basis"] == "calendar"
+
+
+# --- R-6-liq-chain: liquidating an advance over HTTP -------------------------
+
+
+async def test_liquidate_creates_a_linked_draft(http, accounting, reimb_flag_on):
+    """Spec §9.3 step 1's "Liquidate that instead?", answered where the advance
+    lives. Returns the whole ``ClaimDetail`` so the SPA navigates into the
+    wizard on the response that created the draft."""
+    admin_client = await http(accounting.admin)
+    created = await admin_client.post(
+        "/api/v1/reimbursement/cash-advances",
+        json={
+            "claimant_id": accounting.staff.id,
+            "amount": "6000.00",
+            "dpo_no": "DPO-2026-0042",
+            "date_return": RETURN.isoformat(),
+        },
+        headers=CSRF,
+    )
+    advance_id = created.json()["id"]
+
+    c = await http(accounting.owner)
+    resp = await c.post(
+        f"/api/v1/reimbursement/cash-advances/{advance_id}/liquidate",
+        headers=CSRF,
+    )
+    assert resp.status_code == 201, resp.text
+    claim = resp.json()
+    assert claim["kind"] == "liquidation"
+    assert claim["status"] == "draft"
+    assert claim["next_action"] == "Complete your liquidation"
+    assert claim["dpo_no"] == "DPO-2026-0042"
+    # The countdown rides the claim from birth — the tracker's ring and the
+    # seeded deadline_check both read it without a second request.
+    assert claim["cash_advance"]["deadline_date"] == DUE.isoformat()
+
+    # And the advance now knows about it, so the card offers "open" not "start".
+    reread = await c.get(
+        f"/api/v1/reimbursement/cash-advances/{advance_id}", headers=CSRF
+    )
+    assert reread.json()["liquidation_claim_id"] == claim["id"]
+    assert reread.json()["liquidation_status"] == "draft"
+    assert reread.json()["status"] == "liquidation_started"
+
+
+async def test_only_the_traveller_may_liquidate_over_http(
+    http, app_session, accounting, make_user, reimb_flag_on
+):
+    """Both halves of api-standards §9's coarse-at-route / exact-in-service
+    split, because they refuse for DIFFERENT reasons and a test that saw only
+    one would pass with the other missing.
+
+    The Admin Officer is stopped at the ROUTE — they hold no
+    ``reimb.claim.create``, and this endpoint creates a claim. A colleague who
+    does hold it reaches the SERVICE and is stopped by the real rule: filing IS
+    certification A, and A certifies about the claimant.
+    """
+    admin_client = await http(accounting.admin)
+    created = await admin_client.post(
+        "/api/v1/reimbursement/cash-advances",
+        json={"claimant_id": accounting.staff.id, "amount": "6000.00"},
+        headers=CSRF,
+    )
+    advance_id = created.json()["id"]
+
+    coarse = await admin_client.post(
+        f"/api/v1/reimbursement/cash-advances/{advance_id}/liquidate",
+        headers=CSRF,
+    )
+    assert coarse.status_code == 403
+    assert coarse.json()["error"]["code"] == "forbidden"
+
+    other_staff = await make_staff(app_session)
+    colleague, _ = await make_user(roles=("staff",), staff_id=other_staff.id)
+    await app_session.commit()
+
+    exact = await (await http(colleague)).post(
+        f"/api/v1/reimbursement/cash-advances/{advance_id}/liquidate",
+        headers=CSRF,
+    )
+    assert exact.status_code == 403
+    assert exact.json()["error"]["code"] == "reimb_not_advance_holder"
+
+
+async def test_a_second_liquidate_is_a_409_naming_the_first(
+    http, accounting, reimb_flag_on
+):
+    admin_client = await http(accounting.admin)
+    created = await admin_client.post(
+        "/api/v1/reimbursement/cash-advances",
+        json={
+            "claimant_id": accounting.staff.id,
+            "amount": "6000.00",
+            "date_return": RETURN.isoformat(),
+        },
+        headers=CSRF,
+    )
+    advance_id = created.json()["id"]
+
+    c = await http(accounting.owner)
+    first = await c.post(
+        f"/api/v1/reimbursement/cash-advances/{advance_id}/liquidate", headers=CSRF
+    )
+    assert first.status_code == 201
+    second = await c.post(
+        f"/api/v1/reimbursement/cash-advances/{advance_id}/liquidate", headers=CSRF
+    )
+    assert second.status_code == 409
+    error = second.json()["error"]
+    assert error["code"] == "reimb_liquidation_exists"
+    # Names the existing one, so the client has somewhere to send the user.
+    assert error["details"][0]["claim_id"] == first.json()["id"]

@@ -15,7 +15,12 @@ from sqlalchemy import select
 
 from office_connect.core.api.errors import APIError
 from office_connect.core.db import SessionLocal
-from office_connect.core.models import WorkflowInstance, WorkflowStep
+from office_connect.core.models import (
+    WorkflowDefinition,
+    WorkflowDefinitionVersion,
+    WorkflowInstance,
+    WorkflowStep,
+)
 from office_connect.modules.reimbursement.models import ReimbClaim, ReimbStatusHistory
 from office_connect.modules.reimbursement.services import status as st
 from office_connect.modules.reimbursement.services.lifecycle import (
@@ -161,14 +166,30 @@ async def test_submit_fails_closed_without_org_unit(
     await app_session.rollback()
 
 
-async def test_submit_refuses_liquidation_kind(
+async def test_submit_routes_a_liquidation_onto_its_own_chain(
     app_session, seed_rbac, make_user, reimb_flag_on
 ):
+    """R-6-liq-chain reverses R-4-app's refusal: a liquidation is no longer an
+    unsupported kind, it is a kind with its own definition and its own number
+    series. Submitting one must land on ``certify_b`` with an ``LQ-`` ref, never
+    on the claim chain's ``division_approval`` with an ``RB-``."""
     cast = await standard_cast(app_session, make_user)
+    # trip_claim(packet=True) satisfies whatever THIS kind's catalog blocks on,
+    # which is the liquidation set — the checklist engine was already kind-aware.
     liq = await trip_claim(app_session, staff=cast.staff, kind="liquidation")
-    with pytest.raises(APIError) as ei:
-        await submit_claim(app_session, claim_id=liq.id, actor_user_id=cast.owner.id)
-    assert ei.value.code == "reimb_claim_not_reimbursement"
+
+    claim = await submit_claim(
+        app_session, claim_id=liq.id, actor_user_id=cast.owner.id
+    )
+    assert claim.status == "certify_b"
+    assert claim.ref_no.startswith("LQ-")
+
+    instance = await app_session.get(WorkflowInstance, claim.workflow_instance_id)
+    version = await app_session.get(
+        WorkflowDefinitionVersion, instance.definition_version_id
+    )
+    definition = await app_session.get(WorkflowDefinition, version.definition_id)
+    assert definition.code == "reimbursement.liquidation"
     await app_session.rollback()
 
 

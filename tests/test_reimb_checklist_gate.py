@@ -26,10 +26,19 @@ from tests.reimb_checklist_helpers import satisfy_packet, tiny_jpeg
 from tests.reimb_lifecycle_helpers import return_reason_ids, standard_cast
 
 
-async def _catalog_id(session, code):
+async def _catalog_id(session, code, *, claim_kind="reimbursement"):
+    """The catalog row id for a code — scoped by KIND.
+
+    The natural key is ``(claim_kind, code)`` and R-6-liq-chain gave TO-01 and
+    CTC-47 a liquidation twin, so a lookup on ``code`` alone is genuinely
+    ambiguous now rather than merely under-specified.
+    """
     return (
         await session.execute(
-            select(ReimbChecklistCatalog.id).where(ReimbChecklistCatalog.code == code)
+            select(ReimbChecklistCatalog.id).where(
+                ReimbChecklistCatalog.code == code,
+                ReimbChecklistCatalog.claim_kind == claim_kind,
+            )
         )
     ).scalar_one()
 
