@@ -17,10 +17,24 @@ WORKDIR /app
 # it. RULE: bump the `db` image tag and this client package together
 # (docs/standards/tech-stack.md §3).
 #
-# OCR (Tesseract) and PDF export (WeasyPrint/GTK) libraries are added when those
-# modules land (DTWIS OCR; Reports & Analytics PDF).
+# OCR (Tesseract) libraries are added when DTWIS OCR lands.
+#
+# WeasyPrint (core-service #8, Stage C R-5) is pure Python but binds Pango at
+# RUNTIME via cffi, so the native stack must exist in the image:
+#   libpango-1.0-0 / libpangoft2-1.0-0 — text shaping + layout (pulls glib,
+#     harfbuzz, fontconfig, freetype). WeasyPrint >= 53 has its own PDF writer,
+#     so cairo and gdk-pixbuf are deliberately NOT installed, and raster images
+#     go through Pillow, which already ships self-contained wheels.
+#   libffi8 — the cffi runtime WeasyPrint calls Pango through.
+#   fonts-dejavu-core — python:*-slim ships NO fonts at all; without a font
+#     family every generated PDF renders as blank boxes. The print stylesheet
+#     therefore names DejaVu explicitly rather than trusting a system default.
+# All three Python services (app / worker / beat) share this image, so the layer
+# lands once. RULE: WeasyPrint runs only inside this container — never on the
+# Windows host (docs/standards/tech-stack.md §3).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl ca-certificates \
+         libpango-1.0-0 libpangoft2-1.0-0 libffi8 fonts-dejavu-core \
     && install -d /usr/share/postgresql-common/pgdg \
     && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
          -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \

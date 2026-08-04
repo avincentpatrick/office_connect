@@ -154,6 +154,35 @@ first**. Required states in parentheses.
 > (`gate_message` rides `ClaimDetail`) rather than duplicating it client-side. A
 > client-side constant is a fallback only, and must name the backend symbol it
 > mirrors in a comment.
+>
+> **Usage note 2026-08-04 (R-5) — NO new inventory row for the generated
+> document card.** Spec §9.3 step 4 asks for generated documents to appear as
+> "`Generated ✓` cards with preview". That ships as a page-local COMPOSITION of
+> inventory pieces (`web/src/pages/reimbursement/GeneratedDocCard.tsx`: a
+> bordered surface, a date, and a link) passed into the task list's existing
+> `action` slot — not as a new component. §3 forbids a page using a component
+> **outside** the inventory; it does not forbid composing inventory pieces on a
+> page, which the same screen's file list already does. Promote it to §3 when a
+> second module needs it — the discipline that kept the checklist engine's
+> storage module-side at R-3.
+>
+> Two decisions inside that card are worth recording because they are easy to
+> get wrong in the other direction:
+> 1. **One chip, not two.** R-3 established two chips for an upload because the
+>    ITEM being attached and the FILE being scanned are genuinely different
+>    facts. A generated document has only one: it is born scan-clean, so its
+>    file state and its item state are the same state. Repeating "Generated"
+>    inside the card as well as on the task-list row would be noise wearing the
+>    costume of honesty. The rule generalizes: **a second chip must earn itself
+>    by reporting a second fact.**
+> 2. **Preview is a link to a new tab, not an embedded frame.** Three inline PDF
+>    viewers stacked in a task list are unusable on the phone this module is
+>    designed for, and the browser's own viewer beats anything embedded. The new
+>    tab is announced in an `sr-only` span (WCAG 3.2.5). The single embedded
+>    packet preview an approver gets (spec §9.2) is a different surface. Note
+>    the link only previews rather than downloads because the server sends
+>    `Content-Disposition: inline` for system-generated PDFs — see
+>    api-standards §9c; the client never asks for it.
 
 ## 4. Layout templates — LOCKED
 

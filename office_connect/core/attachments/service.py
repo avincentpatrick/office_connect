@@ -55,6 +55,9 @@ class AttachmentDownload:
     size: int
     sha256: str
     stream: BinaryIO
+    # 'attachment' for anything a human uploaded; 'inline' only for PDFs this
+    # platform generated (see _disposition). The router echoes it verbatim.
+    disposition: str = "attachment"
 
 
 async def upload_attachment(
@@ -67,11 +70,27 @@ async def upload_attachment(
     holder_id: int | None = None,
     retention_class: str = "default",
     retention_starts_at: datetime | None = None,
+    origin: str = "uploaded",
     actor_id: int | None = None,
     settings: Settings | None = None,
     storage: StorageDriver | None = None,
 ) -> UploadResult:
-    """Validate, store, and persist a ``pending`` attachment. Does not scan."""
+    """Validate, store, and persist an attachment. Does not scan.
+
+    ``origin='generated'`` stores bytes this platform rendered itself and marks
+    them **clean on arrival** rather than ``pending``. The justification is
+    provenance, not convenience: the bytes are produced in-process by
+    ``core.documents`` from autoescaped templates and never leave it, so there is
+    no untrusted input to scan. Leaving them ``pending`` would instead be
+    actively harmful — in production ``NullScanner`` returns ``error``, so a
+    tenant without ClamAV could never download a document the system generated
+    for them, and the fail-closed download gate would turn a missing optional
+    dependency into a permanently broken packet.
+
+    Everything else — the allowlist, the size cap, magic-byte sniffing, content
+    addressing — applies identically. A generated PDF is validated like any
+    other, so a renderer bug that emitted HTML would still be rejected.
+    """
     settings = settings or get_settings()
     storage = storage or get_storage_driver(settings)
 
@@ -81,6 +100,9 @@ async def upload_attachment(
     key = sha256_hex(data)
     deduped = storage.exists(key)
     stored = storage.save(data, content_type=validated.sniffed_mime, filename=filename)
+
+    generated = origin == "generated"
+    scan_status = "clean" if generated else "pending"
 
     row = Attachment(
         holder_kind=holder_kind,
@@ -92,7 +114,11 @@ async def upload_attachment(
         sha256=stored.key,
         storage_backend=storage.name,
         media_kind=validated.media_kind,
-        scan_status="pending",
+        origin=origin,
+        scan_status=scan_status,
+        scan_signature=None,
+        scanned_at=utc_now() if generated else None,
+        scanner_name="system-generated" if generated else None,
         retention_class=retention_class,
         retention_starts_at=retention_starts_at,
         created_by=actor_id,
@@ -102,7 +128,7 @@ async def upload_attachment(
     return UploadResult(
         attachment_id=row.id,
         sha256=stored.key,
-        scan_status="pending",
+        scan_status=scan_status,
         deduped=deduped,
     )
 
@@ -203,13 +229,39 @@ async def download_attachment(
         raise DownloadNotReady("attachment bytes have been disposed")
 
     served_key = row.sanitized_sha256 or row.sha256
+    content_type = row.sanitized_mime or row.sniffed_mime
     return AttachmentDownload(
         filename=row.original_filename,
-        content_type=row.sanitized_mime or row.sniffed_mime,
+        content_type=content_type,
         size=row.sanitized_byte_size or row.byte_size,
         sha256=served_key,
         stream=storage.open(served_key),
+        disposition=_disposition(row, content_type),
     )
+
+
+def _disposition(row: Attachment, content_type: str) -> str:
+    """``inline`` only for PDFs this platform generated; ``attachment`` otherwise.
+
+    Spec §9.3 step 4 promises generated documents render as previewable cards,
+    and a browser will not preview a response served as ``attachment`` — it
+    downloads it. So preview needs ``inline``, and ``inline`` needs a rule about
+    *what* may be served that way.
+
+    The rule is provenance, decided **server-side from the stored row**: never a
+    query parameter, never a client hint. An uploaded PDF stays ``attachment``
+    forever — PDFs can embed JavaScript, and rendering a claimant's upload
+    inline in the app's own origin is the stored-XSS pattern the upload research
+    warned about. A generated PDF carries no such risk: this platform rendered
+    it from its own autoescaped templates.
+
+    ``X-Content-Type-Options: nosniff`` stays on both paths (set by the router),
+    so an ``inline`` response is still interpreted strictly as the type we
+    declare.
+    """
+    if row.origin == "generated" and content_type == "application/pdf":
+        return "inline"
+    return "attachment"
 
 
 async def soft_delete_attachment(

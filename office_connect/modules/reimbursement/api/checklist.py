@@ -32,12 +32,18 @@ from office_connect.core.auth.dependencies import require_permission
 from office_connect.core.auth.principal import Principal
 from office_connect.core.config import get_settings
 from office_connect.core.db import get_session
+from office_connect.core.documents import generate_on_commit
+from office_connect.core.documents import queue as documents_queue
 from office_connect.modules.reimbursement.api.deps import (
     can_read_claim,
     checklist_out,
     get_claim,
 )
-from office_connect.modules.reimbursement.api.schemas import ChecklistOut
+from office_connect.modules.reimbursement.api.schemas import (
+    ChecklistOut,
+    GenerateDocumentsOut,
+)
+from office_connect.modules.reimbursement.services import attachments as evidence
 from office_connect.modules.reimbursement.services import checklist, drafts, errors
 
 router = APIRouter()
@@ -127,6 +133,49 @@ async def attach_evidence(
     # Strictly after commit — the row must be visible before the worker looks
     # for it; a rolled-back upload must never enqueue.
     scan_on_commit(session, attachment_id)
+    await session.commit()
+    return payload
+
+
+@router.post(
+    "/claims/{claim_id}/documents/generate",
+    response_model=GenerateDocumentsOut,
+    status_code=202,
+)
+async def generate_documents(
+    claim_id: int,
+    principal: Principal = Depends(require_permission("reimb.claim.create")),
+    session: AsyncSession = Depends(get_session),
+):
+    """Queue generation of the claim's packet (core-service #8).
+
+    **202, never 200.** Rendering happens in the worker — master-plan §1.1 #8 is
+    explicit that WeasyPrint never runs in a request path — so this handler
+    cannot return the finished documents. It returns the packet as it stands plus
+    whether the render was actually queued, and the client polls the checklist.
+
+    On the **gated** router, not ``api/actions.py``: generating paperwork is not
+    a decision on an in-flight workflow instance, so the §9a exemption does not
+    apply and the module flag should hide it like every other module surface.
+
+    Degrades non-blockingly (spec §19.12). No worker wired means ``queued:
+    false`` and a notice in the UI — never a 500, never a refused save. The
+    caller may ask again as often as it likes: generation is idempotent by
+    fingerprint, so a duplicate request renders nothing new.
+    """
+    claim = await drafts.owned_editable_claim(
+        session, claim_id=claim_id, actor_user_id=principal.user_id
+    )
+    # Refuse early, with the specific reason, rather than letting the worker
+    # discover it and leave the user staring at a packet that never appears.
+    if not (claim.totals or {}).get("grand"):
+        raise errors.totals_missing()
+
+    generate_on_commit(session, evidence.HOLDER_KIND, claim.id)
+    payload = GenerateDocumentsOut(
+        checklist=checklist_out(await checklist.checklist_view(session, claim=claim)),
+        queued=documents_queue.is_wired(),
+    )
     await session.commit()
     return payload
 

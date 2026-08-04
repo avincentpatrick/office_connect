@@ -36,6 +36,11 @@ ScanStatus = Enum(
     "pending", "clean", "infected", "error", name="core_attachment_scan_status"
 )
 
+# Where the bytes came from (R-5). 'uploaded' = a human sent them and they are
+# untrusted; 'generated' = this platform rendered them from its own templates.
+# The distinction is load-bearing three times over — see the column comment.
+AttachmentOrigin = Enum("uploaded", "generated", name="core_attachment_origin")
+
 
 class Attachment(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     __tablename__ = "core_attachments"
@@ -66,6 +71,20 @@ class Attachment(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     sha256: Mapped[str]  # = storage key of the ORIGINAL bytes (audited evidence)
     storage_backend: Mapped[str]  # 'local' | 'gdrive' — which driver holds the blob
     media_kind: Mapped[str]  # 'image' | 'pdf'
+
+    # Provenance (R-5, core-service #8). Decides three things that would each
+    # otherwise need their own flag:
+    #  1. SCAN — 'generated' bytes are produced in-process from autoescaped
+    #     templates and never leave it, so they are born 'clean'. Scanning our
+    #     own renderer's output is theatre, and in prod NullScanner returns
+    #     'error', which would make every generated packet permanently
+    #     undownloadable whenever ClamAV is absent.
+    #  2. DISPOSITION — only 'generated' PDFs may be served inline for preview.
+    #     An uploaded PDF can carry JavaScript, so uploads stay `attachment`
+    #     forever. Derived server-side; never client-controlled.
+    #  3. COUNTING — a consumer's evidence tally filters on 'uploaded', so a
+    #     generated document is never miscounted as evidence a human supplied.
+    origin: Mapped[str] = mapped_column(AttachmentOrigin, server_default="uploaded")
 
     # Sanitized derivative (images only; NULL for PDF and until re-encode runs).
     sanitized_sha256: Mapped[str | None]

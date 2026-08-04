@@ -1,6 +1,7 @@
 /** ClaimDetail / My-Work fixtures for the reimbursement page tests. */
 
 import type {
+  ChecklistFile,
   ChecklistItem,
   ChecklistResponse,
   ChecklistSummary,
@@ -324,6 +325,38 @@ export function makeChecklistItem(
     files: [],
     ...overrides,
   };
+}
+
+/** A file row. Defaults to an upload mid-scan — the common, awkward case. */
+export function makeChecklistFile(
+  overrides: Partial<ChecklistFile> = {},
+): ChecklistFile {
+  return {
+    id: 9,
+    attachment_id: 90,
+    filename: "travel-order.jpg",
+    byte_size: 120,
+    scan_status: "pending",
+    uploaded_at: "2026-08-03T01:00:00Z",
+    origin: "uploaded",
+    download_path: null,
+    ...overrides,
+  };
+}
+
+/** A system-rendered PDF: born scan-clean, so its link exists immediately. */
+export function makeGeneratedFile(
+  overrides: Partial<ChecklistFile> = {},
+): ChecklistFile {
+  return makeChecklistFile({
+    id: 21,
+    attachment_id: 210,
+    filename: "RB-2026-0007_20260803_090000_IOT-45.pdf",
+    scan_status: "clean",
+    origin: "generated",
+    download_path: "/api/v1/attachments/210/content",
+    ...overrides,
+  });
 }
 
 /** One item per evidence kind, plus the summary that matches them. */

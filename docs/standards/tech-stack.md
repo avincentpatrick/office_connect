@@ -41,6 +41,8 @@ the same session** (session-end checklist step 3).
 | sentry-sdk | 2.20.0 | Observability (Increment 4): error tracking (GlitchTip-compatible); lazy-imported, active only with `SENTRY_DSN` |
 | argon2-cffi | 23.1.0 | Auth (Stage B): Argon2id password hashing (`core/security/password.py`). **Cost params: `time_cost=2`, `memory_cost=19 MiB (19456 KiB)`, `parallelism=1`** (OWASP / RFC 9106 option 2, on-prem-sized). Self-contained manylinux wheels (no apt). PHC hash self-describes cost → raise deliberately + re-hash on next login |
 | pyotp | 2.9.0 | Auth (Stage B / Inc 2): TOTP MFA (RFC 6238) for approver/admin roles (NPC Circular 2023-06). Pure-Python; returns the `otpauth://` provisioning URI so the client renders the QR — **no QR-image dependency** server-side. `valid_window=1` (±30 s skew); a used code is single-use within its step (Redis `SETNX`) |
+| Jinja2 | 3.1.5 | Document generation (Stage C R-5 / core-service #8): renders the GAM forms to HTML. Environment is **autoescape-on + `StrictUndefined`** (`core/documents/templates.py`) — user text can never become markup in an official document, and a missing key fails the render instead of printing a blank amount on a voucher. Pure-Python |
+| weasyprint | 63.1 | Document generation (core-service #8): HTML+CSS → print-faithful PDF (A4, `@page` running footers). Chosen over wkhtmltopdf (archived Jan 2023, ancient WebKit) and headless browsers (no Chromium on an offline on-prem server). **Needs the Pango/libffi/fonts apt layer in §3** and is imported lazily behind an injectable renderer, so it runs only in the container. Never in the request path — always the Celery worker (`ops/document_tasks.py`) |
 | pytest | 8.3.4 | Test runner (QA gates) |
 | pytest-asyncio | 0.24.0 | Async test support |
 | asgi-lifespan | 2.1.0 | Runs FastAPI lifespan under httpx `ASGITransport` in tests |
@@ -92,6 +94,19 @@ since R-2-shell)**.
 | Package | Source | Purpose |
 |---|---|---|
 | `postgresql-client-16` | PGDG apt (suite = base image codename) | `pg_dump`/`pg_restore`/`createdb`/`dropdb` for backup + restore drill. Client MAJOR must **match** the PG16 server (a newer client emits SET commands PG16 rejects on restore). Bump with the `db` image tag. |
+| `libpango-1.0-0`, `libpangoft2-1.0-0` | Debian apt | WeasyPrint's text shaping + layout engine (pulls glib, harfbuzz, fontconfig, freetype). Added at **R-5** with core-service #8. WeasyPrint ≥53 has its own PDF writer, so cairo and gdk-pixbuf are deliberately NOT installed and raster images go through Pillow's self-contained wheels. |
+| `libffi8` | Debian apt | The cffi runtime WeasyPrint calls Pango through. |
+| `fonts-dejavu-core` | Debian apt | `python:*-slim` ships **no fonts at all** — without a family every generated PDF renders as blank boxes. The print stylesheet names DejaVu explicitly (`core/documents/stylesheet.py::PRINT_FONT_FAMILY`) rather than trusting a system default that does not exist. |
+
+> **WeasyPrint runs only inside the Linux container — never on the Windows
+> host.** The native stack above is a Linux apt layer; on Windows it needs a GTK
+> runtime that the on-prem deployment must not depend on. `core/documents/render.py`
+> imports WeasyPrint **lazily inside the renderer** and the renderer is an
+> injectable keyword argument, so importing `core` and running the test suite
+> work on a bare Windows dev host. Production runs the same container image.
+> If a form ever has to overlay a scanned pre-printed government form to the
+> millimetre, add ReportLab for that one template rather than fighting CSS
+> (`docs/research/round1/file-attachments-pdf-generation.md`).
 
 ## 4. Frontend stack (`web/package.json`) — FILLED (R-2-shell, 2026-07-28)
 

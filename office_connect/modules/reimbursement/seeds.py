@@ -23,6 +23,7 @@ from office_connect.modules.reimbursement.models import (
     ReimbDteCluster,
     ReimbRegionCluster,
     ReimbReturnReasonCatalog,
+    ReimbTemplateMap,
 )
 
 _ALL = ("all",)
@@ -217,12 +218,62 @@ REIMB_RETURN_REASONS = SeedDataset(
 )
 
 
+# --- Template bindings (R-5) -----------------------------------------------
+# Which checklist requirement each generated form satisfies. `document_key` must
+# be a key registered with core-service #8 in
+# ``modules/reimbursement/documents/registry.py`` — the pair is asserted by
+# test_reimb_documents.py so a rename on either side cannot ship half-done.
+#
+# Only the three `generated_doc` catalog rows appear here. CTC-47 is
+# external_wet_sign and RER-46 is an upload: both are documents a HUMAN signs or
+# supplies, so generating them would assert something the system cannot know.
+# App 44 (Liquidation Report) and the liquidation-side forms arrive with R-6.
+REIMB_TEMPLATE_MAPS = SeedDataset(
+    name="reimb_template_maps",
+    owner="Accounting Unit / resident COA auditor",
+    cadence="on_revision",
+    environments=_ALL,
+    model=ReimbTemplateMap,
+    natural_key=("claim_kind", "checklist_code"),
+    rows=(
+        {
+            "claim_kind": "reimbursement",
+            "checklist_code": "IOT-45",
+            "document_key": "reimb.iot45",
+            "title": "Itinerary of Travel",
+            "form_no": "GAM Vol. II, Appendix 45",
+            "circular_version": _COA_CHECKLIST,
+            "sort": 1,
+        },
+        {
+            "claim_kind": "reimbursement",
+            "checklist_code": "AR-01",
+            "document_key": "reimb.ar01",
+            "title": "Accomplishment Report",
+            "form_no": None,
+            "circular_version": _COA_CHECKLIST,
+            "sort": 2,
+        },
+        {
+            "claim_kind": "reimbursement",
+            "checklist_code": "DV-32",
+            "document_key": "reimb.dv32",
+            "title": "Disbursement Voucher",
+            "form_no": "GAM Vol. II, Appendix 32",
+            "circular_version": _COA_CHECKLIST,
+            "sort": 3,
+        },
+    ),
+)
+
+
 REIMBURSEMENT_DATASETS: tuple[SeedDataset, ...] = (
     REIMB_CONFIGS,
     REIMB_DTE_CLUSTERS,
     REIMB_REGION_CLUSTERS,
     REIMB_CHECKLIST,
     REIMB_RETURN_REASONS,
+    REIMB_TEMPLATE_MAPS,
 )
 
 

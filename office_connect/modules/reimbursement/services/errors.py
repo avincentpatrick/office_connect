@@ -229,6 +229,42 @@ def evidence_not_on_item(attachment_id: int) -> APIError:
     )
 
 
+# --- R-5 document generation ------------------------------------------------
+
+
+def totals_missing() -> APIError:
+    """No money snapshot — refuse to print rather than print zeros.
+
+    ``drafts.py`` clears ``claim.totals`` whenever a compute input changes, so an
+    empty snapshot means the numbers are mid-edit. An official-looking voucher
+    for ₱0.00 is far worse than a claim that says "work out the money first".
+    """
+    return APIError(
+        422,
+        "reimb_totals_missing",
+        "The claim's amounts have not been worked out yet — complete the "
+        "Money step, then the packet can be generated.",
+    )
+
+
+def unknown_catalog_code(code: str) -> APIError:
+    return APIError(
+        422,
+        "reimb_unknown_catalog_code",
+        f"'{code}' is not in the active catalog for this claim kind — the "
+        "template binding points at a requirement that no longer exists.",
+    )
+
+
+def document_not_generatable(code: str, evidence: str) -> APIError:
+    return APIError(
+        422,
+        "reimb_document_not_generatable",
+        f"'{code}' is a {evidence.replace('_', ' ')} item — the system does "
+        "not generate it.",
+    )
+
+
 # --- R-2-wizard draft/API errors --------------------------------------------
 
 

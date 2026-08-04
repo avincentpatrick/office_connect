@@ -4,6 +4,7 @@ import { FileCheck } from "lucide-react";
 import { Link, useNavigate } from "react-router";
 import { ApiError } from "../../api/http";
 import {
+  generateClaimDocuments,
   removeChecklistFile,
   reimbKeys,
   uploadChecklistFile,
@@ -12,6 +13,7 @@ import {
   type ClaimDetail,
 } from "../../api/reimbursement";
 import { Button } from "../../components/Button/Button";
+import { Callout } from "../../components/Callout/Callout";
 import { EmptyState } from "../../components/EmptyState/EmptyState";
 import { ErrorSummary } from "../../components/ErrorSummary/ErrorSummary";
 import { FileUpload } from "../../components/FileUpload/FileUpload";
@@ -31,9 +33,11 @@ import {
   SCAN_PRESENTATION,
   checklistItemAnchor,
   checklistProgress,
+  generatedDocHelp,
   itemPresentation,
 } from "./checklist-status";
 import { ClaimStepGuard } from "./ClaimStepGuard";
+import { GeneratedDocCard } from "./GeneratedDocCard";
 import { ClaimTotalsCard } from "./MoneyStepPage";
 import { useChecklist } from "./use-claim";
 import { buildTaskSections, STEP_LABELS, stepNumber, stepPath } from "./wizard-steps";
@@ -66,6 +70,10 @@ function DocumentsStep({ claim }: { claim: ClaimDetail }) {
     {},
   );
   const [announce, setAnnounce] = useState<Record<number, string | undefined>>({});
+  // Generation is claim-wide, not per item, so its notice and error live beside
+  // the per-item ones rather than inside them.
+  const [generateNotice, setGenerateNotice] = useState<string | undefined>();
+  const [generateError, setGenerateError] = useState<string | undefined>();
 
   /**
    * Write BOTH caches from the one response: the row list the Documents step
@@ -131,6 +139,44 @@ function DocumentsStep({ claim }: { claim: ClaimDetail }) {
     },
     onError: (error, { catalogId }) => onMutationError(error, catalogId),
     onSettled: () => setBusyItem(null),
+  });
+
+  /**
+   * Ask the server to prepare the generated documents.
+   *
+   * Rendering runs in the worker, so the 202 response cannot contain the
+   * finished PDFs — it reports whether the job was accepted. The rows arrive on
+   * the next checklist read, which is why success invalidates rather than
+   * writing the response straight into the cache the way the upload path does.
+   */
+  const generate = useMutation({
+    mutationFn: () => generateClaimDocuments(claim.id),
+    onMutate: () => setGenerateError(undefined),
+    onSuccess: (response) => {
+      applyResponse(response.checklist);
+      setGenerateNotice(
+        response.queued
+          ? "We are preparing your documents. They appear here in a moment."
+          : // §19.12: never a 500, never a blocked submit — an honest notice.
+            "Document preparation is unavailable right now. Your claim is saved and you can still submit; the documents are prepared when the service is back.",
+      );
+      // The worker writes rows this request cannot see. One delayed refetch is
+      // enough for a packet that takes about a second to render, and it beats
+      // a polling loop that would keep running long after the user has left.
+      window.setTimeout(() => {
+        void queryClient.invalidateQueries({
+          queryKey: reimbKeys.checklist(claim.id),
+        });
+      }, 2500);
+    },
+    onError: (error) => {
+      setGenerateNotice(undefined);
+      setGenerateError(
+        error instanceof ApiError
+          ? error.message
+          : "Something went wrong. Please try again.",
+      );
+    },
   });
 
   const shell = (children: React.ReactNode) => (
@@ -216,6 +262,7 @@ function DocumentsStep({ claim }: { claim: ClaimDetail }) {
   const renderItem = (item: ChecklistItem): Pick<TaskListItem, "detail" | "action"> => {
     const uploadable =
       item.evidence === "upload" || item.evidence === "external_wet_sign";
+    const generated = item.evidence === "generated_doc";
     const noteId = `checklist-note-${item.catalog_id}`;
 
     const detail = (
@@ -226,8 +273,15 @@ function DocumentsStep({ claim }: { claim: ClaimDetail }) {
         {item.flag_reason ? (
           <span className="font-medium text-status-warn">{item.flag_reason}</span>
         ) : null}
-        {!uploadable ? <span id={noteId}>{EVIDENCE_HELP[item.evidence]}</span> : null}
-        {item.files.length > 0 ? (
+        {!uploadable ? (
+          <span id={noteId}>
+            {generated ? generatedDocHelp(item) : EVIDENCE_HELP[item.evidence]}
+          </span>
+        ) : null}
+        {/* Generated PDFs are rendered by the card in the action slot, never as
+            file rows: they are not evidence the claimant supplied and must not
+            offer a Remove button — the system owns them. */}
+        {!generated && item.files.length > 0 ? (
           <ul className="mt-1 flex flex-col gap-2">
             {item.files.map((file) => {
               const scan = SCAN_PRESENTATION[file.scan_status];
@@ -271,6 +325,13 @@ function DocumentsStep({ claim }: { claim: ClaimDetail }) {
         ) : null}
       </div>
     );
+
+    if (generated) {
+      return {
+        detail,
+        action: <GeneratedDocCard item={item} busy={generate.isPending} />,
+      };
+    }
 
     if (!uploadable) return { detail };
 
@@ -325,13 +386,45 @@ function DocumentsStep({ claim }: { claim: ClaimDetail }) {
     ];
   });
 
+  const hasGeneratedDocs = items.some((item) => item.evidence === "generated_doc");
+
   return shell(
     <>
       {/* Present from mount so only CHANGES announce (spec §9.1's progress line). */}
       <p aria-live="polite" className="text-base font-medium text-text">
         {checklistProgress(summary)}
       </p>
+      {generateError ? (
+        <Callout status="blocked" title="We could not prepare your documents">
+          {/* The server's sentence verbatim (ui-standards §3.14) — it names the
+              actual reason, e.g. that the Money step is not finished. */}
+          {generateError}
+        </Callout>
+      ) : null}
+      {generateNotice ? (
+        <Callout status="waiting" title="Preparing your documents" live="polite">
+          {generateNotice}
+        </Callout>
+      ) : null}
       <TaskList sections={sections} />
+      {hasGeneratedDocs ? (
+        <div>
+          <Button
+            variant="secondary"
+            loading={generate.isPending}
+            onClick={() => generate.mutate()}
+          >
+            Prepare my documents
+          </Button>
+          <p className="mt-1 text-sm text-text-muted">
+            {/* Says the quiet part out loud: this button is a convenience, not a
+                gate. Generated documents are excluded from the submit check by
+                design, and the packet is regenerated at submit anyway. */}
+            The system fills these in from what you entered. They are prepared
+            again when you submit, so the filed copies always match your claim.
+          </p>
+        </div>
+      ) : null}
       {continueButton}
     </>,
   );

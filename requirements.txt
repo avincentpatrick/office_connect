@@ -53,6 +53,19 @@ argon2-cffi==23.1.0
 # renders the QR — no QR-image dependency needed server-side.
 pyotp==2.9.0
 
+# --- Document generation (Stage C R-5 / core-service #8) ---
+# Jinja2 renders the government forms to HTML; WeasyPrint turns that HTML+CSS
+# into print-faithful PDFs (A4, @page running footers). Chosen over wkhtmltopdf
+# (archived Jan 2023, ancient WebKit) and over a headless browser: WeasyPrint is
+# pure Python and needs no Chromium on an offline on-prem server.
+# WeasyPrint needs Pango/HarfBuzz/libffi at RUNTIME — see the Dockerfile apt
+# layer and docs/standards/tech-stack.md §3. It is imported LAZILY inside
+# core/documents/render.py so importing core never requires the native stack
+# (that is what keeps the test suite runnable on a Windows host).
+# RULE: rendering happens in the Celery worker, never in the request path.
+Jinja2==3.1.5
+weasyprint==63.1
+
 # --- QA gates (pytest + architecture contracts) ---
 pytest==8.3.4
 pytest-asyncio==0.24.0

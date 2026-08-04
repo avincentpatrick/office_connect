@@ -1,0 +1,37 @@
+{# Shared page frame for every generated government form (core-service #8).
+
+   Every consuming template extends this and fills `content`. What lives here is
+   what must be identical on every document the platform issues: the agency
+   header, the draft marking, and the two hidden elements whose `string-set`
+   feeds the running footer on every page (see stylesheet.py).
+
+   `doc` is the envelope core always supplies: ref_no, title, form_no, agency,
+   generated_at, is_draft. Module context sits alongside it. #}
+<meta charset="utf-8">
+<title>{{ doc.title }}{% if doc.ref_no %} — {{ doc.ref_no }}{% endif %}</title>
+
+{# The footer sources. `data-ref` falls back to an explicit "not yet assigned"
+   rather than an empty string: a footer that silently omits the reference
+   number looks like a filed document that lost it. #}
+<div class="doc-meta"
+     data-ref="{{ doc.ref_no or 'Reference no. not yet assigned' }}"></div>
+<div class="doc-stamp"
+     data-stamp="Generated {{ doc.generated_at | manila_datetime }}"></div>
+
+{% if doc.is_draft %}
+<div class="draft-watermark">DRAFT</div>
+<p class="draft-banner">
+  DRAFT — not yet submitted. This copy has no reference number and is not a
+  filed document.
+</p>
+{% endif %}
+
+<div class="doc-header">
+  <p class="doc-agency">{{ doc.agency }}</p>
+  <p class="doc-title">{{ doc.title }}</p>
+  {% if doc.form_no %}
+  <p class="doc-form-no">{{ doc.form_no }}</p>
+  {% endif %}
+</div>
+
+{% block content %}{% endblock %}

@@ -12,6 +12,33 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-5-gen — the system writes your paperwork** (2026-08-04): the
+  module's founding promise, finally kept. Enter your trip once and Office-Connect
+  fills in the **Itinerary of Travel (GAM Appendix 45)**, your **accomplishment
+  report** and the **Disbursement Voucher (GAM Appendix 32)** — no re-typing the
+  same dates, places and amounts across three forms. On the Documents step those
+  three items stop saying "nothing for you to do" and become **Generated cards
+  with a preview link** that opens the real PDF in a new tab, so you can read what
+  will be filed in your name before you file it. The documents are A4,
+  print-faithful, and carry your reference number and the Manila time they were
+  prepared on **every page** — a page separated from its packet still says what it
+  is. Every figure on them is the number the server computed; nothing is
+  recalculated at print time, so the voucher can never disagree with the claim.
+  **Nothing is ever silently out of date.** Before you submit you get a clearly
+  watermarked **DRAFT** (it has no reference number yet, and says so). Change
+  anything on the claim and the prepared documents are withdrawn rather than left
+  sitting there describing a trip you have edited. When you submit, the packet is
+  regenerated as the filed original, stamped with your `RB-` number, and the draft
+  is retired — with every earlier version kept, so an auditor can always see what
+  was issued and when. **Preparing your documents can never cost you a submission.**
+  It runs in the background; if the service is briefly unavailable you get a plain
+  notice, your claim is still saved, and you can still submit — generated documents
+  never block the submit check, because they are produced downstream of it.
+  Verified: **pytest 649 (+34) on a clean database, lint-imports 3/3, migration
+  `0018` reversible, FE gate green (140 tests, +3)**, and a **23-check live smoke**
+  driving the whole chain through the real background worker and real PDF engine:
+  generate → preview inline → edit → packet withdrawn → submit → filed original.
+
 - **Stage C R-3 — the checklist decides what a complete claim is** (2026-08-03):
   the wizard gains a fifth step, **Documents**, and it is the packet screen the
   whole module was built around. Your required documents are generated from the

@@ -185,7 +185,12 @@ class ChecklistFileOut(BaseModel):
     byte_size: int
     scan_status: str
     uploaded_at: datetime
+    #: 'uploaded' (a human sent it) | 'generated' (the system rendered it). The
+    #: Documents step branches on this to render a Generated card rather than a
+    #: file row, and only a generated PDF previews inline.
+    origin: str = "uploaded"
     #: Null until the scan is clean — an unservable file must not offer a link.
+    #: Generated PDFs are born clean, so theirs is populated immediately.
     download_path: str | None = None
 
 
@@ -213,6 +218,20 @@ class ChecklistOut(BaseModel):
 
     items: list[ChecklistItemOut]
     summary: ChecklistSummaryOut
+
+
+class GenerateDocumentsOut(BaseModel):
+    """The 202 body of ``POST /claims/{id}/documents/generate``.
+
+    Carries the packet as it stands (so the client can refresh its cache without
+    a second round trip) plus whether a worker actually took the job. ``queued:
+    false`` is not an error — it is the honest signal that generation is
+    unavailable right now, which the UI shows as a non-blocking notice rather
+    than a spinner that never resolves.
+    """
+
+    checklist: ChecklistOut
+    queued: bool
 
 
 class ClaimDetail(BaseModel):

@@ -115,6 +115,48 @@ async def remove_claim_evidence(
     await session.flush()
 
 
+async def store_generated_document(
+    session: AsyncSession,
+    *,
+    claim_id: int,
+    checklist_item_id: int,
+    data: bytes,
+    filename: str,
+    actor_user_id: int | None,
+) -> tuple[ReimbAttachment, int]:
+    """Store a system-rendered PDF through the same core service uploads use.
+
+    Rule 10 in its most literal form: a generated document is bytes plus
+    metadata, which is exactly what core-service #2 exists to hold. The only
+    difference from an upload is ``origin='generated'``, which tells core the
+    bytes are its own output — so they are born ``clean`` and may be previewed
+    inline. Validation, hashing, content-addressed storage and retention are
+    untouched.
+    """
+    result = await core_attachments.upload_attachment(
+        session,
+        data,
+        filename=filename,
+        declared_mime="application/pdf",
+        holder_kind=HOLDER_KIND,
+        holder_id=claim_id,
+        retention_class=RETENTION_CLASS,
+        retention_starts_at=None,
+        origin="generated",
+        actor_id=actor_user_id,
+    )
+
+    join = ReimbAttachment(
+        claim_id=claim_id,
+        attachment_id=result.attachment_id,
+        checklist_item_id=checklist_item_id,
+        retention_class=RETENTION_CLASS,
+    )
+    session.add(join)
+    await session.flush()
+    return join, result.attachment_id
+
+
 async def evidence_counts(
     session: AsyncSession, *, claim_id: int
 ) -> dict[int, tuple[int, int, int]]:
@@ -124,6 +166,12 @@ async def evidence_counts(
     claimant because the virus scanner is behind would be a self-inflicted
     outage. Only ``infected`` disqualifies. Both global soft-delete filters
     apply, so a detached file simply stops counting.
+
+    **Uploads only.** A generated document is not evidence the claimant
+    supplied, and counting it as such would let a system-produced artifact
+    satisfy a ``file_present`` auto-check on a human-evidence item. The
+    checklist's ``generated`` status already outranks an upload, so generated
+    rows need no representation here at all.
     """
     rows = (
         await session.execute(
@@ -132,6 +180,7 @@ async def evidence_counts(
             .where(
                 ReimbAttachment.claim_id == claim_id,
                 ReimbAttachment.checklist_item_id.is_not(None),
+                Attachment.origin == "uploaded",
             )
         )
     ).all()
@@ -175,8 +224,10 @@ async def claim_evidence(
                 "byte_size": attachment.byte_size,
                 "scan_status": attachment.scan_status,
                 "uploaded_at": join.created_at,
+                "origin": attachment.origin,
                 # Only a clean file is servable — `download_attachment` refuses
-                # anything else, so offering a link would be a lie.
+                # anything else, so offering a link would be a lie. Generated
+                # PDFs are born clean, so their link is available immediately.
                 "download_path": (
                     f"/api/v1/attachments/{attachment.id}/content"
                     if attachment.scan_status == "clean"

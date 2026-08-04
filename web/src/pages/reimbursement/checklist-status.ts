@@ -100,15 +100,40 @@ export const SCAN_NOTE: Record<ScanStatus, string | null> = {
     "We could not check this file. Upload it again, or ask the admin officer for help.",
 };
 
-/** Copy per evidence kind — what the claimant is being asked for, or not. */
+/** Copy per evidence kind — what the claimant is being asked for, or not.
+ *
+ * `generated_doc` is the state BEFORE generation. Once the document exists the
+ * Documents step renders a Generated card instead and this line is not shown —
+ * see `generatedDocHelp`.
+ */
 export const EVIDENCE_HELP: Record<string, string | null> = {
   upload: "Attach a scan or a photo.",
   external_wet_sign:
     "Print this, get it signed by hand, then upload a scan or photo of the signed page.",
   generated_doc:
-    "The system will generate this with your printable packet. Nothing for you to do.",
+    "The system fills this in from what you have entered. Nothing for you to upload.",
   data_only: "Taken from what you already entered. Nothing to attach.",
 };
+
+/**
+ * Copy for a `generated_doc` item, which unlike every other evidence kind has
+ * three distinct states rather than one.
+ *
+ * The R-3 placeholder ("the system will generate this with your printable
+ * packet") was a promise about a feature that did not exist. Now that it does,
+ * the copy has to say which of three situations the claimant is actually in —
+ * and crucially, that "not yet" is never their fault and never blocks them
+ * (§9.1 principle 4; generated documents are excluded from the submit gate by
+ * design, because they are produced downstream of submit).
+ */
+export function generatedDocHelp(item: ChecklistItem): string {
+  if (item.status === "generated") {
+    return item.files.some((file) => file.origin === "generated")
+      ? "Prepared for you from what you entered. Check it before you submit."
+      : "Prepared for you from what you entered.";
+  }
+  return "Not prepared yet. It is filled in from what you entered — you can still submit without it.";
+}
 
 /** Spec §9.1's exact wording: "9 of 12 required items done". */
 export function checklistProgress(summary: ChecklistSummary): string {

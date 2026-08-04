@@ -306,6 +306,106 @@ async def _item_for_catalog(
     return row
 
 
+async def materialize_generated_item(
+    session: AsyncSession,
+    *,
+    claim: ReimbClaim,
+    code: str,
+    actor_user_id: int | None,
+) -> ReimbChecklistItem:
+    """The ``generated_doc`` sibling of ``_item_for_catalog``.
+
+    A separate entry point rather than a widened guard, because the two paths
+    must stay asymmetric: a claimant may never upload against ``IOT-45`` (that
+    is what ``reimb_evidence_not_uploadable`` protects), and the generator may
+    never produce a ``TO-01``. Sharing one permissive materializer would erase
+    both rules at once.
+
+    Addressed by **code**, not catalog id: the caller is a template binding, and
+    ``reimb_template_maps`` deliberately stores the stable code rather than a
+    surrogate id a re-seed could change.
+    """
+    catalog_row = (
+        await session.execute(
+            select(ReimbChecklistCatalog).where(
+                ReimbChecklistCatalog.is_active.is_(True),
+                ReimbChecklistCatalog.code == code,
+                (ReimbChecklistCatalog.claim_kind.is_(None))
+                | (ReimbChecklistCatalog.claim_kind == claim.kind),
+            )
+        )
+    ).scalar_one_or_none()
+    if catalog_row is None:
+        raise errors.unknown_catalog_code(code)
+    if catalog_row.evidence != "generated_doc":
+        raise errors.document_not_generatable(code, catalog_row.evidence)
+
+    existing = (
+        await session.execute(
+            select(ReimbChecklistItem)
+            .where(
+                ReimbChecklistItem.claim_id == claim.id,
+                ReimbChecklistItem.catalog_id == catalog_row.id,
+            )
+            .execution_options(include_deleted=True)
+        )
+    ).scalar_one_or_none()
+
+    if existing is not None:
+        # A dormant row is revived rather than duplicated — the partial unique
+        # index forbids a second live row and the history belongs to the first.
+        existing.deleted_at = None
+        existing.deleted_by = None
+        return existing
+
+    row = ReimbChecklistItem(
+        claim_id=claim.id,
+        catalog_id=catalog_row.id,
+        status="missing",
+        circular_version=catalog_row.circular_version,
+    )
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def mark_generated(
+    session: AsyncSession,
+    *,
+    claim: ReimbClaim,
+    item: ReimbChecklistItem,
+    attachment_id: int,
+    actor_user_id: int | None,
+) -> ChecklistView:
+    """Flip an item to ``generated`` and mirror the PDF onto it.
+
+    **This is the only bootstrap of the ``generated`` status.** Everywhere else
+    the value is read back off the column it was written to: ``_states`` derives
+    ``ItemState.generated`` from ``row.status == "generated"``, and
+    ``refresh_checklist`` writes back the ``derived_status`` the engine computed
+    from that flag. Without an explicit first write the loop is closed and the
+    three ``generated_doc`` items could never leave ``missing`` — which is
+    exactly the state R-3 shipped and R-5 exists to end.
+
+    Once written the value is self-sustaining: ``generated`` outranks every
+    evidence-derived status in ``engine._derive``, and ``holds_something`` keeps
+    the row alive even if its rule later stops applying.
+
+    The mirror is REASSIGNED, never appended to — the column has no
+    ``MutableList``, so an in-place mutation would leave the row un-dirty.
+    """
+    set_audit_context(session, actor_id=actor_user_id)
+
+    if item.status != "generated":
+        item.status = "generated"
+    evidence.mirror_attachment_ids(item, [attachment_id])
+    await session.flush()
+
+    return await refresh_checklist(
+        session, claim=claim, actor_user_id=actor_user_id
+    )
+
+
 async def attach_evidence(
     session: AsyncSession,
     *,

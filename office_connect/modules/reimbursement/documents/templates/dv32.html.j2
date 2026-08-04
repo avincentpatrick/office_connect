@@ -1,0 +1,143 @@
+{# Disbursement Voucher — GAM Vol. II, Appendix 32 (checklist code DV-32).
+
+   The DV is the payment instrument, so it is the document where a wrong number
+   does real damage. Every figure here is printed straight from the server's
+   `totals` snapshot; nothing on this page is summed, netted or rounded at render
+   time. `to_reimburse` and `to_refund` in particular are computed by
+   `services/per_diem.py::settle` — printing `grand - advance` here instead would
+   be a second implementation of settlement, free to drift from the first.
+
+   Boxes A/B/C are printed blank. Certification capture is R-6, where the
+   signatory chain per amount tier is settled with the resident COA auditor; a
+   pre-filled name in a certification box the system cannot yet enforce would
+   assert something untrue. #}
+{% extends "_base.html.j2" %}
+
+{% block content %}
+<div class="field-grid">
+  <span class="field-label">Payee</span>
+  <span class="field-value">{{ claimant.full_name }}</span>
+  <span class="field-label">Employee no.</span>
+  <span class="field-value">{{ claimant.employee_no or "—" }}</span>
+
+  <span class="field-label">Position</span>
+  <span class="field-value">{{ claimant.position_title or "—" }}</span>
+  <span class="field-label">Division</span>
+  <span class="field-value">{{ claimant.division or "—" }}</span>
+
+  <span class="field-label">Fund source</span>
+  <span class="field-value">{{ claim.fund_source or "—" }}</span>
+  <span class="field-label">Travel order</span>
+  <span class="field-value">
+    {{ claim.dpo_no or "—" }}
+    {% if claim.dpo_date %}dated {{ claim.dpo_date | manila_date }}{% endif %}
+  </span>
+</div>
+
+<h2>Particulars</h2>
+<p>
+  Reimbursement of travelling expenses for official travel to
+  {{ claim.destination or "—" }},
+  {{ claim.date_depart | manila_date }} – {{ claim.date_return | manila_date }}.
+</p>
+<p>{{ claim.purpose or "—" }}</p>
+
+<h2>Computation</h2>
+<table>
+  <tbody>
+    <tr>
+      <td>Per diem</td>
+      <td class="amount">{{ totals.per_diem | money }}</td>
+    </tr>
+    <tr>
+      <td>Transport</td>
+      <td class="amount">{{ totals.transport | money }}</td>
+    </tr>
+    <tr>
+      <td>Other expenses</td>
+      <td class="amount">{{ totals.other | money }}</td>
+    </tr>
+    <tr class="total">
+      <td>Total claim</td>
+      <td class="amount">{{ totals.grand | money }}</td>
+    </tr>
+    {% if totals.advance %}
+    <tr>
+      <td>Less: cash advance</td>
+      <td class="amount">({{ totals.advance | money }})</td>
+    </tr>
+    {% endif %}
+    <tr class="total">
+      <td>{% if totals.to_refund and totals.to_refund != "0.00" %}Amount refundable
+          {% else %}Amount due the payee{% endif %}</td>
+      <td class="amount">
+        {% if totals.to_refund and totals.to_refund != "0.00" %}
+        {{ totals.to_refund | money }}
+        {% else %}
+        {{ totals.to_reimburse | money }}
+        {% endif %}
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+{% if totals.days %}
+<h2>Per-diem breakdown</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Day type</th>
+      <th>Region / cluster</th>
+      <th class="amount">Daily rate</th>
+      <th class="amount">%</th>
+      <th class="amount">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for day in totals.days %}
+    <tr>
+      <td>{{ day.date | manila_date }}</td>
+      <td>{{ day.day_type or "—" }}</td>
+      <td>{{ day.region_code or "—" }}{% if day.cluster %} / {{ day.cluster }}{% endif %}</td>
+      <td class="amount">{{ day.daily_rate | money }}</td>
+      <td class="amount">{{ day.pct if day.pct is not none else "—" }}</td>
+      <td class="amount">{{ day.amount | money }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="total">
+      <td colspan="5">Total per diem</td>
+      <td class="amount">{{ totals.per_diem | money }}</td>
+    </tr>
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Certification</h2>
+<div class="signature-row">
+  <div class="signature-block">
+    <p class="signature-role"><strong>A. Certified</strong> — expenses necessary,
+      lawful and incurred under my direct supervision.</p>
+    <div class="signature-line"></div>
+    <p class="signature-role">Immediate supervisor</p>
+  </div>
+  <div class="signature-block">
+    <p class="signature-role"><strong>B. Certified</strong> — supporting documents
+      complete; cash available.</p>
+    <div class="signature-line"></div>
+    <p class="signature-role">Head, Accounting Unit</p>
+  </div>
+</div>
+<div class="signature-row">
+  <div class="signature-block">
+    <p class="signature-role"><strong>C. Approved</strong> for payment.</p>
+    <div class="signature-line"></div>
+    <p class="signature-role">Head of Agency / authorised representative</p>
+  </div>
+  <div class="signature-block">
+    <p class="signature-role"><strong>D. Received</strong> payment.</p>
+    <div class="signature-line"></div>
+    <p class="signature-role">{{ claimant.full_name }}</p>
+  </div>
+</div>
+{% endblock %}

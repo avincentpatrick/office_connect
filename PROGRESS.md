@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C R-5: template auto-assembly — core-service #8 (WeasyPrint → PDF in Celery) + the frozen-snapshot signature service (#3) + the printable packet, which flips the three `generated_doc` checklist items from inert to Generated.**
+> **Resume Office-Connect — Stage C R-5-packet: the combined printable packet + the §9.2 approver-screen PDF preview, closing module-doc row 58 and completing R-5.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,139 +10,135 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **Stage C IN PROGRESS** — **R-1 ✅ + R-2 ✅ (engine/shell/wizard) +
-  R-3 ✅ + R-4 ✅ (engine core/app/screens)**. The claim's whole life runs over
-  HTTP *and* is now **gated on its documentary packet**: file → 5-step wizard →
-  **Documents** → submit (refused if a required item is missing) → approve/return
-  → resubmit → hand to FMS → paid & closed. **Migration head `0017`.**
-  **Verified: pytest 616/616 (+146) on a freshly migrated scratch database,
-  lint-imports 3/3, `0017` reversible + `alembic check` clean, FE gate green (137
-  tests, +41), and a 19/19 live smoke** driving refused-submit → upload →
-  submit → holder-scoped download → approve-past-a-flag.
-  **`module.reimbursement` is ON in dev** (prod default stays OFF).
-  **NOT pushed** — push cadence: **once at the Stage C QA gate**. Master Plan v1
-  in force.
-- **Last session:** #18 — 2026-08-03 — **Stage C R-3: the checklist engine +
-  uploads**. **Core-service #7 shipped as a PURE core package**
-  (`office_connect/core/checklist/`): `grammar.py` (the closed spec §5.3 operator
-  set `always`/`if`/`any`/`all` × `eq`/`contains`/`gt`), `checks.py` (all six
-  auto-check types — four real, two registered-but-inert with named reasons),
-  `engine.py` (idempotent create/keep/restore/make_dormant reconciliation +
-  the blocking rule). Dataclasses in, dataclasses out — **core imports no module
-  table**, so the seam holds by construction and DTWIS/QMS/Supply inherit the
-  grammar, the check semantics and the reconciliation algorithm without the
-  storage. Module side: `checklist_facts.py` (the published, versioned fact
-  contract the catalog's JSONB references BY NAME), `checklist.py` (materialize /
-  attach / detach / the two gate asserts), `attachments.py` (the core-attachments
-  seam + the `reimb_claim` holder authorizer — **zero core router change**, as
-  `core/attachments/authz.py` promised at Stage B). **The hard submit gate** sits
-  after compute and before `start_instance`, so a refused submit creates no
-  instance and burns no `RB-` number. FE: the wizard's 5th **Documents** step
-  (grouped GOV.UK task list with per-item upload), the Review gate with
-  per-blocker deep links, and the approver's amber flag / red missing-document
-  callouts. **Docs: api-standards §9b NEW; ui-standards §3 rows 20–21 + the
-  TaskList and Button amendments; module doc +17 delta rows, rows 45 and §9.4
-  CLOSED.**
-- **Decisions this session:** kickoff (user-confirmed): **pure grammar in core**
-  over generic `core_checklist_*` tables (storage promotion deferred to Stage E,
-  when a second consumer can say which columns are common); **hard 422 gate**
-  over advisory; **waivers deferred**; **four computable auto-checks**, with
-  `keyword_absent` (OCR, R-9) and `deadline_check` (R-6) registered but inert.
-  Design: **blocking is computed from evidence state, never from the `status`
-  column** — which is why `auto_flagged` counts as done, check results are never
-  persisted, and no `not_applicable` value or check-results column was needed;
-  **`generated_doc` never blocks** (a system-produced artifact cannot gate entry
-  to the workflow that produces it — without this the three always-on seed rows
-  would have made every claim unsubmittable); **approve reads persisted rows and
-  never re-materializes** (workflow-standards §9); **an unparseable rule fails
-  OPEN with a visible flag**, because with waivers deferred fail-closed would
-  strand a claim with no path — flips to fail-closed when the R-9 catalog editor
-  and waivers ship together; **the module owns its upload endpoint** (api-standards
-  §9b); **`GET /checklist` writes nothing**.
-- **Bugs fixed en route:** (1) **`reimb_attachments.retention_class` defaulted to
-  `financial_10yr`, which is not a key of `RETENTION_CLASSES`** — `retain_until()`
-  fell through its unknown-class fail-safe, so every claim attachment would have
-  been permanently non-disposable and mislabeled in the disposal report. Fixed in
-  `0017` while the table still had zero rows. (2) `_cmp_eq` let Python's
-  `True == 1` satisfy a boolean rule with an integer.
+- **Phase:** **Stage C IN PROGRESS** — **R-1 ✅ + R-2 ✅ + R-3 ✅ + R-4 ✅ +
+  R-5-gen ✅**. **Objective 1 is live: the module now writes its own paperwork.**
+  A claim runs file → 5-step wizard → Documents → submit (refused if a required
+  item is missing) → approve/return → resubmit → FMS → paid & closed, and the
+  three `generated_doc` items (IOT-45 / AR-01 / DV-32) are no longer inert —
+  they render as real PDFs, preview inline, and regenerate authoritatively at
+  submit. **Migration head `0018`.**
+  **Verified: pytest 649 passed (+34) on a freshly migrated scratch database
+  with 1 PRE-EXISTING failure (see below), lint-imports 3/3, `0018` reversible +
+  `alembic check` clean, FE gate green (tsc + eslint + 140 vitest, +3), and a
+  23/23 live smoke** through the real Celery worker and real WeasyPrint.
+  **`module.reimbursement` is ON in dev** (it had been switched OFF in the dev DB;
+  re-enabled this session via `ops.bootstrap set-flag`). Prod default stays OFF.
+  **NOT pushed** — push cadence: **once at the Stage C QA gate**.
+- **Last session:** #19 — 2026-08-04 — **Stage C R-5-gen: template auto-assembly**.
+  Shipped **core-service #8** (`core/documents/` — an ENGINE, not a form library:
+  consumers register their own template dir + `DocumentSpec`s, so core renders a
+  GAM form without ever learning what a claim is; autoescape-on + `StrictUndefined`
+  Jinja; print stylesheet built from `core/ui/tokens.py` so PDFs inherit tenant
+  branding with no raw hex; **injectable** `PdfRenderer` with WeasyPrint lazy-imported
+  inside it, which is what lets the suite run on a Windows host with no Pango) and
+  the **snapshot half of core-service #3** (`core_document_snapshots` — freeze /
+  supersede / void, `stale_snapshots()` as the modified-after-signature re-flag).
+  Module side: `documents/` (context + three templates + the orchestration),
+  `reimb_template_maps` as a **binding** table (the Jinja template IS the field map,
+  so the spec's placeholder dictionary was not rebuilt), `checklist.mark_generated`,
+  and the submit/resubmit enqueue hooks. **Docs: api-standards §9c NEW;
+  tech-stack §2 + §3; ui-standards §3 usage note; module doc +9 delta rows with
+  row 31 CLOSED; master-plan #8 and #3 marked SHIPPED.**
+- **Decisions this session** (all four user-confirmed at kickoff): **WeasyPrint +
+  Jinja2, Drive dropped from the generation path entirely** (master-plan §1.1 #8
+  outranks the reference spec on precedence); **draft pre-submit + authoritative
+  regeneration at submit** — the only way to honour §9.3 step 4's in-wizard
+  `Generated ✓` cards when `ref_no` is not allocated until submit; **snapshot half
+  of #3 now, signature capture at R-6** (the A/B/C chain is still an open question
+  with the resident COA auditor — building it now would encode a chain nobody has
+  confirmed); **R-5 split into R-5-gen / R-5-packet**, mirroring R-2 and R-4.
+  Design: **two hashes** (bytes = tamper evidence, canonical-context fingerprint =
+  change detection, because PDF bytes embed a creation timestamp and could never
+  answer “did the data move?”) — the fingerprint is also what makes generation
+  idempotent; **one new core column doing three jobs** (`core_attachments.origin`:
+  born-clean scan, inline-preview disposition, and excluding generated files from
+  the evidence tally); **`superseded` kept distinct from `voided`** because a
+  routine reissue and an invalidate-after-edit are exactly the two things an
+  auditor needs to tell apart.
+- **Bug found by the live smoke, not the unit tests:** packet invalidation was keyed
+  on `_COMPUTE_INPUTS`, but **`purpose` is printed on all three documents and moves
+  no money** — so editing it left an ACTIVE snapshot asserting a purpose the claim no
+  longer had. `drafts.update_draft_fields` now tracks money-staleness and
+  packet-staleness as two separate questions. Regression test added.
 - **Blockers / waiting on user:** none.
-- **⚠ Open question for the accountant / resident COA auditor (not a coding
-  decision):** **CTC-47** ("Certificate of Travel Completed") is seeded
-  `claim_kind='reimbursement'`, `{"always": true}`, `external_wet_sign` — so it is
-  a permanent always-on submit blocker. But it is signed *after* the trip and
-  reads like a liquidation artifact. Built as seeded (spec-faithful); re-scoping
-  it to liquidation is a policy call.
-- **⚠ Known issue (found session 17, unchanged):** tests commit into the shared
-  dev database and nothing truncates between runs, so escalated workflow steps
-  accumulate and `sweep_sla_reminders`' `ORDER BY WorkflowStep.id ASC LIMIT 200`
-  makes `test_reminder_ladder_counts_working_days` fail **on dev** while passing
-  on a clean DB (re-confirmed this session: **616/616 on a fresh scratch
-  database**, 1 failure on dev). Two separable problems: (a) test isolation;
-  (b) **a real production flaw** — ordering the nudge budget by insertion id means
-  that once ~200 steps are permanently stuck, newly-overdue items are never
-  nudged, the exact opposite of spec §7.5. Most-overdue-first (`sla_due_at ASC`)
-  is the semantically right priority. Still untouched deliberately.
+- **⚠ CORRECTION to the session-18 note — `test_reminder_ladder_counts_working_days`
+  is NOT a dev-contamination artefact.** It fails on a **freshly created, freshly
+  migrated database**, in isolation, with `NoResultFound` — and it fails identically
+  on **stashed (pre-R-5) code**, so it is not a regression from this session. The
+  session-18 characterisation (“fails on dev, passes on a clean DB”) no longer holds;
+  something has moved under it. Deliberately left untouched — diagnosing the SLA
+  ladder is R-6/hardening work, and changing reminder semantics mid-R-5 would be
+  scope creep. **The separable production flaw named in session 17 still stands:**
+  ordering the nudge budget by `WorkflowStep.id ASC LIMIT 200` means that once ~200
+  steps are permanently stuck, newly-overdue items are never nudged — the exact
+  opposite of spec §7.5. Most-overdue-first (`sla_due_at ASC`) is the semantically
+  right priority.
+- **⚠ Open question for the accountant / resident COA auditor (unchanged, not a
+  coding decision):** **CTC-47** (“Certificate of Travel Completed”) is seeded
+  `claim_kind='reimbursement'`, `{"always": true}`, `external_wet_sign` — so it is a
+  permanent always-on submit blocker. But it is signed *after* the trip and reads
+  like a liquidation artifact. Built as seeded (spec-faithful); re-scoping it to
+  liquidation is a policy call.
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS — DONE: the shared core
+Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS - DONE: the shared core
 workflow engine (#11), R-1 (#12), R-2-engine (#13), R-2-shell (#14), R-4-app (#15),
-R-2-wizard (#16), R-4-screens (#17) and R-3 (#18). The claim's whole life runs over HTTP
-and is gated on its documentary packet: file → 5-step wizard (Trip → Itinerary → Money →
-Documents → Review) → submit (422 naming every missing required item) → approve/return
-with taxonomy reasons and amber auto-check callouts → resubmit → FMS → paid & closed.
-What is MISSING is Objective 1: the module still generates NO paperwork. Three checklist
-items (IOT-45 Itinerary of Travel, AR-01 accomplishment report, DV-32 Disbursement
-Voucher) are seeded `evidence='generated_doc'` and are deliberately excluded from the
-submit gate precisely because nothing generates them yet. R-5 is what flips them from
-inert to `Generated`.
+R-2-wizard (#16), R-4-screens (#17), R-3 (#18) and R-5-gen (#19).
+R-5-gen shipped core-service #8 (template -> PDF) and the SNAPSHOT HALF of core-service
+#3 (frozen snapshots). The three generated_doc checklist items (IOT-45 Itinerary,
+AR-01 accomplishment report, DV-32 Disbursement Voucher) now render as real PDFs,
+preview inline on the Documents step, and are regenerated authoritatively at submit.
+What is MISSING is the other half of what 9.2/9.3 promise: there is no COMBINED
+printable packet (one PDF an Admin Officer can print and walk to Accounting), and the
+approver still has no packet preview on /claims/:id - module-doc row 58 deferred it to
+R-5 and R-5-gen deliberately left it. NEXT_ACTION[admin_review] already reads
+'Final check & print packet', pointing at a screen that cannot yet print a packet.
 Available to build on:
-CORE — attachments (#2: upload/scan/store, content-addressed) is the natural home for a
-generated PDF; `core/checklist/` (#7) already has a `generated` status that outranks an
-upload and survives an item becoming inapplicable; `core/reference_numbers.py` (#5);
-`core/audit.py` (hash-chained). NOT YET BUILT: core-service #8 (template → PDF:
-WeasyPrint in Celery, NEVER in the request path, never wkhtmltopdf; Jinja2 + design
-tokens; print-faithful GAM appendices) and core-service #3 (frozen-snapshot signatures:
-export → PDF → SHA-256 → snapshot + identity + timestamp, with a "modified after
-signature" re-flag). Spec §10 also names `reimb_template_maps` (a table R-1 created).
-MODULE — `services/checklist.py::refresh_checklist` is where a generated document sets
-`status='generated'`; `reimb_attachments` already joins a claim to a core attachment;
-`ops/` is where Celery tasks live (core may not import the worker — use the
-register_enqueuer/register_sla_enqueuer injection pattern).
-FRONTEND — the Documents step renders `evidence='generated_doc'` items today with "The
-system will generate this with your printable packet. Nothing for you to do." — that copy
-is the seam R-5 replaces with a Generated card + preview. `FileUpload`/`Callout` are
-inventory rows 20–21; `TaskList` items take `action`/`detail`/`id`.
-Migration head 0017. pytest 616/616 on a clean DB, lint-imports 3/3, FE gate green (137).
+CORE - core/documents/ (#8): register_document/register_template_dir, render_document
+(injectable renderer - pass a fake in tests, WeasyPrint is lazy-imported), the
+token-built print stylesheet, and core/documents/queue.py's register_enqueuer seam.
+core/documents/snapshots.py (#3): freeze_snapshot / void_snapshots / active_snapshots /
+stale_snapshots. core_attachments.origin='generated' makes a PDF born-clean AND
+inline-servable (api-standards 9c) - a packet is just another generated document, so it
+should ride the same path rather than inventing a second one. core/attachments (#2) -
+do not rebuild.
+MODULE - modules/reimbursement/documents/{registry,context,service}.py is where a fourth
+DocumentSpec ('reimb.packet') and its template would go; note generate_claim_documents
+iterates reimb_template_maps, so a packet that is NOT a checklist item needs a decision
+about whether it belongs in that table or beside it. ops/document_tasks.py already
+dispatches by subject_kind.
+FRONTEND - web/src/pages/reimbursement/ClaimPage.tsx renders DetailPage with sections
+Trip -> Itinerary -> Money; the packet preview is a fourth section or a rail Card.
+GeneratedDocCard.tsx is the existing preview affordance (link to a new tab, deliberately
+not an embedded frame on the wizard - the approver screen is where an EMBEDDED preview
+is warranted, and the ui-standards 4 z-index ladder applies: sticky page regions z-30 ->
+dialog overlay z-40 -> dialog content/toast z-50).
+Migration head 0018. pytest 649 on a clean DB (+1 pre-existing SLA-ladder failure,
+characterised in Current Status - NOT yours), lint-imports 3/3, FE gate green (140).
 Dev flag ON. Push cadence: once at the Stage C QA gate.
-Read CLAUDE.md, then docs/modules/reimbursement.md (delta register — note the
-`generated_doc` never-blocks row and the R-5 deferrals in it), master-plan §1.1
-core-services #8 (template→PDF) + #3 (frozen-snapshot signatures) + #2 (attachments — do
-not rebuild), api-standards §9/§9a/§9b, ui-standards §3 (inventory) + §4 (templates), and
-spec §10 (Template Auto-Assembly, Objective 1) + §5.7 + §9.3 step 4's "generated docs show
-as `Generated ✓` cards with preview".
-Task: Stage C R-5 — template auto-assembly + frozen snapshots.
-Build core-service #8 (WeasyPrint in a Celery task, Jinja2 templates on the design
-tokens, print-faithful GAM appendices) and core-service #3 (export → SHA-256 → immutable
-snapshot with signer identity + timestamp; regeneration voids prior snapshots and
-re-flags signature steps). Wire the reimbursement consumer: generate Appendix A
-(Itinerary), the accomplishment report and the DV from claim data, store each as a core
-attachment joined to the claim, and flip its checklist item to `generated`. Surface the
-generated packet on the Documents step as a Generated card with preview, and on the
-approver's screen as the packet PDF (§9.2 promised it at R-4-screens and it was deferred).
-Google-down / worker-down must degrade non-blockingly (§19.12 pattern): the claim saves,
-generation queues, the user sees a notice — never a 500 and never a blocked submit.
+Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - rows 58, 67 and the
+nine R-5 rows), master-plan 1.1 #8/#3/#2, api-standards 9/9a/9b/9c, ui-standards 3
+(inventory + the R-5 usage note) + 4 (templates + the z-index ladder), and spec 9.2
+(approval screen: 'single card: summary, computed totals, flags, packet PDF preview'),
+9.3 step 5, 10 and 19.12.
+Task: Stage C R-5-packet - the printable packet + the approver preview.
+Build the combined packet PDF (the three generated forms plus the claimant's uploaded
+evidence, in COA checklist order, with a cover sheet carrying the reference number,
+claimant, totals and the packet's own hash), store and freeze it exactly like the
+individual documents, and surface it (a) to the claimant on Review/confirmation and
+(b) to the approver on /claims/:id as the 9.2 preview. Decide and record whether the
+packet is a checklist-bound document or a claim-level artifact. Worker-down must degrade
+non-blockingly (19.12) - never a 500, never a blocked decision.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed.
-Open questions for the user (confirm at kickoff): (1) WeasyPrint + Jinja2 vs the spec's
-original Google-Docs-merge flow (the master plan already supersedes it — confirm we drop
-Drive from the generation path entirely); (2) whether generated documents should START
-blocking submit once they exist, or stay excluded (they are produced downstream of submit,
-so the honest answer is probably "stay excluded" — but it is a policy call);
-(3) whether R-5 also ships the §9.2 packet PDF preview on the approval screen, or that
-waits for the pipeline board.
+Open questions for the user (confirm at kickoff): (1) does the packet EMBED the
+claimant's uploaded receipts (real merge - needs a PDF concatenator and image->PDF
+conversion, and images are the common case) or only INDEX them; (2) is the packet
+regenerated on every claim change like the three forms, or produced on demand at
+admin_review only; (3) does the approver preview embed inline (iframe) or open in a new
+tab like the wizard's cards.
 ```
-
 
 ## Stage tracker *(rule 4 — commit per session, push per phase/stage gate)*
 
@@ -152,7 +148,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens) | 11–18 | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5-gen ✅** templates/snapshots) | 11–19 | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
@@ -173,6 +169,67 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-04 (session 19 — Stage C R-5-gen: template auto-assembly)** — shipped
+  **core-service #8** and the **snapshot half of core-service #3**, and with them
+  the module's Objective 1: a traveller enters trip facts once and the system
+  writes the paperwork. Kickoff choices (user-confirmed): **WeasyPrint + Jinja2,
+  Drive dropped entirely**; **draft pre-submit + authoritative regeneration at
+  submit**; **snapshot half of #3 now, signature capture at R-6**; **R-5 split**
+  into R-5-gen / R-5-packet.
+  - **`office_connect/core/documents/`** — an ENGINE, not a form library. Consumers
+    register a template directory and their own `DocumentSpec`s, so core renders a
+    GAM appendix without ever learning what a claim is; `lint-imports` (3/3) is the
+    proof, and it is the same inversion `core/attachments/authz.py` and
+    `core/checklist/` already use. Jinja runs **autoescape-on + `StrictUndefined`**:
+    the first stops a traveller's purpose text becoming markup in an official
+    document, the second stops a missing key printing a blank amount on a voucher.
+    The print stylesheet is built from `core/ui/tokens.py`, so standing rule 1
+    (“tokens only”) reaches print and a tenant's brand colour changes its PDFs.
+  - **The renderer is injected** (`renderer=None`, WeasyPrint lazy-imported inside
+    it). That one choice is why the entire suite still runs on a Windows dev host
+    with no Pango — tests pass a three-line fake — while production runs the real
+    thing in the container, which is the only place the research digest allows it.
+  - **Two hashes, deliberately.** `content_sha256` over the PDF bytes is tamper
+    evidence; `source_fingerprint` over the canonical render context is change
+    detection. PDF bytes embed a creation timestamp, so identical data renders to
+    different bytes — hashing output could never answer “did the data move?”. The
+    fingerprint is also what makes generation idempotent, so spec §10's “Celery
+    task, idempotent, 3 retries” costs nothing on a retry.
+  - **One new core column doing three jobs:** `core_attachments.origin`. Generated
+    bytes are born `clean` (rendered in-process from autoescaped templates — and in
+    prod `NullScanner` returns `error`, so leaving them `pending` would make every
+    generated packet permanently undownloadable wherever ClamAV is absent); only
+    generated PDFs are served `Content-Disposition: inline`, which is the only
+    reason preview works at all; and the evidence tally filters them out so a
+    system-produced artifact never counts as evidence a human supplied. Recorded as
+    **api-standards §9c**, which knowingly amends §9b's “zero core router change” —
+    how a blob is served is a property of the blob, and that is core's to know.
+  - **`generated` had no writer.** R-3 shipped the status, but `_states` derives it
+    from the very column `refresh_checklist` writes — a closed loop, which is
+    exactly why the three items sat inert. `mark_generated` is the entry point, and
+    `materialize_generated_item` is a deliberately SEPARATE door from
+    `_item_for_catalog`: a claimant still cannot upload an IOT-45, and the generator
+    still cannot manufacture a TO-01.
+  - **A bug the unit tests could not have found.** The live smoke caught that packet
+    invalidation was keyed on `_COMPUTE_INPUTS`, while `purpose` is printed on all
+    three documents and moves no money — so editing it left an ACTIVE snapshot
+    asserting a purpose the claim no longer had. `update_draft_fields` now asks two
+    questions instead of one: did MONEY move, and did any PRINTED field move.
+  - **`reimb_template_maps`** landed as a *binding* table (catalog code → registered
+    document key), not the spec's placeholder-merge map: under Jinja the template IS
+    the field mapping, and re-encoding it as JSONB would cost a second grammar to
+    validate for no gain. Module doc row 31 CLOSED.
+  - **Docs:** api-standards **§9c** NEW; tech-stack §2 (Jinja2 + weasyprint pins) and
+    §3 (the Pango/libffi/fonts apt layer, with the never-on-Windows rule);
+    ui-standards §3 usage note (why the Generated card is a composition, not a new
+    inventory row, and why it carries ONE chip); module doc **+9 delta rows**;
+    master-plan #8 and #3 marked SHIPPED.
+  - Verified: **pytest 649 passed (+34) on a freshly migrated scratch database**
+    (1 pre-existing SLA-ladder failure, proven not a regression by re-running the
+    stashed baseline on a pristine DB — see Current Status), lint-imports 3/3,
+    `0018` reversible + `alembic check` clean, FE gate green (tsc + eslint + **140
+    vitest**, +3), **23/23 live smoke** through the real worker and real WeasyPrint.
 
 - **2026-08-03 (session 18 — Stage C R-3: the checklist engine + uploads)** — built
   **core-service #7** and closed the two deferrals R-2-wizard and R-4-screens both

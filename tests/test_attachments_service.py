@@ -227,3 +227,122 @@ async def test_disposal_eligibility_report(app_session, tmp_path):
     assert held.attachment_id in by_id
     assert by_id[held.attachment_id].eligible is False
     assert by_id[held.attachment_id].legal_hold is True
+
+
+# --- R-5: provenance (origin) ------------------------------------------------
+
+_PDF = b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n"
+
+
+async def test_generated_bytes_are_born_clean_and_previewable(app_session, tmp_path):
+    """A system-rendered PDF needs no virus scan and may be served inline.
+
+    Provenance, not convenience: the bytes are produced in-process from
+    autoescaped templates and never leave it. Leaving them `pending` would be
+    actively harmful — in production NullScanner returns 'error', so a tenant
+    without ClamAV could never open a document the system generated for them.
+    """
+    settings = _settings(tmp_path)
+    storage = LocalVolumeStorageDriver(settings)
+    up = await service.upload_attachment(
+        app_session,
+        _PDF,
+        filename="RB-2026-0001_IOT-45.pdf",
+        declared_mime="application/pdf",
+        origin="generated",
+        settings=settings,
+        storage=storage,
+    )
+    await app_session.commit()
+    assert up.scan_status == "clean"
+
+    dl = await service.download_attachment(
+        app_session,
+        up.attachment_id,
+        authorize=_allow,
+        storage=storage,
+        settings=settings,
+    )
+    dl.stream.close()
+    # Inline is what makes preview possible at all — `attachment` downloads.
+    assert dl.disposition == "inline"
+    assert dl.content_type == "application/pdf"
+
+
+async def test_uploaded_pdfs_are_never_served_inline(app_session, tmp_path):
+    """A claimant's PDF can embed JavaScript; rendering it inline in this origin
+    is the stored-XSS pattern. Only provenance lifts that, and only server-side."""
+    settings = _settings(tmp_path)
+    storage = LocalVolumeStorageDriver(settings)
+    up = await service.upload_attachment(
+        app_session,
+        _PDF,
+        filename="receipt.pdf",
+        declared_mime="application/pdf",
+        settings=settings,
+        storage=storage,
+    )
+    await app_session.commit()
+    assert up.scan_status == "pending"  # uploads still scan
+
+    await service.process_attachment(
+        app_session,
+        up.attachment_id,
+        scanner=_CleanScanner(),
+        storage=storage,
+        settings=settings,
+    )
+    await app_session.commit()
+
+    dl = await service.download_attachment(
+        app_session,
+        up.attachment_id,
+        authorize=_allow,
+        storage=storage,
+        settings=settings,
+    )
+    dl.stream.close()
+    assert dl.disposition == "attachment"
+
+
+async def test_generated_output_still_passes_the_allowlist(app_session, tmp_path):
+    """origin='generated' relaxes the SCAN, never the type check.
+
+    A renderer bug that emitted HTML must still be rejected rather than stored
+    as a document and flipped to Generated.
+    """
+    settings = _settings(tmp_path)
+    with pytest.raises(RejectedUpload):
+        await service.upload_attachment(
+            app_session,
+            b"<html>not a pdf</html>",
+            filename="broken.pdf",
+            declared_mime="application/pdf",
+            origin="generated",
+            settings=settings,
+            storage=LocalVolumeStorageDriver(settings),
+        )
+
+
+async def test_processing_skips_a_generated_row(app_session, tmp_path):
+    """Idempotent by the existing terminal-status rule — no special case needed."""
+    settings = _settings(tmp_path)
+    storage = LocalVolumeStorageDriver(settings)
+    up = await service.upload_attachment(
+        app_session,
+        _PDF,
+        filename="doc.pdf",
+        declared_mime="application/pdf",
+        origin="generated",
+        settings=settings,
+        storage=storage,
+    )
+    await app_session.commit()
+    status = await service.process_attachment(
+        app_session,
+        up.attachment_id,
+        scanner=_InfectedScanner(),  # would condemn it if it ever ran
+        storage=storage,
+        settings=settings,
+    )
+    assert status == "clean"

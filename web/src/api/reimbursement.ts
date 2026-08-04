@@ -129,9 +129,18 @@ export interface ChecklistFile {
   byte_size: number;
   scan_status: ScanStatus;
   uploaded_at: string;
+  /**
+   * Where the bytes came from. 'generated' files are rendered by the server
+   * from claim data; they are born scan-clean and are the only ones the
+   * download route serves inline, so they are the only ones safe to preview
+   * in a frame.
+   */
+  origin: AttachmentOrigin;
   /** Null until the scan is clean — never offer a link that would 409. */
   download_path: string | null;
 }
+
+export type AttachmentOrigin = "uploaded" | "generated";
 
 export interface ChecklistItem {
   catalog_id: number;
@@ -459,6 +468,29 @@ export function uploadChecklistFile(
     `/reimbursement/claims/${id}/checklist/${catalogId}/attachments`,
     { method: "POST", body },
   );
+}
+
+/**
+ * Ask the server to prepare the claim's generated documents.
+ *
+ * Returns 202, not 200: rendering runs in the worker (WeasyPrint never sits in
+ * a request path), so the response carries the packet as it stands plus whether
+ * a worker actually took the job. `queued: false` is not an error — it is the
+ * honest signal that generation is unavailable, which the UI shows as a
+ * non-blocking notice rather than a spinner that never resolves.
+ */
+export function generateClaimDocuments(
+  id: number,
+): Promise<GenerateDocumentsResponse> {
+  return api<GenerateDocumentsResponse>(
+    `/reimbursement/claims/${id}/documents/generate`,
+    { method: "POST" },
+  );
+}
+
+export interface GenerateDocumentsResponse {
+  checklist: ChecklistResponse;
+  queued: boolean;
 }
 
 /** `fileId` is the reimb_attachments join row, not the core attachment id. */

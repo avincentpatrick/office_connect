@@ -8,6 +8,7 @@ from office_connect.core.models.activity_tag import ActivityTag, ActivityTagAssi
 from office_connect.core.models.attachment import Attachment
 from office_connect.core.models.audit_log import AuditLog
 from office_connect.core.models.compliance_deadline import ComplianceDeadline
+from office_connect.core.models.document_snapshot import DocumentSnapshot
 from office_connect.core.models.feature_flag import FeatureFlag
 from office_connect.core.models.holiday import Holiday
 from office_connect.core.models.login_attempt import LoginAttempt
@@ -46,6 +47,7 @@ __all__ = [
     "Attachment",
     "AuditLog",
     "ComplianceDeadline",
+    "DocumentSnapshot",
     "FeatureFlag",
     "Holiday",
     "LoginAttempt",

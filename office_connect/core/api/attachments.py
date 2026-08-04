@@ -203,8 +203,13 @@ async def download_attachment(
             dl.stream.close()
 
     ascii_name = dl.filename.encode("ascii", "ignore").decode() or "download"
+    # The service decides attachment-vs-inline from the row's provenance (R-5,
+    # api-standards §9c) — never from a query parameter, so a caller cannot ask
+    # for someone's uploaded PDF to be rendered in this origin. nosniff below
+    # keeps even an inline response pinned to the type we declare.
     disposition = (
-        f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(dl.filename)}'
+        f'{dl.disposition}; filename="{ascii_name}"; '
+        f"filename*=UTF-8''{quote(dl.filename)}"
     )
     return StreamingResponse(
         _iter(),

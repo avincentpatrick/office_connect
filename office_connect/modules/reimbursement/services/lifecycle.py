@@ -36,6 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from office_connect.core import workflow as wf
+from office_connect.core.documents import generate_on_commit
 from office_connect.core.models import (
     Staff,
     User,
@@ -56,6 +57,7 @@ from office_connect.modules.reimbursement.models import (
     ReimbReturnReasonCatalog,
     ReimbStatusHistory,
 )
+from office_connect.modules.reimbursement.services import attachments as evidence
 from office_connect.modules.reimbursement.services import checklist
 from office_connect.modules.reimbursement.services import errors
 from office_connect.modules.reimbursement.services import status as st
@@ -437,6 +439,16 @@ async def submit_claim(
     )
     await _sync_claim_from_event(session, claim=claim, event=event, now=now)
     await _stamp_sla(session, claim=claim, instance=instance, event=event, now=now)
+
+    # The AUTHORITATIVE packet (R-5). Queued after commit, never rendered here:
+    # WeasyPrint takes seconds and must never sit in a request path, and a
+    # worker or renderer outage must not be able to fail a submit (spec §19.12 —
+    # "claim saves anyway, generation queues, user sees a non-blocking notice").
+    #
+    # Placed AFTER ref_no allocation on purpose. A document generated before the
+    # number exists is a draft; this pass is the one that prints RB-YYYY-NNNN on
+    # the filed original and supersedes whatever the claimant previewed.
+    generate_on_commit(session, evidence.HOLDER_KIND, claim.id)
     return claim
 
 
@@ -558,6 +570,15 @@ async def claim_action(
 
     await _sync_claim_from_event(session, claim=claim, event=event, now=now)
     await _stamp_sla(session, claim=claim, instance=instance, event=event, now=now)
+
+    if action == "resubmit" and not replayed:
+        # Spec §10: "regeneration after any edit voids prior snapshots and
+        # re-flags signature steps". The claimant has been fixing the claim, so
+        # the packet that was approved-and-returned no longer describes it. The
+        # generator is idempotent, so an unchanged document costs nothing; a
+        # changed one supersedes its predecessor and the fresh chain (the engine
+        # bumped revision_no) approves against the new copy.
+        generate_on_commit(session, evidence.HOLDER_KIND, claim.id)
     return claim
 
 

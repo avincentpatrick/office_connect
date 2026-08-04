@@ -22,6 +22,7 @@ from typing import Any, Mapping, Sequence
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from office_connect.core.documents import void_snapshots
 from office_connect.core.models import Activity
 from office_connect.core.money import to_money
 from office_connect.core.session import set_audit_context
@@ -30,6 +31,7 @@ from office_connect.modules.reimbursement.models import (
     ReimbClaim,
     ReimbItineraryLeg,
 )
+from office_connect.modules.reimbursement.services import attachments as evidence
 from office_connect.modules.reimbursement.services import errors
 from office_connect.modules.reimbursement.services import status as st
 from office_connect.modules.reimbursement.services.compute import (
@@ -141,7 +143,14 @@ async def update_draft_fields(
     if unknown:
         raise ValueError(f"non-editable fields: {sorted(unknown)}")
 
+    # Two different questions, deliberately kept apart:
+    #   `stale`   — did a MONEY input move? Then the totals snapshot is wrong.
+    #   `changed` — did ANY printed field move? Then the frozen packet is wrong.
+    # They are not the same set. `purpose` is printed on all three documents but
+    # affects no arithmetic; conflating the two would leave an active snapshot
+    # asserting a purpose the claim no longer has.
     stale = False
+    changed = False
     for field, value in changes.items():
         if value is None and field in _NON_NULLABLE:
             continue
@@ -157,6 +166,7 @@ async def update_draft_fields(
                 raise errors.unknown_activity(value)
         if getattr(claim, field) != value:
             stale = stale or field in _COMPUTE_INPUTS
+            changed = True
             setattr(claim, field, value)
 
     if (
@@ -168,6 +178,8 @@ async def update_draft_fields(
 
     if stale and claim.totals:
         claim.totals = {}
+    if changed:
+        await invalidate_packet(session, claim=claim, actor_user_id=actor_user_id)
     await session.flush()
     return claim
 
@@ -237,8 +249,37 @@ async def replace_legs(
 
     if claim.totals:
         claim.totals = {}
+    await invalidate_packet(session, claim=claim, actor_user_id=actor_user_id)
     await session.flush()
     return claim
+
+
+async def invalidate_packet(
+    session: AsyncSession, *, claim: ReimbClaim, actor_user_id: int
+) -> None:
+    """Void every live snapshot because the claim changed (spec §10).
+
+    A generated document is a photograph of the claim at one moment. Edit the
+    claim and the photograph is out of date — so it stops being the official
+    copy immediately, rather than staying active until someone happens to
+    regenerate. Leaving it active would let a returned-and-edited claim carry
+    its old approved packet forward, which is exactly what §7 rule 6 forbids.
+
+    Fires on ANY field change, not only the money ones: every editable field on
+    this claim is printed somewhere in the packet. Voiding slightly too eagerly
+    costs one re-render of an idempotent job; voiding too rarely leaves a
+    document asserting facts the claim no longer contains.
+
+    Deliberately quiet — no error if there is nothing to void, which is the
+    common case on a first-time draft edit.
+    """
+    await void_snapshots(
+        session,
+        subject_kind=evidence.HOLDER_KIND,
+        subject_id=claim.id,
+        reason="claim inputs changed",
+        actor_id=actor_user_id,
+    )
 
 
 async def recompute_totals(
