@@ -29,7 +29,7 @@ from office_connect.modules.reimbursement.api.schemas import (
     LegsReplaceIn,
 )
 from office_connect.modules.reimbursement.services import drafts, lifecycle
-from office_connect.modules.reimbursement.services import errors
+from office_connect.modules.reimbursement.services import errors, settlement
 from office_connect.modules.reimbursement.services import status as st
 
 router = APIRouter()
@@ -172,6 +172,32 @@ async def cancel_claim(
         claim_id=claim_id,
         actor_user_id=principal.user_id,
         comment=body.comment,
+    )
+    detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
+    await session.commit()
+    return detail
+
+
+@router.post(
+    "/claims/{claim_id}/spawn-reimbursement",
+    response_model=ClaimDetail,
+    status_code=201,
+)
+async def spawn_reimbursement_claim(
+    claim_id: int,
+    principal: Principal = Depends(require_permission("reimb.claim.create")),
+    session: AsyncSession = Depends(get_session),
+):
+    """Spec §6.2's "one tap, pre-filled" — claim the difference the advance did
+    not cover (R-6-liq-settle).
+
+    On the GATED router, unlike ``/settle``: this creates NEW work rather than
+    finishing an in-flight decision, and new work is exactly what a flag-OFF
+    module should refuse. Owner-only, enforced in the service — the traveller is
+    the maker of their own claim.
+    """
+    claim = await settlement.spawn_reimbursement(
+        session, liquidation_claim_id=claim_id, actor_user_id=principal.user_id
     )
     detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
     await session.commit()

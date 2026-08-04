@@ -62,3 +62,27 @@ class ReimbCashAdvance(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     deadline_basis: Mapped[str | None]
     status: Mapped[str] = mapped_column(CashAdvanceStatus, server_default="open")
     settled_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    # --- the settlement record (R-6-liq-settle, migration 0020) ----------------
+    # WHO closed the financial record, as a column rather than an inference from
+    # `updated_by` — rule 5 asks for ownership columns AND the audit chain, and
+    # `updated_by` is a trace left by whoever last touched the row, not a fact
+    # about the closure. Same argument `settled_at` has always made.
+    settled_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )
+    # 'refund' | 'exact' | 'over_advance' — WHICH branch of spec §6.2 this
+    # settlement took, pinned at the moment it was recorded. Plain varchar for the
+    # `deadline_basis` reason: the legal set is decided by services/per_diem.py's
+    # `settle`, not by DDL, and a PG enum would demand a migration the day a
+    # fourth outcome is confirmed with the resident COA auditor.
+    settlement_mode: Mapped[str | None]
+    # The DOH official receipt evidencing a refund of the excess advance (COA
+    # Circular 97-002). NULL on every other mode — an OR on a settlement where
+    # nothing was refunded would be a receipt for a payment that never happened.
+    refund_or_no: Mapped[str | None]
+    refund_or_date: Mapped[date | None] = mapped_column(Date)
+    # The peso figure that receipt evidences. Pinned rather than re-derived from
+    # the claim's `totals`, for the same reason `deadline_date` is pinned: what
+    # was actually refunded is a historical fact, and a later recomputation must
+    # not be able to re-explain it.
+    refund_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))

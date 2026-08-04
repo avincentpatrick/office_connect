@@ -54,7 +54,12 @@
 <h2>Purpose of travel</h2>
 <p>{{ claim.purpose or "—" }}</p>
 
-<h2>Amount claimed</h2>
+{# The nouns come from `money_labels` (documents/context.py::MONEY_LABELS), not
+   from literals: a liquidation reports what was SPENT against an advance, a
+   reimbursement what is CLAIMED. Same figures, same table, different sentence —
+   forking the whole block behind `{% if claim.kind %}` would duplicate the
+   money markup and guarantee the two copies drift. #}
+<h2>{{ money_labels.heading }}</h2>
 <table>
   <tbody>
     <tr>
@@ -70,18 +75,20 @@
       <td class="amount">{{ totals.other | money }}</td>
     </tr>
     <tr class="total">
-      <td>Total claim</td>
+      <td>{{ money_labels.total }}</td>
       <td class="amount">{{ totals.grand | money }}</td>
     </tr>
-    {% if totals.advance %}
+    {# `!= "0.00"` because money crosses in as a 2-dp STRING and "0.00" is
+       truthy — the same bug `_dv32_body.html.j2` carried. #}
+    {% if totals.advance and totals.advance != "0.00" %}
     <tr>
       <td>Less: cash advance</td>
       <td class="amount">({{ totals.advance | money }})</td>
     </tr>
     {% endif %}
     <tr class="total">
-      <td>{% if totals.to_refund and totals.to_refund != "0.00" %}Amount refundable
-          {% else %}Amount due the payee{% endif %}</td>
+      <td>{% if totals.to_refund and totals.to_refund != "0.00" %}{{ money_labels.refundable }}
+          {% else %}{{ money_labels.payable }}{% endif %}</td>
       <td class="amount">
         {% if totals.to_refund and totals.to_refund != "0.00" %}
         {{ totals.to_refund | money }}

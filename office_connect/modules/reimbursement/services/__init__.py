@@ -26,6 +26,7 @@ from office_connect.modules.reimbursement.services.checklist import (
     refresh_checklist,
 )
 from office_connect.modules.reimbursement.services.cash_advance import (
+    SETTLEMENT_MODES,
     UNLIQUIDATED_STATUSES,
     create_cash_advance,
     get_cash_advance,
@@ -33,6 +34,7 @@ from office_connect.modules.reimbursement.services.cash_advance import (
     list_cash_advances,
     mark_liquidation_started,
     mark_overdue,
+    mark_settled,
     open_cash_advance_for,
     overdue_note,
     remirror_deadline,
@@ -75,8 +77,15 @@ from office_connect.modules.reimbursement.services.liquidation import (
 )
 from office_connect.modules.reimbursement.services.notify import (
     notify_escalation,
+    notify_settlement,
     sweep_liquidation_reminders,
     sweep_sla_reminders,
+)
+from office_connect.modules.reimbursement.services.settlement import (
+    record_settlement,
+    settlement_mode,
+    spawn_for_liquidation,
+    spawn_reimbursement,
 )
 from office_connect.modules.reimbursement.services.per_diem import (
     ConfigRow,
@@ -123,7 +132,9 @@ __all__ = [
     "list_cash_advances",
     "mark_liquidation_started",
     "mark_overdue",
+    "mark_settled",
     "notify_escalation",
+    "notify_settlement",
     "open_cash_advance_for",
     "overdue_note",
     "PerDiemResult",
@@ -131,6 +142,7 @@ __all__ = [
     "RateRow",
     "read_rule",
     "recompute_totals",
+    "record_settlement",
     "refresh_checklist",
     "RegionRow",
     "remirror_deadline",
@@ -138,6 +150,10 @@ __all__ = [
     "resolve_deadline",
     "resolve_holder",
     "settle",
+    "SETTLEMENT_MODES",
+    "settlement_mode",
+    "spawn_for_liquidation",
+    "spawn_reimbursement",
     "submit_claim",
     "sweep_liquidation_reminders",
     "sweep_sla_reminders",

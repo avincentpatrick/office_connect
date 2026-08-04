@@ -358,8 +358,18 @@ async def test_a_moved_deadline_re_mirrors_onto_linked_claims(
         date_return=RETURN,
         now=NOW,
     )
-    claim = await make_claim(app_session, claimant_id=accounting.staff.id)
+    claim = await make_claim(
+        app_session, claimant_id=accounting.staff.id, kind="liquidation"
+    )
     await ca.link_claim(app_session, claim=claim, cash_advance=advance)
+    # A "Reimbursement Due" spawn also points at the advance — it must, or its
+    # DV could not net it — but it answers no clock, so the re-mirror must skip
+    # it (R-6-liq-settle). Sitting in the same fixture, this is what stops the
+    # kind filter being "simplified" away.
+    spawn = await make_claim(
+        app_session, claimant_id=accounting.staff.id, kind="reimbursement"
+    )
+    await ca.link_claim(app_session, claim=spawn, cash_advance=advance)
 
     advance = await ca.update_cash_advance(
         app_session,
@@ -371,6 +381,7 @@ async def test_a_moved_deadline_re_mirrors_onto_linked_claims(
     updated = await ca.remirror_deadline(app_session, cash_advance=advance)
     assert updated == 1
     assert claim.liquidation_deadline == date(2026, 8, 9)
+    assert spawn.liquidation_deadline == date(2026, 8, 2)  # untouched
 
 
 async def test_re_dating_clears_a_stale_overdue_verdict(app_session, accounting):

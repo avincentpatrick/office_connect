@@ -387,3 +387,232 @@ async def test_returned_claim_resubmits_and_re_enters_the_chain(
     assert body["holder_kind"] == "user"
     assert body["holder_display"] == cast["approver"][0].email
     assert body["available_actions"] == []
+
+
+# --- R-6-liq-settle: the settlement route ----------------------------------
+
+
+async def _liquidation_at_fms(client, app_session, make_user, *, advance="8000.00"):
+    """A liquidation walked to ``handed_to_fms`` entirely over HTTP.
+
+    Same cast shape as ``_submitted_over_http``, but the claim is created by
+    LIQUIDATING an advance rather than by ``POST /claims`` — which is the point:
+    R-6-liq-chain put that door on the cash-advance card.
+
+    TWO admin-officer users, not one. Partly realism (the clerk who records a DV
+    is not necessarily the officer who certifies the liquidation), but mostly
+    mechanics: every login here mints a TOTP with ``pyotp.now()``, and the same
+    user logging in twice inside one 30-second window replays a code the server
+    correctly refuses. Each user logs in exactly once, in chain order.
+    """
+    office = await make_org_unit(app_session, kind="office")
+    division = await make_org_unit(app_session, kind="division", parent=office)
+    staff = await make_staff(app_session, division_id=division.id)
+    owner, owner_pw = await make_user(roles=("staff",), staff_id=staff.id)
+
+    approver, approver_pw, approver_secret = await _mfa_user(make_user)
+    await grant_scoped_role(
+        app_session, user=approver, role_code="approver", org_unit_id=division.id
+    )
+    accounting, accounting_pw, accounting_secret = await _mfa_user(make_user)
+    await grant_scoped_role(
+        app_session, user=accounting, role_code="admin_officer",
+        org_unit_id=office.id,
+    )
+    admin, admin_pw, admin_secret = await _mfa_user(make_user)
+    await grant_scoped_role(
+        app_session, user=admin, role_code="admin_officer", org_unit_id=office.id
+    )
+    await ensure_reimb_workflow(app_session)
+    await app_session.commit()
+
+    # Accounting records the advance…
+    await login(client, accounting, accounting_pw, accounting_secret)
+    recorded = await client.post(
+        f"{BASE}/cash-advances",
+        json={
+            "claimant_id": staff.id,
+            "amount": advance,
+            "dv_no": "DV-2026-0007",
+            "dv_date": "2026-06-25",
+            "date_return": "2026-07-03",
+        },
+        headers=CSRF,
+    )
+    assert recorded.status_code == 201, recorded.text
+    advance_id = recorded.json()["id"]
+
+    # …the traveller answers it.
+    await login(client, owner, owner_pw)
+    started = await client.post(
+        f"{BASE}/cash-advances/{advance_id}/liquidate", headers=CSRF
+    )
+    assert started.status_code == 201, started.text
+    cid = started.json()["id"]
+
+    await client.patch(
+        f"{BASE}/claims/{cid}",
+        json={
+            "purpose": "Regional immunization review",
+            "destination": "Butuan City",
+            "destination_region_code": "13",
+            "date_depart": "2026-07-01",
+        },
+        headers=CSRF,
+    )
+    await client.put(
+        f"{BASE}/claims/{cid}/legs",
+        json={
+            "legs": [
+                {
+                    "leg_date": "2026-07-01",
+                    "destination_region_code": "13",
+                    "transport_mode": "bus",
+                    "fare": "500.00",
+                },
+                {
+                    "leg_date": "2026-07-03",
+                    "transport_mode": "bus",
+                    "fare": "500.00",
+                },
+            ]
+        },
+        headers=CSRF,
+    )
+    await satisfy_packet_over_http(client, cid)
+    submitted = await client.post(f"{BASE}/claims/{cid}/submit", headers=CSRF)
+    assert submitted.status_code == 200, submitted.text
+
+    # Certification B, then C (the only mandatory comment in either chain).
+    await login(client, approver, approver_pw, approver_secret)
+    b = await client.post(f"{BASE}/claims/{cid}/approve", json={}, headers=CSRF)
+    assert b.status_code == 200, b.text
+    await login(client, admin, admin_pw, admin_secret)
+    c = await client.post(
+        f"{BASE}/claims/{cid}/approve",
+        json={"comment": "Signed by the Head, Accounting Unit; page filed."},
+        headers=CSRF,
+    )
+    assert c.status_code == 200, c.text
+    assert c.json()["status"] == "handed_to_fms"
+
+    return {
+        "claim_id": cid,
+        "advance_id": advance_id,
+        "owner": (owner, owner_pw, None),
+        "approver": (approver, approver_pw, approver_secret),
+        "accounting": (accounting, accounting_pw, accounting_secret),
+        # The session is left logged in as this one — the officer who recorded
+        # certification C is the one who settles.
+        "admin": (admin, admin_pw, admin_secret),
+    }
+
+
+async def test_the_settle_route_records_the_refund_and_closes_the_advance(
+    client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on
+):
+    cast = await _liquidation_at_fms(client, app_session, make_user)
+    cid = cast["claim_id"]
+
+    detail = (await client.get(f"{BASE}/claims/{cid}")).json()
+    # The verb the FE renders is `settle`, not `approve`: the approve is certain
+    # to fail here, and dropping it outright would leave no button at the one
+    # gate this actor must clear.
+    assert "settle" in detail["available_actions"]
+    assert "approve" not in detail["available_actions"]
+    assert detail["totals"]["to_refund"] == "1500.00"
+
+    refused = await client.post(f"{BASE}/claims/{cid}/settle", json={}, headers=CSRF)
+    assert refused.status_code == 422
+    assert refused.json()["error"]["code"] == "reimb_refund_receipt_required"
+
+    settled = await client.post(
+        f"{BASE}/claims/{cid}/settle",
+        json={"or_no": "OR-2026-1234", "or_date": "2026-07-09"},
+        headers=CSRF,
+    )
+    assert settled.status_code == 200, settled.text
+    body = settled.json()
+    assert body["status"] == "settled"
+    assert body["available_actions"] == []
+    advance = body["cash_advance"]
+    assert advance["status"] == "settled"
+    assert advance["settlement_mode"] == "refund"
+    assert advance["refund_or_no"] == "OR-2026-1234"
+    assert advance["refund_amount"] == "1500.00"
+    # A closed advance is not counting down to anything.
+    assert advance["deadline_state"] is None
+    assert advance["days_remaining"] is None
+
+
+async def test_a_bare_approve_at_fms_names_the_settle_route(
+    client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on
+):
+    cast = await _liquidation_at_fms(client, app_session, make_user)
+    cid = cast["claim_id"]
+    refused = await client.post(
+        f"{BASE}/claims/{cid}/approve", json={}, headers=CSRF
+    )
+    assert refused.status_code == 409
+    error = refused.json()["error"]
+    assert error["code"] == "reimb_settlement_required"
+    assert error["details"] == [{"claim_id": cid, "action": "settle"}]
+
+
+async def test_only_accounting_may_record_a_settlement(
+    client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on
+):
+    """Spec §3.2: "Record settlement (refund OR / payout) | Admin Officer,
+    System Admin". The traveller may read their liquidation and may not close
+    it, however much they would like the money."""
+    cast = await _liquidation_at_fms(client, app_session, make_user)
+    await login(client, *cast["owner"][0:2])
+    refused = await client.post(
+        f"{BASE}/claims/{cast['claim_id']}/settle",
+        json={"or_no": "OR-2026-1234", "or_date": "2026-07-09"},
+        headers=CSRF,
+    )
+    assert refused.status_code == 403
+
+
+async def test_an_over_advance_settles_then_spawns_over_http(
+    client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on
+):
+    """Spec §6.2's "one tap, pre-filled", end to end: ₱6,000 advanced against a
+    ₱6,500 trip leaves ₱500 owed, and the traveller claims it in one POST."""
+    cast = await _liquidation_at_fms(
+        client, app_session, make_user, advance="6000.00"
+    )
+    cid = cast["claim_id"]
+
+    settled = await client.post(f"{BASE}/claims/{cid}/settle", json={}, headers=CSRF)
+    assert settled.status_code == 200, settled.text
+    assert settled.json()["cash_advance"]["settlement_mode"] == "over_advance"
+
+    # The Admin Officer settled it; the TRAVELLER claims the difference.
+    await login(client, *cast["owner"][0:2])
+    spawned = await client.post(
+        f"{BASE}/claims/{cid}/spawn-reimbursement", headers=CSRF
+    )
+    assert spawned.status_code == 201, spawned.text
+    body = spawned.json()
+    assert body["kind"] == "reimbursement"
+    assert body["status"] == "draft"
+    assert body["spawned_from"]["claim_id"] == cid
+    # The trip carried over, and the money nets to the difference.
+    assert body["purpose"] == "Regional immunization review"
+    assert len(body["legs"]) == 2
+    assert body["totals"]["grand"] == "6500.00"
+    assert body["totals"]["advance"] == "6000.00"
+    assert body["totals"]["to_reimburse"] == "500.00"
+
+    # The liquidation now points back at it, from ONE response.
+    liquidation = (await client.get(f"{BASE}/claims/{cid}")).json()
+    assert liquidation["spawned_claim"]["claim_id"] == body["id"]
+
+    # A second tap is a named 409 that says where to go, never a duplicate.
+    again = await client.post(
+        f"{BASE}/claims/{cid}/spawn-reimbursement", headers=CSRF
+    )
+    assert again.status_code == 409
+    assert again.json()["error"]["code"] == "reimb_spawn_exists"

@@ -149,8 +149,18 @@ class CashAdvanceOut(BaseModel):
     status: str
     status_label: str
     settled_at: datetime | None = None
+    #: The settlement record (R-6-liq-settle). All four are null until the
+    #: advance is settled; `refund_or_*`/`refund_amount` stay null on the
+    #: `exact` and `over_advance` modes, where no money came back.
+    settlement_mode: str | None = None
+    refund_or_no: str | None = None
+    refund_or_date: date | None = None
+    refund_amount: str | None = None
     # The clock. All three are null together when there is no return date yet —
     # a trip that has not happened has no deadline, and a zero would be a lie.
+    # All three also go null once SETTLED: a closed advance is not counting down
+    # to anything, and leaving a red "Overdue" ring on a settled-but-late record
+    # would keep threatening a traveller who already answered.
     deadline_date: date | None = None
     deadline_basis: str | None = None
     days_remaining: int | None = None
@@ -173,6 +183,38 @@ class CashAdvanceOut(BaseModel):
 
 class CashAdvanceListOut(BaseModel):
     items: list[CashAdvanceOut]
+
+
+# --- R-6-liq-settle: recording the settlement --------------------------------
+
+
+class SettleIn(BaseModel):
+    """Close a liquidation and record how its money came out (spec §6.2).
+
+    Note what is deliberately ABSENT: the settlement MODE, and the figures. Both
+    are read from the claim's server-computed ``totals`` — a client that could
+    post "this was a refund of ₱1,266" could post a refund that never happened.
+    ``refund_amount`` is accepted only as an ECHO: supply it and the server
+    refuses on mismatch, which catches a stale screen recording a receipt
+    against the wrong number. Omit it and the server figure stands either way.
+    """
+
+    or_no: str | None = Field(default=None, max_length=100)
+    or_date: date | None = None
+    refund_amount: Decimal | None = Field(
+        default=None, ge=0, max_digits=12, decimal_places=2
+    )
+    comment: str | None = None
+    expected_version: int | None = None
+
+
+class SpawnedClaimOut(BaseModel):
+    """A pointer between the two halves of an over-advance (R-6-liq-settle)."""
+
+    claim_id: int
+    ref_no: str | None = None
+    status: str
+    status_label: str
 
 
 # --- Responses ---------------------------------------------------------------
@@ -383,6 +425,13 @@ class ClaimDetail(BaseModel):
     # a second request could disagree with the claim it sits beside. `None` is
     # the ordinary case: most claims are not against an advance.
     cash_advance: CashAdvanceOut | None = None
+    # --- R-6-liq-settle: the two halves of an over-advance, pointing at each
+    # other. `spawned_claim` rides a settled liquidation so the traveller sees
+    # either "₱X is due you" or the claim they already filed for it, from ONE
+    # response; `spawned_from` rides the reimbursement so an approver reading
+    # its DV can find the Liquidation Report the figure came from.
+    spawned_claim: SpawnedClaimOut | None = None
+    spawned_from: SpawnedClaimOut | None = None
     created_at: datetime
     updated_at: datetime
 

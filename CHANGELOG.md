@@ -12,6 +12,47 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-6-liq-settle — settling a liquidation** (2026-08-04): a
+  liquidation can now be **finished**. Once FMS has processed it, Accounting
+  records how the money actually came out, and that single act closes both the
+  liquidation and the cash advance behind it.
+  **Three outcomes, and the system works out which one applies.** If the
+  traveller spent less than the advance, the excess is refundable and the
+  **DOH official receipt number and date are required** — that receipt is what a
+  COA auditor traces from the Liquidation Report into the books, so it cannot be
+  skipped. If they spent exactly the advance, it closes with nothing owed either
+  way. If they spent **more**, the advance still closes and the difference is
+  recorded as due to them. Nobody types the amounts: they come from the same
+  server-side computation the claim has used all along, and a screen showing a
+  stale figure is caught and told to reload rather than filing a receipt against
+  the wrong number.
+  **"₱500 is due you" now leads somewhere.** A traveller whose trip cost more
+  than the advance is notified, and their settled liquidation offers **one tap**
+  to start the reimbursement claim for the difference — pre-filled with the same
+  trip and the same itinerary, and already netting the advance, so the voucher
+  reads the way an accountant expects: total claim, less cash advance, amount
+  due the payee. It arrives as a draft to finish in the usual five-step form.
+  **The Liquidation Report (GAM Appendix 44) is now produced.** It prints the
+  advance and the DV that funded it, what was actually spent, the netting, and —
+  once recorded — the official receipt for any refund. Generated before the
+  refund exists, it prints the blank receipt line the paper form has, plus a note
+  saying so; recording the settlement reissues it with the number filled in, and
+  the earlier copy is marked superseded rather than cancelled. The liquidation
+  packet now titles itself as one and uses the right wording for money spent
+  against an advance.
+  **Settled advances stop nagging.** A cash advance that has been closed no
+  longer shows a countdown or the overdue warning — it shows the date it closed.
+  Closing one also frees the traveller to be issued a new advance, which the law
+  allows only once the previous one is liquidated.
+
+### Fixed
+- **Every disbursement voucher printed a "Less: cash advance ₱0.00" line** even
+  on claims that never had one (2026-08-04). Corrected; vouchers for claims
+  without an advance no longer show the line at all.
+- A cash advance that was settled after its deadline kept showing a red
+  **Overdue** ring and the COA interest/salary-deduction warning indefinitely,
+  on a record the traveller had already answered (2026-08-04).
+
 - **Stage C R-6-liq-chain — liquidating a cash advance** (2026-08-04): the
   countdown now has something to count down *to*. A traveller who holds a cash
   advance can **start its liquidation from the advance itself** — the card that

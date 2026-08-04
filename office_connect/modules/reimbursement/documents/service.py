@@ -56,6 +56,7 @@ from office_connect.modules.reimbursement.documents.context import (
 from office_connect.modules.reimbursement.documents.registry import (
     PACKET,
     PACKET_TITLE,
+    PACKET_TITLES,
 )
 from office_connect.modules.reimbursement.models import (
     ReimbClaim,
@@ -91,13 +92,24 @@ class GeneratedDocument:
 async def _bindings(
     session: AsyncSession, *, claim_kind: str
 ) -> list[ReimbTemplateMap]:
-    """Active template bindings for a claim kind, in print order."""
+    """Active template bindings for a claim kind, in print order.
+
+    ``claim_kind IS NULL`` means "both kinds" (``models/templates.py``), and
+    matching it needs the explicit ``IS NULL`` arm: SQL ``IN (x, NULL)`` never
+    matches a NULL, so the previous ``.in_([claim_kind, None])`` made that
+    documented semantic unreachable. Fixed at R-6-liq-settle while the blast
+    radius was still provably zero (every seeded row names its kind), which is
+    when a predicate should be fixed — the failure mode is silent, and what goes
+    missing is a government form. Same shape as
+    ``services/checklist.py::_catalog``, which had it right all along.
+    """
     rows = (
         await session.execute(
             select(ReimbTemplateMap)
             .where(
                 ReimbTemplateMap.is_active.is_(True),
-                ReimbTemplateMap.claim_kind.in_([claim_kind, None]),
+                (ReimbTemplateMap.claim_kind.is_(None))
+                | (ReimbTemplateMap.claim_kind == claim_kind),
             )
             .order_by(ReimbTemplateMap.sort, ReimbTemplateMap.id)
         )
@@ -370,9 +382,17 @@ async def _generate_packet(
     Failure is non-blocking and symmetrical (§19.12): a packet that cannot
     render leaves the three forms exactly as they are, and vice versa.
     """
+    # Per-kind heading (R-6-liq-settle). Resolved from the code-side map rather
+    # than a second DocumentSpec: forking the KEY would fork the snapshot
+    # lineage for one string, since `find_active` resolves on `document_key`.
+    packet_title = PACKET_TITLES.get(claim.kind or "", PACKET_TITLE)
     try:
         context = await build_packet_context(
-            session, claim=claim, sections=sections, now=stamp
+            session,
+            claim=claim,
+            sections=sections,
+            title=packet_title,
+            now=stamp,
         )
     except Exception as exc:  # missing totals, vanished staff row, …
         logger.warning(

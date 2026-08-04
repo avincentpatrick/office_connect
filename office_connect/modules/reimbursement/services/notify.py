@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +51,8 @@ from office_connect.core.workdays import load_nonworking_dates, working_days_bet
 from office_connect.modules.reimbursement.models import ReimbCashAdvance, ReimbClaim
 from office_connect.modules.reimbursement.services import status as st
 from office_connect.modules.reimbursement.services.cash_advance import (
+    OVER_ADVANCE,
+    REFUND,
     UNLIQUIDATED_STATUSES,
     mark_overdue,
     overdue_note,
@@ -445,6 +448,86 @@ async def _send_liquidation_nudge(
             written += 1
 
     return written
+
+
+async def notify_settlement(
+    session: AsyncSession,
+    *,
+    claim: ReimbClaim,
+    advance: ReimbCashAdvance,
+) -> int:
+    """Tell the traveller their liquidation closed, and what it left owing.
+
+    The over-advance case is why this exists at all: recording the settlement is
+    the Admin Officer's act, and claiming the difference is the TRAVELLER's, so
+    without a nudge nobody is ever told they are owed money and spec §6.2's
+    "one tap" is a tap nobody knows to make. The other two modes get the same
+    courtesy — an unanswered advance is the thing people chase, and "it's done"
+    is worth one line.
+
+    Deliberately NOT in the ``transactional`` bypass class the D-ladder uses:
+    that class exists so a traveller cannot mute COA warning them about salary
+    deduction. This is good news, and good news is mutable.
+
+    Returns rows written. Flushes; the caller commits.
+    """
+    owner = await owner_user(session, advance.claimant_id)
+    if owner is None:
+        return 0
+
+    which = f"cash advance {advance.dv_no}" if advance.dv_no else "cash advance"
+    ref = claim.ref_no or f"#{claim.id}"
+    if advance.settlement_mode == OVER_ADVANCE:
+        due = claim.totals.get("to_reimburse") if claim.totals else None
+        amount = f"₱{Decimal(due):,.2f}" if due else "the difference"
+        subject = f"{amount} is due you on liquidation {ref}"
+        body = (
+            f"Your liquidation {ref} is settled. You spent {amount} more than "
+            f"your {which} covered, so that difference is still owed to you — "
+            "open the liquidation and file the reimbursement claim for it."
+        )
+    elif advance.settlement_mode == REFUND:
+        receipt = (
+            f" against official receipt {advance.refund_or_no}"
+            if advance.refund_or_no
+            else ""
+        )
+        subject = f"Liquidation {ref} is settled"
+        body = (
+            f"Your liquidation {ref} is settled and your {which} is closed. "
+            f"The excess advance was refunded{receipt}. Nothing further is "
+            "needed from you."
+        )
+    else:
+        subject = f"Liquidation {ref} is settled"
+        body = (
+            f"Your liquidation {ref} is settled and your {which} is closed. "
+            "The advance was fully expended — nothing is refundable and "
+            "nothing further is needed from you."
+        )
+
+    dedup_key = f"{LIQUIDATION_DEDUP_PREFIX}:{advance.id}:settled:in_app"
+    if await _already_sent(session, dedup_key):
+        return 0
+    notification_id = await persist_notification(
+        session,
+        Notification(
+            channel="in_app",
+            meta={
+                "dedup_key": dedup_key,
+                "recipient_user_id": owner.id,
+                "module": "reimbursement",
+                "kind": "liquidation_settled",
+                "cash_advance_id": advance.id,
+                "claim_id": claim.id,
+                "settlement_mode": advance.settlement_mode,
+                "subject": subject,
+                "body_text": body,
+            },
+        ),
+    )
+    dispatch_on_commit(session, notification_id)
+    return 1
 
 
 async def sweep_liquidation_reminders(

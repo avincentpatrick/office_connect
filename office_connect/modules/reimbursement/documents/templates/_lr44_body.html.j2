@@ -1,0 +1,294 @@
+{# Liquidation Report — GAM Vol. II, Appendix 44 (checklist code LR-44): BODY.
+
+   Held as a partial so the liquidation packet prints the same substance under
+   its own cover — see `_iot45_body.html.j2` for the same note.
+
+   The LR is a NETTING instrument, not a payment instrument. It states what was
+   advanced, what was actually spent, and which of two things closes the gap: a
+   refund evidenced by an official receipt (COA Circular 97-002), or a
+   difference payable on a separate DV. Everything else on the page exists to
+   make those three figures traceable.
+
+   **The netting prints `advance − spent`**, which is the direction
+   `services/per_diem.py::settle` computes (`diff = advance − grand`). DV-32
+   prints the opposite direction because it IS the payment instrument. Putting
+   the DV's sign convention on this page would give it an arithmetic that
+   disagrees with the service that produced its numbers — which is exactly how
+   a transcription error hides.
+
+   **Nothing here is computed.** `to_refund` and `to_reimburse` come from
+   `settle`; `refund_amount` is the figure recorded against the official
+   receipt. Subtracting anything at render time would be a second, drifting
+   implementation of settlement (`_dv32_body.html.j2`'s rule, restated).
+
+   **The itinerary is deliberately absent** — that is Appendix 45, and it
+   travels in the same packet. The per-DAY table stays, because it is the audit
+   basis for the largest figure on the page and "why was this day paid at 50%?"
+   is the first question a post-audit asks.
+
+   **What the certification boxes may say.** `_dv32_body.html.j2`'s rule is that
+   a pre-filled name in a box the system cannot enforce asserts something
+   untrue. That rule is applied here with new information, not relaxed:
+     A — the claimant's name prints UNDER the rule (it identifies who signs, the
+         `_iot45_body.html.j2` convention). Filing IS certification A, submit is
+         owner-only, so the filing timestamp is a fact the system holds.
+     B — the signature line stays BLANK. The workflow records who cleared
+         `certify_b` on `reimb.liquidation.certify`, so that fact is stated in a
+         `note` BENEATH the box, never on the `signature-name` line: a name over
+         an empty rule reads as a completed certification to anyone holding the
+         page, and the ink is still required.
+     C — blank, and it must stay blank forever. The workflow records the ADMIN
+         OFFICER who typed the mandatory comment, NOT the Head of the Accounting
+         Unit who signed on paper. Printing the recorder in box C would name the
+         wrong person in a COA certification — a worse untruth than a blank box.
+         The signed page is filed under checklist item CRT-C. #}
+<div class="field-grid">
+  <span class="field-label">Accountable officer</span>
+  <span class="field-value">{{ claimant.full_name }}</span>
+  <span class="field-label">Employee no.</span>
+  <span class="field-value">{{ claimant.employee_no or "—" }}</span>
+
+  <span class="field-label">Position</span>
+  <span class="field-value">{{ claimant.position_title or "—" }}</span>
+  <span class="field-label">Division / Section</span>
+  <span class="field-value">{{ claimant.section or claimant.division or "—" }}</span>
+
+  <span class="field-label">Serial no.</span>
+  <span class="field-value">{{ claim.ref_no or "Not yet assigned" }}</span>
+  <span class="field-label">Fund cluster</span>
+  <span class="field-value">{{ claim.fund_source or "—" }}</span>
+
+  <span class="field-label">Travel order</span>
+  <span class="field-value">
+    {{ claim.dpo_no or "—" }}
+    {% if claim.dpo_date %}dated {{ claim.dpo_date | manila_date }}{% endif %}
+  </span>
+  <span class="field-label">Period covered</span>
+  <span class="field-value">
+    {{ claim.date_depart | manila_date }} – {{ claim.date_return | manila_date }}
+  </span>
+
+  <span class="field-label">Cash advance</span>
+  <span class="field-value">
+    {% if advance.dv_no %}
+    DV {{ advance.dv_no }}
+    {% else %}
+    DV no. not recorded
+    {% endif %}
+    {% if advance.dv_date %}dated {{ advance.dv_date | manila_date }}{% endif %}
+  </span>
+  <span class="field-label">Liquidation due</span>
+  <span class="field-value">{{ claim.liquidation_deadline | manila_date }}</span>
+</div>
+
+<h2>Purpose of travel</h2>
+<p>{{ claim.purpose or "—" }}</p>
+<p class="note">Destination: {{ claim.destination or "—" }}</p>
+
+<h2>Particulars — expenses incurred</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Particulars</th>
+      <th class="amount">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Travelling expenses — daily travel expense (EO 77, s. 2019)</td>
+      <td class="amount">{{ totals.per_diem | money }}</td>
+    </tr>
+    <tr>
+      <td>Travelling expenses — transportation fares</td>
+      <td class="amount">{{ totals.transport | money }}</td>
+    </tr>
+    <tr>
+      <td>Other expenses — lodging bills, terminal fees and the like</td>
+      <td class="amount">{{ totals.other | money }}</td>
+    </tr>
+    <tr class="total">
+      <td>Total amount spent</td>
+      <td class="amount">{{ totals.grand | money }}</td>
+    </tr>
+  </tbody>
+</table>
+
+{% if totals.days %}
+<h2>Basis of the daily travel expense</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Day</th>
+      <th>Region / cluster</th>
+      <th class="amount">Daily rate</th>
+      <th class="amount">%</th>
+      <th class="amount">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for day in totals.days %}
+    <tr>
+      <td>{{ day.date | manila_date }}</td>
+      <td>{{ day.day_type or "—" }}</td>
+      <td>
+        {{ day.region_code or "—" }}
+        {% if day.cluster %}/ {{ day.cluster }}{% endif %}
+      </td>
+      <td class="amount">{{ day.daily_rate | money }}</td>
+      <td class="amount">{{ day.pct if day.pct is not none else "—" }}</td>
+      <td class="amount">{{ day.amount | money }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="total">
+      <td colspan="5">Total daily travel expense</td>
+      <td class="amount">{{ totals.per_diem | money }}</td>
+    </tr>
+  </tbody>
+</table>
+{% endif %}
+
+<h2>Settlement of the cash advance</h2>
+<table>
+  <tbody>
+    <tr>
+      <td>
+        Amount of cash advance received
+        {% if advance.dv_no %}
+        (per DV {{ advance.dv_no }}{% if advance.dv_date %},
+        dated {{ advance.dv_date | manila_date }}{% endif %})
+        {% endif %}
+      </td>
+      <td class="amount">{{ totals.advance | money }}</td>
+    </tr>
+    <tr>
+      <td>Less: total amount spent</td>
+      <td class="amount">({{ totals.grand | money }})</td>
+    </tr>
+    <tr class="total">
+      <td>
+        {% if totals.to_refund and totals.to_refund != "0.00" %}
+        Excess cash advance — refundable by the accountable officer
+        {% elif totals.to_reimburse and totals.to_reimburse != "0.00" %}
+        Expenses in excess of the advance — reimbursable to the accountable
+        officer
+        {% else %}
+        Cash advance fully expended — nothing refundable, nothing reimbursable
+        {% endif %}
+      </td>
+      <td class="amount">
+        {% if totals.to_refund and totals.to_refund != "0.00" %}
+        {{ totals.to_refund | money }}
+        {% else %}
+        {{ totals.to_reimburse | money }}
+        {% endif %}
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Refund of the excess cash advance</h2>
+{% if totals.to_refund and totals.to_refund != "0.00" %}
+{% if settlement.or_no %}
+<table>
+  <tbody>
+    <tr>
+      <td>
+        Amount refunded per Official Receipt no. {{ settlement.or_no }}
+        {% if settlement.or_date %},
+        dated {{ settlement.or_date | manila_date }}{% endif %}
+      </td>
+      <td class="amount">{{ settlement.refund_amount | money }}</td>
+    </tr>
+  </tbody>
+</table>
+<p class="note">
+  Settlement recorded {{ settlement.settled_at | manila_datetime }}.
+</p>
+{% else %}
+<p>Official receipt no. ______________________ dated ______________________</p>
+<p class="note">
+  This copy was produced BEFORE the refund was recorded. COA Circular 97-002
+  requires the excess cash advance to be refunded and evidenced by an official
+  receipt; the receipt number and date appear on the copy issued once that
+  refund is recorded, which supersedes this one.
+</p>
+{% endif %}
+{% else %}
+<p class="note">
+  Not applicable — no excess cash advance arose on this liquidation.
+</p>
+{% endif %}
+
+{% if totals.to_reimburse and totals.to_reimburse != "0.00" %}
+<h2>Amount reimbursable to the accountable officer</h2>
+<p>
+  {{ totals.to_reimburse | money }} is due the accountable officer and is
+  payable on a separate Disbursement Voucher (GAM Vol. II, Appendix 32).
+</p>
+{% if settlement.spawned_claim_ref %}
+<p class="note">Claimed under reference {{ settlement.spawned_claim_ref }}.</p>
+{% else %}
+<p class="note">The claim for this difference has not yet been filed.</p>
+{% endif %}
+{% endif %}
+
+<h2>Certifications</h2>
+<div class="signature-row">
+  <div class="signature-block">
+    <p class="signature-role">
+      <strong>A. Certified</strong> — correctness of the above data.
+    </p>
+    <div class="signature-line"></div>
+    <p class="signature-name">{{ claimant.full_name }}</p>
+    <p class="signature-role">Accountable officer · Date ______________</p>
+    {% if certifications.a.recorded_at %}
+    <p class="note">
+      Filed in Office-Connect
+      {{ certifications.a.recorded_at | manila_datetime }}.
+    </p>
+    {% endif %}
+  </div>
+  <div class="signature-block">
+    <p class="signature-role">
+      <strong>B. Certified</strong> — purpose of the travel and of the cash
+      advance duly accomplished.
+    </p>
+    <div class="signature-line"></div>
+    <p class="signature-name">&nbsp;</p>
+    <p class="signature-role">Head of Office · Date ______________</p>
+    {% if certifications.b.name %}
+    <p class="note">
+      Recorded in Office-Connect: certified by {{ certifications.b.name }},
+      {{ certifications.b.recorded_at | manila_datetime }}.
+    </p>
+    {% endif %}
+  </div>
+</div>
+<div class="signature-row">
+  <div class="signature-block">
+    <p class="signature-role">
+      <strong>C. Certified</strong> — supporting documents complete and proper.
+    </p>
+    <div class="signature-line"></div>
+    <p class="signature-name">&nbsp;</p>
+    <p class="signature-role">Head, Accounting Unit · Date ______________</p>
+    {% if certifications.c.recorded_by %}
+    <p class="note">
+      Recorded in Office-Connect by {{ certifications.c.recorded_by }},
+      {{ certifications.c.recorded_at | manila_datetime }}.
+      {% if certifications.c.note %}“{{ certifications.c.note }}”{% endif %}
+      The signed page is filed under checklist item CRT-C.
+    </p>
+    {% else %}
+    <p class="note">
+      To be signed by hand; the signed page is filed under checklist item CRT-C.
+    </p>
+    {% endif %}
+  </div>
+  <div class="signature-block">
+    <p class="signature-role"><strong>For the Accounting Unit</strong></p>
+    <div class="signature-line"></div>
+    <p class="signature-role">JEV no. ______________ · Date ______________</p>
+  </div>
+</div>

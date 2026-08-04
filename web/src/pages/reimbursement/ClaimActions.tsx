@@ -17,6 +17,7 @@ import { TextareaField } from "../../components/TextareaField/TextareaField";
 import { toast } from "../../components/Toast/toast-bus";
 import { EMPTY_CHECKLIST_SUMMARY } from "./checklist-status";
 import { actionLabel, approveConsequence } from "./claim-status";
+import { SettlementDialog } from "./SettlementDialog";
 import { useReturnReasons } from "./use-claim";
 
 /** Wording shared by the client-side guard and the server's 422 (ui-standards §3.14). */
@@ -40,8 +41,13 @@ export function ClaimActions({ claim }: { claim: ClaimDetail }) {
   const [pageError, setPageError] = useState<string>();
   const reasons = useReturnReasons();
 
+  const [settleOpen, setSettleOpen] = useState(false);
   const canApprove = claim.available_actions.includes("approve");
   const canReturn = claim.available_actions.includes("return");
+  // The liquidation chain's terminal gate. The server REWROTE `approve` into
+  // `settle` here, so this is the same authorization it always was — the act
+  // just has to carry the money now, and that lives on its own route.
+  const canSettle = claim.available_actions.includes("settle");
 
   const onSettled = (updated: ClaimDetail) => {
     // The mutation returns the whole claim, so the detail view, the action set
@@ -123,7 +129,13 @@ export function ClaimActions({ claim }: { claim: ClaimDetail }) {
   // `approve` when a required document is missing, and a vanished button with
   // no explanation is the §9.1-principle-4 failure this whole increment exists
   // to prevent. Bail out only when there is nothing at all to say.
-  if (!canApprove && !canReturn && flags.length === 0 && blocking.length === 0) {
+  if (
+    !canApprove &&
+    !canReturn &&
+    !canSettle &&
+    flags.length === 0 &&
+    blocking.length === 0
+  ) {
     return null;
   }
 
@@ -193,7 +205,27 @@ export function ClaimActions({ claim }: { claim: ClaimDetail }) {
             onConfirm={() => approve.mutate()}
           />
         ) : null}
+        {/* Settling carries data, so it opens a FORM rather than a confirm —
+            the consequence is stated in the dialog's own description, which
+            varies with the branch the money took. */}
+        {canSettle ? (
+          <Button
+            variant="primary"
+            className="flex-1"
+            onClick={() => setSettleOpen(true)}
+          >
+            {actionLabel("settle", claim.status)}
+          </Button>
+        ) : null}
       </div>
+
+      {canSettle ? (
+        <SettlementDialog
+          claim={claim}
+          open={settleOpen}
+          onOpenChange={setSettleOpen}
+        />
+      ) : null}
 
       <FormDialog
         open={returnOpen}

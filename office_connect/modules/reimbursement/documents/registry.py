@@ -23,6 +23,12 @@ TEMPLATE_DIR = Path(__file__).parent / "templates"
 IOT_45 = "reimb.iot45"
 AR_01 = "reimb.ar01"
 DV_32 = "reimb.dv32"
+#: The liquidation's own form (R-6-liq-settle). Under GAM 2015, **Appendix 44 is
+#: the Liquidation Report** and Appendix 45 the Itinerary — the "App 44 = IoT"
+#: numbering is the obsolete pre-2015 NGAS scheme, and shipping the wrong form
+#: numbers destroys credibility with the accountants who read them (research
+#: digest, round 1).
+LR_44 = "reimb.lr44"
 
 #: The combined printable packet (R-5-packet). Deliberately NOT in
 #: ``reimb_template_maps``: it satisfies no checklist code, because no COA
@@ -36,6 +42,20 @@ PACKET = "reimb.packet"
 #: configuration, so a row in a table the R-9 editor manages would invite an
 #: edit that means nothing.
 PACKET_TITLE = "Travel claim packet"
+
+#: claim kind → the packet's printed heading (R-6-liq-settle). The "not data"
+#: argument above rules out a seeded row; it says nothing about per-kind CODE,
+#: and the title is load-bearing — an Accounting clerk handed a folder stamped
+#: "Travel claim packet" on a liquidation reads it as the wrong document type.
+#:
+#: A dict rather than a second ``DocumentSpec``: forking the KEY would fork the
+#: snapshot lineage for one string (``find_active`` resolves on ``document_key``),
+#: so a claim would carry two packet histories. Unknown kinds fall back — a
+#: packet must always print.
+PACKET_TITLES = {
+    "reimbursement": PACKET_TITLE,
+    "liquidation": "Liquidation packet",
+}
 
 SPECS = (
     DocumentSpec(
@@ -52,6 +72,11 @@ SPECS = (
         key=DV_32,
         template="dv32.html.j2",
         title="Disbursement Voucher",
+    ),
+    DocumentSpec(
+        key=LR_44,
+        template="lr44.html.j2",
+        title="Liquidation Report",
     ),
     DocumentSpec(
         key=PACKET,
@@ -73,6 +98,7 @@ BODY_PARTIALS = {
     IOT_45: "_iot45_body.html.j2",
     AR_01: "_ar01_body.html.j2",
     DV_32: "_dv32_body.html.j2",
+    LR_44: "_lr44_body.html.j2",
 }
 
 

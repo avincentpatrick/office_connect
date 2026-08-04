@@ -32,6 +32,9 @@ from office_connect.modules.reimbursement.services.lifecycle import (
     claim_action,
     submit_claim,
 )
+from office_connect.modules.reimbursement.services.settlement import (
+    record_settlement,
+)
 from tests.reimb_checklist_helpers import satisfy_packet
 from tests.reimb_lifecycle_helpers import (
     assert_holder_invariant,
@@ -267,9 +270,20 @@ async def test_the_walk_to_settled_never_orphans(
     assert claim.holder_kind == "external_fms"
     assert claim.holder_id is None
 
-    await claim_action(
-        app_session, claim_id=claim.id, action="approve",
-        actor_user_id=cast.admin.id, now=NOW,
+    # The last rung is a MONEY state (R-6-liq-settle). A bare approve refuses,
+    # naming the route that does the thing — `settled` asserts the advance is
+    # closed, and nothing has closed it.
+    with pytest.raises(APIError) as ei:
+        await claim_action(
+            app_session, claim_id=claim.id, action="approve",
+            actor_user_id=cast.admin.id, now=NOW,
+        )
+    assert ei.value.code == "reimb_settlement_required"
+
+    # ₱6,000 advanced against a ₱6,500 trip → an over-advance: nothing to
+    # refund, so no OR is asked for and none may be given.
+    await record_settlement(
+        app_session, claim_id=claim.id, actor_user_id=cast.admin.id, now=NOW
     )
     assert_holder_invariant(claim)
     assert claim.status == st.SETTLED
@@ -374,9 +388,8 @@ async def test_a_settled_liquidation_leaves_my_work(
         app_session, claim_id=claim.id, action="approve",
         actor_user_id=cast.admin.id, comment="Wet signature recorded.", now=NOW,
     )
-    await claim_action(
-        app_session, claim_id=claim.id, action="approve",
-        actor_user_id=cast.admin.id, now=NOW,
+    await record_settlement(
+        app_session, claim_id=claim.id, actor_user_id=cast.admin.id, now=NOW
     )
     assert claim.status == st.SETTLED
 

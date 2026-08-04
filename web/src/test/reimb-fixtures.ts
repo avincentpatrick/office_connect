@@ -245,6 +245,67 @@ export function awaitingApproval(
   });
 }
 
+/**
+ * A liquidation one rung short of the money (R-6-liq-settle): FMS has it, and
+ * the server has REWRITTEN `approve` into `settle` — clearing that gate now has
+ * to record how the advance came out.
+ *
+ * ₱8,000 advanced against the ₱6,750 fixture trip is the REFUND branch, the one
+ * with a receipt to get right.
+ */
+export function awaitingSettlement(
+  overrides: Partial<ClaimDetail> = {},
+): ClaimDetail {
+  return completeClaim({
+    ref_no: "LQ-2026-0001",
+    kind: "liquidation",
+    status: "handed_to_fms",
+    status_label: "With FMS",
+    next_action: "Record the settlement",
+    available_actions: ["settle", "return"],
+    row_version: 4,
+    totals: makeTotals({
+      advance: "8000.00",
+      to_reimburse: "0.00",
+      to_refund: "1250.00",
+    }),
+    cash_advance: makeCashAdvance({
+      amount: "8000.00",
+      status: "liquidation_started",
+      status_label: "Liquidation started",
+    }),
+    ...overrides,
+  });
+}
+
+/** The same liquidation after Accounting closed it as an over-advance. */
+export function settledOverAdvance(
+  overrides: Partial<ClaimDetail> = {},
+): ClaimDetail {
+  return completeClaim({
+    ref_no: "LQ-2026-0001",
+    kind: "liquidation",
+    status: "settled",
+    status_label: "Settled",
+    next_action: null,
+    // The traveller's one tap, offered by the SERVER — never inferred here.
+    available_actions: ["spawn"],
+    totals: makeTotals({
+      advance: "6000.00",
+      to_reimburse: "750.00",
+      to_refund: "0.00",
+    }),
+    cash_advance: makeSettledAdvance({
+      amount: "6000.00",
+      settlement_mode: "over_advance",
+      refund_or_no: null,
+      refund_or_date: null,
+      refund_amount: null,
+    }),
+    ...overrides,
+  });
+}
+
 export function makeTimeline(
   overrides: Partial<TimelineEvent>[] = [],
 ): TimelineEvent[] {
@@ -436,6 +497,12 @@ export function makeCashAdvance(
     status: "open",
     status_label: "Open",
     settled_at: null,
+    // Unsettled: the settlement record is empty until Accounting closes it
+    // (R-6-liq-settle). `makeSettledAdvance` below is the other side.
+    settlement_mode: null,
+    refund_or_no: null,
+    refund_or_date: null,
+    refund_amount: null,
     deadline_date: "2026-08-02",
     deadline_basis: "calendar",
     days_remaining: 12,
@@ -449,4 +516,27 @@ export function makeCashAdvance(
     updated_at: "2026-06-25T02:00:00+00:00",
     ...overrides,
   };
+}
+
+/**
+ * A settled advance (R-6-liq-settle). Note the clock fields: the SERVER nulls
+ * them once an advance closes, so a fixture that kept them would let a test
+ * pass against a card the real API can never produce.
+ */
+export function makeSettledAdvance(
+  overrides: Partial<CashAdvance> = {},
+): CashAdvance {
+  return makeCashAdvance({
+    status: "settled",
+    status_label: "Settled",
+    settled_at: "2026-07-09T02:00:00+00:00",
+    settlement_mode: "refund",
+    refund_or_no: "OR-2026-1234",
+    refund_or_date: "2026-07-09",
+    refund_amount: "1500.00",
+    deadline_state: null,
+    days_remaining: null,
+    overdue_note: null,
+    ...overrides,
+  });
 }

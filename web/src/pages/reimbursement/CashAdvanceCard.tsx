@@ -71,12 +71,31 @@ export function CashAdvanceCard({
         )}
       </div>
 
-      <CountdownRing
-        daysRemaining={advance.days_remaining}
-        state={advance.deadline_state}
-        deadlineDate={advance.deadline_date}
-        size="md"
-      />
+      {/*
+        A SETTLED advance is not counting down to anything (R-6-liq-settle). The
+        server already nulls the clock fields on one, so the ring would render
+        its "not started" copy — which is worse than wrong here, because it says
+        nothing has happened to an advance that is closed. It gets the closing
+        date instead, which is the fact a reader actually wants.
+      */}
+      {advance.status === "settled" ? (
+        // WHEN it closed, and nothing more. What the settlement actually was —
+        // the receipt, the balance still owed — is the SettlementOutcome
+        // callout's job, and saying it twice would be the "a second chip must
+        // earn itself" rule broken in prose.
+        <p className="text-sm text-text-muted">
+          {advance.settled_at
+            ? `Settled ${formatManilaDate(advance.settled_at)}`
+            : "Settled"}
+        </p>
+      ) : (
+        <CountdownRing
+          daysRemaining={advance.days_remaining}
+          state={advance.deadline_state}
+          deadlineDate={advance.deadline_date}
+          size="md"
+        />
+      )}
 
       {/*
         The COA consequence copy. The server sends it only once it applies

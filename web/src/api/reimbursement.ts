@@ -281,8 +281,26 @@ export interface ClaimDetail {
    * a second response could disagree with the claim beside it.
    */
   cash_advance?: CashAdvance | null;
+  /**
+   * The two halves of an over-advance, pointing at each other (R-6-liq-settle).
+   * `spawned_claim` rides a settled liquidation so the traveller sees either
+   * "₱X is due you" or the claim they already filed for it; `spawned_from`
+   * rides the reimbursement so an approver reading its DV can reach the
+   * Liquidation Report the figure came from. Both from ONE response, for the
+   * same reason `cash_advance` is embedded.
+   */
+  spawned_claim?: SpawnedClaim | null;
+  spawned_from?: SpawnedClaim | null;
   created_at: string;
   updated_at: string;
+}
+
+/** A thin pointer between the two halves of an over-advance. */
+export interface SpawnedClaim {
+  claim_id: number;
+  ref_no: string | null;
+  status: ClaimStatus;
+  status_label: string;
 }
 
 /**
@@ -310,7 +328,24 @@ export type ClaimAction =
   | "approve"
   | "return"
   | "resubmit"
-  | "cancel";
+  | "cancel"
+  /**
+   * The liquidation chain's terminal verb (R-6-liq-settle). NOT a new engine
+   * action — the graph still authors `approve` at `handed_to_fms` and the
+   * engine still authorizes it. The server rewrites the verb because clearing
+   * that gate now also has to record the money, which is a different ROUTE
+   * (`POST /claims/{id}/settle`) driving the same transition.
+   */
+  | "settle"
+  /**
+   * Spec §6.2's "one tap": claim the difference an over-advance left owing.
+   * Also not an engine action — it happens after the chain is terminal and it
+   * creates a NEW claim. It rides the action set anyway, because that set is
+   * the client's only sanctioned answer to "what may I do here"
+   * (workflow-standards §3); the alternative is the browser inferring
+   * ownership from a claimant id, which is the client computing permissions.
+   */
+  | "spawn";
 
 /** Spec §6.3 derived badge — computed on view, never stored as a status. */
 export type SlaState = "on_track" | "due_soon" | "overdue";
@@ -427,6 +462,13 @@ export type CashAdvanceStatus =
 /** The server's urgency verdict (`services/deadline.py`). Never recomputed. */
 export type DeadlineState = "on_track" | "due_soon" | "overdue";
 
+/**
+ * Which branch of spec §6.2 a settlement took, decided server-side by
+ * `per_diem.settle` and PINNED on the advance. The client never derives it from
+ * the totals — two implementations of one decision would eventually disagree.
+ */
+export type SettlementMode = "refund" | "exact" | "over_advance";
+
 export interface CashAdvance {
   id: number;
   claimant_id: number;
@@ -441,8 +483,20 @@ export interface CashAdvance {
   status_label: string;
   settled_at: string | null;
   /**
+   * How the liquidation's money came out (R-6-liq-settle, spec §6.2). Null
+   * until settled. `refund_*` are populated on the `refund` mode only — on the
+   * other two nothing came back, and a receipt for a payment that never
+   * happened is exactly what the server refuses to record.
+   */
+  settlement_mode: SettlementMode | null;
+  refund_or_no: string | null;
+  refund_or_date: string | null;
+  refund_amount: string | null;
+  /**
    * The clock. All four are null together when there is no return date yet —
    * a trip that has not happened has no deadline, and a zero would be a lie.
+   * They also go null once SETTLED: a closed advance is not counting down to
+   * anything, so the card must not keep threatening a traveller who answered.
    */
   deadline_date: string | null;
   deadline_basis: string | null;
@@ -505,6 +559,39 @@ export function updateCashAdvance(
 /** Spec §9.3 step 1's "Liquidate that instead?" — 201 with the fresh draft. */
 export function liquidateCashAdvance(id: number): Promise<ClaimDetail> {
   return api<ClaimDetail>(`/reimbursement/cash-advances/${id}/liquidate`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Record how a liquidation settled, and close it — spec §6.2 (R-6-liq-settle).
+ *
+ * Note what this body does NOT carry: the settlement mode, or the amount as a
+ * proposal. Both are the server's (`per_diem.settle`). `refund_amount` is an
+ * ECHO only — send it and a stale screen is caught before it records a receipt
+ * against the wrong figure; omit it and the server figure stands regardless.
+ */
+export interface SettlementInput {
+  or_no?: string | null;
+  or_date?: string | null;
+  refund_amount?: string | null;
+  comment?: string | null;
+  expected_version?: number | null;
+}
+
+export function settleClaim(
+  id: number,
+  body: SettlementInput = {},
+): Promise<ClaimDetail> {
+  return api<ClaimDetail>(`/reimbursement/claims/${id}/settle`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/** Spec §6.2's "one tap, pre-filled" — 201 with the fresh draft. */
+export function spawnReimbursement(id: number): Promise<ClaimDetail> {
+  return api<ClaimDetail>(`/reimbursement/claims/${id}/spawn-reimbursement`, {
     method: "POST",
   });
 }

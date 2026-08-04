@@ -36,12 +36,21 @@ from office_connect.modules.reimbursement.services import checklist
 from office_connect.modules.reimbursement.services.compute import compute_claim_totals
 from tests.reimb_lifecycle_helpers import standard_cast
 
+#: Per KIND, because bindings are per kind (the natural key is
+#: ``(claim_kind, checklist_code)``). The old flat ``GENERATED_CODES`` was
+#: correct only while one chain existed; R-6-liq-settle gave the liquidation its
+#: own form and the flat set could no longer tell you whether a row had landed
+#: under the wrong kind — which is now the single most likely way a binding
+#: ships broken.
 GENERATED_CODES = {"IOT-45", "AR-01", "DV-32"}
+LIQUIDATION_CODES = {"LR-44"}
 
-#: The three forms plus the combined packet. Every count in this file is
-#: expressed against this rather than a bare 4, so adding a fifth document is
+#: The reimbursement's three forms plus the combined packet. Every count in this
+#: file is expressed against this rather than a bare 4, so adding a document is
 #: one edit here and not a hunt through assertions.
 DOCUMENT_COUNT = len(GENERATED_CODES) + 1
+#: The liquidation's one form plus its own packet.
+LIQUIDATION_DOCUMENT_COUNT = len(LIQUIDATION_CODES) + 1
 
 
 class _FakeRenderer:
@@ -96,7 +105,14 @@ async def test_every_template_binding_points_at_a_registered_document(app_sessio
     bindings = (
         (await app_session.execute(select(ReimbTemplateMap))).scalars().all()
     )
-    assert {b.checklist_code for b in bindings} == GENERATED_CODES
+    # Asserted on the PAIR, never the bare code: `(claim_kind, checklist_code)`
+    # is the natural key, and a set of codes alone cannot catch a row seeded
+    # under the wrong kind — a liquidation form bound to reimbursement claims
+    # would simply never generate, silently.
+    assert {(b.claim_kind, b.checklist_code) for b in bindings} == {
+        *(("reimbursement", code) for code in GENERATED_CODES),
+        *(("liquidation", code) for code in LIQUIDATION_CODES),
+    }
 
     registered = {spec.key for spec in doc_registry.SPECS}
     assert {b.document_key for b in bindings} <= registered
@@ -110,14 +126,17 @@ async def test_every_template_binding_points_at_a_registered_document(app_sessio
 
     # And every bound code is actually a generated_doc row in the catalog —
     # binding a form to an upload item would silently never fire.
+    # Keyed on the pair for the same reason: TO-01 and CTC-47 now exist under
+    # BOTH kinds, so a flat `{code: evidence}` dict would collapse rows and could
+    # validate a liquidation binding against a reimbursement catalog row.
     catalog = {
-        row.code: row.evidence
+        (row.claim_kind, row.code): row.evidence
         for row in (
             await app_session.execute(select(ReimbChecklistCatalog))
         ).scalars()
     }
     for binding in bindings:
-        assert catalog[binding.checklist_code] == "generated_doc"
+        assert catalog[(binding.claim_kind, binding.checklist_code)] == "generated_doc"
 
 
 # --- generation -------------------------------------------------------------
@@ -136,8 +155,14 @@ async def test_generates_the_three_documents_and_flips_their_items(
         renderer=renderer,
     )
 
+    # Named explicitly rather than derived from BODY_PARTIALS: that derivation
+    # was only ever right while one claim kind existed. BODY_PARTIALS now also
+    # holds LR-44, which a REIMBURSEMENT claim must not produce — deriving from
+    # it would have turned the arrival of a second chain into a green test.
     assert {r.document_key for r in results} == {
-        *(b for b in doc_registry.BODY_PARTIALS),
+        doc_registry.IOT_45,
+        doc_registry.AR_01,
+        doc_registry.DV_32,
         PACKET,
     }
     assert {r.outcome for r in results} == {"generated"}
@@ -815,9 +840,290 @@ async def test_the_standalone_forms_still_render_after_the_partial_split(
     )
 
     cast = await _computed_claim(app_session, make_user)
+    # NOTE this loops EVERY body partial against a REIMBURSEMENT claim, which
+    # since R-6-liq-settle includes the liquidation's LR-44. That is deliberate
+    # and load-bearing: the Jinja environment runs StrictUndefined, so this is
+    # the cheapest guard in the suite against a context block that exists only
+    # for one claim kind — which would raise inside RenderFailed and surface as
+    # a SILENT `outcome="failed"` in the worker. Keep it looping the dict.
     for key in doc_registry.BODY_PARTIALS:
         context = await build_document_context(
             app_session, claim=cast.claim, document_key=key, title="Form"
         )
         result = render_document(key=key, context=context, renderer=None)
         assert result.pdf.startswith(b"%PDF-")
+
+
+# --- R-6-liq-settle: GAM Appendix 44 ---------------------------------------
+
+
+async def _liquidation_claim(app_session, make_user, *, advance_amount="8000.00"):
+    """A computed liquidation linked to an advance — the LR-44 subject.
+
+    ₱8,000 against the ₱6,500 fixture trip is the REFUND branch, which is the
+    one with a receipt line to get right.
+    """
+    from datetime import date as _date
+    from decimal import Decimal as _D
+
+    from office_connect.modules.reimbursement.seeds import apply_reimbursement_seeds
+    from office_connect.modules.reimbursement.services import cash_advance as ca
+
+    cast = await standard_cast(app_session, make_user, kind="liquidation")
+    await apply_reimbursement_seeds(app_session)
+    cast.advance = await ca.create_cash_advance(
+        app_session,
+        claimant_id=cast.staff.id,
+        amount=_D(advance_amount),
+        actor_user_id=cast.admin.id,
+        dv_no="DV-2026-0007",
+        dv_date=_date(2026, 6, 25),
+        date_return=_date(2026, 7, 3),
+    )
+    await ca.link_claim(
+        app_session, claim=cast.claim, cash_advance=cast.advance
+    )
+    await compute_claim_totals(
+        app_session, claim_id=cast.claim.id, actor_user_id=cast.owner.id
+    )
+    await app_session.flush()
+    return cast
+
+
+async def test_bindings_are_kind_aware(app_session):
+    """The test the whole increment turns on: neither kind may leak into the
+    other's document set."""
+    from office_connect.modules.reimbursement.documents.service import _bindings
+    from office_connect.modules.reimbursement.seeds import apply_reimbursement_seeds
+
+    await apply_reimbursement_seeds(app_session)
+    reimbursement = await _bindings(app_session, claim_kind="reimbursement")
+    liquidation = await _bindings(app_session, claim_kind="liquidation")
+
+    assert {b.checklist_code for b in reimbursement} == GENERATED_CODES
+    assert {b.checklist_code for b in liquidation} == LIQUIDATION_CODES
+
+
+async def test_a_null_kind_binding_applies_to_both_kinds(app_session):
+    """``claim_kind IS NULL`` means "both kinds" (models/templates.py), and the
+    predicate must actually be able to match it.
+
+    Until R-6-liq-settle ``_bindings`` used ``.in_([kind, None])`` — and SQL
+    ``IN`` never matches a NULL, so the documented semantic was unreachable and
+    the failure mode was a government form that silently never generated. No
+    seeded row is NULL-kind, which is exactly why this inserts one directly:
+    the capability has to be pinned by something other than the seed data.
+    """
+    from office_connect.modules.reimbursement.documents.service import _bindings
+
+    app_session.add(
+        ReimbTemplateMap(
+            claim_kind=None,
+            checklist_code="ZZ-BOTH",
+            document_key="reimb.iot45",
+            title="Applies to both kinds",
+            sort=99,
+        )
+    )
+    await app_session.flush()
+
+    for kind in ("reimbursement", "liquidation"):
+        codes = {b.checklist_code for b in await _bindings(app_session, claim_kind=kind)}
+        assert "ZZ-BOTH" in codes, kind
+    await app_session.rollback()
+
+
+async def test_a_liquidation_generates_the_lr44_and_its_own_packet(
+    app_session, make_user
+):
+    cast = await _liquidation_claim(app_session, make_user)
+    renderer = _FakeRenderer()
+
+    results = await generate_claim_documents(
+        app_session,
+        claim_id=cast.claim.id,
+        actor_user_id=cast.owner.id,
+        renderer=renderer,
+    )
+
+    assert {r.document_key for r in results} == {doc_registry.LR_44, PACKET}
+    assert renderer.calls == LIQUIDATION_DOCUMENT_COUNT
+    # The seeded-but-inert LR-44 catalog row is now discharged…
+    statuses = await _statuses(app_session, cast.claim)
+    assert statuses["LR-44"] == "generated"
+    # …and none of the reimbursement forms exist on this claim at all.
+    assert not (GENERATED_CODES & set(statuses))
+
+
+async def test_the_liquidation_packet_titles_itself_a_liquidation(
+    app_session, make_user
+):
+    """An Accounting clerk handed a folder stamped "Travel claim packet" on a
+    liquidation reads it as the wrong document type. One `document_key` either
+    way — forking the KEY would fork the snapshot lineage for one string."""
+    from office_connect.modules.reimbursement.documents.context import (
+        build_packet_context,
+    )
+
+    cast = await _liquidation_claim(app_session, make_user)
+    await generate_claim_documents(
+        app_session, claim_id=cast.claim.id, actor_user_id=cast.owner.id,
+        renderer=_FakeRenderer(),
+    )
+    snapshots = await active_snapshots(
+        app_session, subject_kind=SUBJECT_KIND, subject_id=cast.claim.id
+    )
+    assert PACKET in {s.document_key for s in snapshots}
+
+    context = await build_packet_context(
+        app_session, claim=cast.claim, sections=[],
+        title=doc_registry.PACKET_TITLES["liquidation"],
+    )
+    assert context["doc"]["title"] == "Liquidation packet"
+    # …and the cover's money nouns follow the kind, from one table of prose.
+    assert context["money_labels"]["total"] == "Total amount spent"
+
+
+async def test_the_settlement_blocks_are_present_and_empty_on_a_reimbursement(
+    app_session, make_user
+):
+    """The shape contract that keeps the BODY_PARTIALS render loop alive: these
+    keys are ALWAYS present, all-None off the liquidation path. A key that
+    appeared only for liquidations would raise StrictUndefined inside
+    RenderFailed — a silent `outcome="failed"` in the worker."""
+    from office_connect.modules.reimbursement.documents.context import (
+        build_document_context,
+    )
+
+    cast = await _computed_claim(app_session, make_user)
+    context = await build_document_context(
+        app_session, claim=cast.claim, document_key=doc_registry.LR_44,
+        title="Liquidation Report",
+    )
+    assert context["advance"]["dv_no"] is None
+    assert context["settlement"]["or_no"] is None
+    assert context["certifications"]["c"]["recorded_by"] is None
+    assert context["money_labels"]["heading"] == "Amount claimed"
+
+
+async def test_the_settlement_facts_are_hashed(app_session, make_user):
+    """The OR number must be INSIDE the fingerprint, or recording a refund would
+    leave the Liquidation Report permanently stale."""
+    from office_connect.core.documents.render import fingerprint_context
+    from office_connect.modules.reimbursement.documents.context import (
+        build_document_context,
+    )
+    from office_connect.modules.reimbursement.documents.service import (
+        comparable_context,
+    )
+
+    cast = await _liquidation_claim(app_session, make_user)
+    context = await build_document_context(
+        app_session, claim=cast.claim, document_key=doc_registry.LR_44,
+        title="Liquidation Report",
+    )
+    before = fingerprint_context(comparable_context(context))
+    context["settlement"]["or_no"] = "OR-2026-1234"
+    assert fingerprint_context(comparable_context(context)) != before
+
+
+async def test_the_pre_settlement_lr44_prints_a_blank_receipt_line(
+    app_session, make_user
+):
+    """A Liquidation Report with a blank OR line IS GAM App 44 at the stage it
+    is at — the traveller walks it to the cashier and the number is written on.
+    What would be dishonest is printing ₱0.00 (indistinguishable from "nothing
+    refundable") or hiding the section so nobody learns a refund is owed."""
+    pytest.importorskip("weasyprint")
+    from office_connect.core.documents import render_document
+    from office_connect.modules.reimbursement.documents.context import (
+        build_document_context,
+    )
+
+    cast = await _liquidation_claim(app_session, make_user)
+    assert cast.claim.totals["to_refund"] == "1500.00"
+    context = await build_document_context(
+        app_session, claim=cast.claim, document_key=doc_registry.LR_44,
+        title="Liquidation Report", form_no="GAM Vol. II, Appendix 44",
+    )
+    html = render_document(
+        key=doc_registry.LR_44, context=context, renderer=None
+    ).html
+
+    assert "produced BEFORE the refund was recorded" in html
+    assert "Official receipt no. ___" in html
+    # The figure that IS known is printed; the one that is not, is not faked.
+    assert "₱1,500.00" in html
+    assert "Amount refunded per Official Receipt" not in html
+    # The advance's own identity — the LR's central line, unprintable before
+    # this increment because `totals` carries the amount and nothing else.
+    assert "DV-2026-0007" in html
+
+
+async def test_the_settled_lr44_carries_the_official_receipt(
+    app_session, make_user
+):
+    pytest.importorskip("weasyprint")
+    from office_connect.core.documents import render_document
+    from office_connect.modules.reimbursement.documents.context import (
+        build_document_context,
+    )
+    from office_connect.modules.reimbursement.services import cash_advance as ca
+
+    cast = await _liquidation_claim(app_session, make_user)
+    await ca.mark_settled(
+        app_session,
+        cash_advance=cast.advance,
+        actor_user_id=cast.admin.id,
+        mode=ca.REFUND,
+        refund_amount=cast.claim.totals["to_refund"],
+        or_no="OR-2026-1234",
+        or_date=__import__("datetime").date(2026, 7, 9),
+    )
+    context = await build_document_context(
+        app_session, claim=cast.claim, document_key=doc_registry.LR_44,
+        title="Liquidation Report",
+    )
+    html = render_document(
+        key=doc_registry.LR_44, context=context, renderer=None
+    ).html
+
+    assert "Amount refunded per Official Receipt no. OR-2026-1234" in html
+    assert "09 July 2026" in html
+    assert "produced BEFORE the refund" not in html
+
+
+async def test_the_lr44_never_prints_a_name_in_certification_c(
+    app_session, make_user
+):
+    """The workflow records the ADMIN OFFICER who typed the mandatory comment,
+    not the Head of the Accounting Unit who signed on paper. Printing the
+    recorder in box C would name the wrong person in a COA certification — a
+    worse untruth than a blank box. This is the test that stops a future session
+    "helpfully" filling it in."""
+    pytest.importorskip("weasyprint")
+    from office_connect.core.documents import render_document
+    from office_connect.modules.reimbursement.documents.context import (
+        build_document_context,
+    )
+
+    cast = await _liquidation_claim(app_session, make_user)
+    context = await build_document_context(
+        app_session, claim=cast.claim, document_key=doc_registry.LR_44,
+        title="Liquidation Report",
+    )
+    # Pretend the chain recorded certification C against a named Admin Officer.
+    context["certifications"]["c"] = {
+        "recorded_by": "Recording Adminofficer",
+        "recorded_at": "2026-07-08T02:00:00+00:00",
+        "note": "Signed by the Head, Accounting Unit on 2026-07-08.",
+    }
+    html = render_document(
+        key=doc_registry.LR_44, context=context, renderer=None
+    ).html
+
+    # The name appears ONLY inside the "Recorded in Office-Connect by" note…
+    assert "Recorded in Office-Connect by Recording Adminofficer" in html
+    # …and never on a signature-name line.
+    for chunk in html.split('class="signature-name"')[1:]:
+        assert "Recording Adminofficer" not in chunk.split("</p>")[0]

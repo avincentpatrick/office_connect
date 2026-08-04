@@ -31,7 +31,15 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from office_connect.core.models import Attachment, OrgUnit, Staff, TenantConfig
+from office_connect.core.models import (
+    Attachment,
+    OrgUnit,
+    Staff,
+    TenantConfig,
+    User,
+    WorkflowEvent,
+    WorkflowState,
+)
 from office_connect.core.money import money_str
 from office_connect.core.time import utc_now
 from office_connect.modules.reimbursement.documents.registry import (
@@ -41,16 +49,51 @@ from office_connect.modules.reimbursement.documents.registry import (
 )
 from office_connect.modules.reimbursement.models import (
     ReimbAttachment,
+    ReimbCashAdvance,
     ReimbClaim,
     ReimbItineraryLeg,
 )
 from office_connect.modules.reimbursement.services import checklist, errors
+from office_connect.modules.reimbursement.services import status as st
 
 # Bumped when the context SHAPE changes in a way that should invalidate existing
 # snapshots. It is part of the fingerprint, so raising it re-renders every
 # document on next generation — which is what you want after fixing a template
 # that printed the wrong field.
-CONTEXT_VERSION = 1
+#
+# It is a DECLARATION, not the invalidation mechanism: adding a key already
+# moves every fingerprint on its own, so a bump is strictly redundant for
+# correctness. Bump it anyway when the shape moves — a session that changes the
+# shape and leaves this alone teaches the next one that the constant is
+# decorative, and the next shape change may be one the keys alone do not
+# announce (a rename, a value re-typed).
+#
+# v2 (R-6-liq-settle): the `advance`, `settlement` and `certifications` blocks.
+CONTEXT_VERSION = 2
+
+#: Print-side nouns for the packet cover's money block. Two kinds, one table: a
+#: liquidation reports what was SPENT against an advance, a reimbursement what
+#: is CLAIMED. Same figures, different sentence — and a sentence is prose, which
+#: lives beside GROUP_LABELS rather than in a second copy of the markup. Forking
+#: the table behind `{% if claim.kind %}` would duplicate 38 lines of money
+#: rendering and guarantee the two copies drift.
+#:
+#: The single-kind FORMS (`_dv32_body`, `_lr44_body`) keep their own hard-coded
+#: nouns: indirecting a label that can only ever say one thing buys nothing.
+MONEY_LABELS = {
+    "reimbursement": {
+        "heading": "Amount claimed",
+        "total": "Total claim",
+        "refundable": "Amount refundable",
+        "payable": "Amount due the payee",
+    },
+    "liquidation": {
+        "heading": "Settlement of the cash advance",
+        "total": "Total amount spent",
+        "refundable": "Excess cash advance — refundable",
+        "payable": "Amount reimbursable to the accountable officer",
+    },
+}
 
 # Claim statuses in which the claimant is still editing. A document generated in
 # one of these is a draft: it has no reference number and must not be mistaken
@@ -151,6 +194,193 @@ def _legs(legs: list[ReimbItineraryLeg]) -> list[dict[str, Any]]:
     ]
 
 
+#: The three R-6-liq-settle blocks, empty. Every context carries them, ALWAYS —
+#: a reimbursement claim gets these all-None copies rather than no key at all.
+#:
+#: Three reasons, and the first is sufficient on its own: the environment runs
+#: `StrictUndefined`, the packet resolves `{% include section.body %}` at render
+#: time, and `_lr44_body.html.j2` is reachable from any context (a test already
+#: renders every BODY_PARTIALS entry against a reimbursement claim). A key that
+#: appears only for liquidations would raise `UndefinedError` inside a
+#: `RenderFailed` — a SILENT `outcome="failed"` in the worker. Second: a context
+#: whose key set varies per row is not a versioned shape, which is what
+#: CONTEXT_VERSION claims to describe. Third: the all-None copy is what makes
+#: that existing test a free regression guard instead of a special case.
+_NO_ADVANCE: dict[str, Any] = {
+    "id": None,
+    "dv_no": None,
+    "dv_date": None,
+    "amount": None,
+    "date_return": None,
+    "deadline_date": None,
+    "status": None,
+}
+_NO_SETTLEMENT: dict[str, Any] = {
+    "mode": None,
+    "or_no": None,
+    "or_date": None,
+    "refund_amount": None,
+    "settled_at": None,
+    "spawned_claim_ref": None,
+}
+_NO_CERTIFICATIONS: dict[str, Any] = {
+    "a": {"name": None, "recorded_at": None},
+    "b": {"name": None, "recorded_at": None},
+    "c": {"recorded_by": None, "recorded_at": None, "note": None},
+}
+
+
+async def _advance_and_settlement(
+    session: AsyncSession, claim: ReimbClaim
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The cash advance this liquidation answers, and how it settled.
+
+    Kept as TWO blocks, not one. The advance is a fact from the moment the
+    liquidation is created; the settlement is a fact only at the end. Merged,
+    a half-populated block's emptiness would mean two different things and no
+    template could tell "no advance" from "not settled yet".
+
+    ``totals.advance`` already carries the AMOUNT — but only the amount, because
+    ``compute`` reads the row and keeps nothing else. GAM App 44's central line
+    is *"Amount of cash advance per DV No. ___ dated ___"*, which is unprintable
+    without this.
+
+    Dates go out as ISO strings: the context is hashed through
+    ``canonical_json``, and a ``date`` object is not JSON.
+    """
+    if claim.kind != st.LIQUIDATION_KIND or claim.cash_advance_id is None:
+        return (dict(_NO_ADVANCE), dict(_NO_SETTLEMENT))
+
+    row = (
+        await session.execute(
+            select(ReimbCashAdvance)
+            .where(ReimbCashAdvance.id == claim.cash_advance_id)
+            .execution_options(include_deleted=True)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return (dict(_NO_ADVANCE), dict(_NO_SETTLEMENT))
+
+    spawn_ref = (
+        await session.execute(
+            select(ReimbClaim.ref_no).where(
+                ReimbClaim.spawned_from_claim_id == claim.id,
+                ReimbClaim.status.is_not(None),
+                ReimbClaim.status != st.CANCELLED,
+                ReimbClaim.ref_no.is_not(None),
+            )
+        )
+    ).scalars().first()
+
+    advance = {
+        "id": row.id,
+        "dv_no": row.dv_no,
+        "dv_date": row.dv_date.isoformat() if row.dv_date else None,
+        "amount": money_str(row.amount) if row.amount is not None else None,
+        "date_return": row.date_return.isoformat() if row.date_return else None,
+        "deadline_date": (
+            row.deadline_date.isoformat() if row.deadline_date else None
+        ),
+        "status": row.status,
+    }
+    settlement = {
+        "mode": row.settlement_mode,
+        "or_no": row.refund_or_no,
+        "or_date": row.refund_or_date.isoformat() if row.refund_or_date else None,
+        "refund_amount": (
+            money_str(row.refund_amount) if row.refund_amount is not None else None
+        ),
+        "settled_at": row.settled_at.isoformat() if row.settled_at else None,
+        "spawned_claim_ref": spawn_ref,
+    }
+    return (advance, settlement)
+
+
+async def _certifications(
+    session: AsyncSession, claim: ReimbClaim
+) -> dict[str, Any]:
+    """Who the platform RECORDED at each certification, if anyone.
+
+    Read from the engine's append-only event log, which is the authoritative
+    history. What each entry is allowed to assert on the printed page is a
+    template question and is argued in ``_lr44_body.html.j2`` — the short
+    version is that B may be REPORTED beneath a blank signature line and C may
+    never be, because for C the platform holds the name of the Admin Officer who
+    recorded the signature, not the Head of Accounting who gave it.
+    """
+    if claim.kind != st.LIQUIDATION_KIND or claim.workflow_instance_id is None:
+        return {key: dict(value) for key, value in _NO_CERTIFICATIONS.items()}
+
+    rows = (
+        await session.execute(
+            select(
+                WorkflowEvent.action,
+                WorkflowState.code,
+                WorkflowEvent.actor_user_id,
+                WorkflowEvent.created_at,
+                WorkflowEvent.comment,
+            )
+            .join(
+                WorkflowState,
+                WorkflowState.id == WorkflowEvent.from_state_id,
+                isouter=True,
+            )
+            .where(WorkflowEvent.instance_id == claim.workflow_instance_id)
+            .order_by(WorkflowEvent.id)
+        )
+    ).all()
+
+    found: dict[str, tuple[int | None, datetime, str | None]] = {}
+    for action, from_code, actor_id, created_at, comment in rows:
+        if action == "submit":
+            # Certification A has no gate — filing IS the certification (the
+            # claimant is the maker). The submit event is its only record.
+            found.setdefault("a", (actor_id, created_at, None))
+        elif action == "approve" and from_code in (st.CERTIFY_B, st.CERTIFY_C):
+            found["b" if from_code == st.CERTIFY_B else "c"] = (
+                actor_id,
+                created_at,
+                comment,
+            )
+
+    names = await _actor_names(
+        session, {actor for actor, _, _ in found.values() if actor is not None}
+    )
+    result = {key: dict(value) for key, value in _NO_CERTIFICATIONS.items()}
+    for slot, (actor_id, created_at, comment) in found.items():
+        who = names.get(actor_id) if actor_id is not None else None
+        stamp = created_at.isoformat() if created_at else None
+        if slot == "c":
+            result["c"] = {
+                "recorded_by": who,
+                "recorded_at": stamp,
+                "note": comment,
+            }
+        else:
+            result[slot] = {"name": who, "recorded_at": stamp}
+    return result
+
+
+async def _actor_names(
+    session: AsyncSession, user_ids: set[int]
+) -> dict[int, str]:
+    """One batched user→display-name lookup, ``include_deleted`` so a document
+    keeps naming the right person after they are offboarded. Same shape as
+    ``api/tracking.py::_actor_names``; duplicated rather than imported because
+    the API layer must not become a dependency of the print layer."""
+    if not user_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(User.id, User.email, Staff.full_name)
+            .join(Staff, Staff.id == User.staff_id, isouter=True)
+            .where(User.id.in_(user_ids))
+            .execution_options(include_deleted=True)
+        )
+    ).all()
+    return {uid: (full_name or email) for uid, email, full_name in rows}
+
+
 async def build_document_context(
     session: AsyncSession,
     *,
@@ -185,6 +415,8 @@ async def build_document_context(
     )
 
     draft = is_draft_claim(claim)
+    advance, settlement = await _advance_and_settlement(session, claim)
+    certifications = await _certifications(session, claim)
 
     return {
         # The envelope core's base template always renders. `generated_at` is
@@ -220,9 +452,27 @@ async def build_document_context(
             "is_jo_cos": bool(claim.is_jo_cos),
             "is_within_50km": bool(claim.is_within_50km),
             "overnight_stay": bool(claim.overnight_stay),
+            # The COA 30-day clock this claim was measured against. A display
+            # mirror of the advance's pinned deadline (cash_advance.link_claim
+            # owns it) — and the Liquidation Report is the artifact that
+            # evidences compliance with it.
+            "liquidation_deadline": (
+                claim.liquidation_deadline.isoformat()
+                if claim.liquidation_deadline
+                else None
+            ),
         },
         "claimant": await _claimant(session, claim),
         "legs": _legs(legs),
+        # The cash advance and how it settled (R-6-liq-settle). Present on every
+        # context, all-None off the liquidation path — see the constants above.
+        "advance": advance,
+        "settlement": settlement,
+        "certifications": certifications,
+        # Per-kind print nouns for the packet cover's money block.
+        "money_labels": MONEY_LABELS.get(
+            claim.kind or "", MONEY_LABELS["reimbursement"]
+        ),
         # Server-computed, verbatim. The template formats; it never arithmetics.
         "totals": {
             "per_diem": totals.get("per_diem"),
@@ -452,6 +702,7 @@ async def build_packet_context(
     *,
     claim: ReimbClaim,
     sections: list[PacketSection],
+    title: str = PACKET_TITLE,
     now: datetime | None = None,
 ) -> dict[str, Any]:
     """The render context for the combined packet.
@@ -470,7 +721,7 @@ async def build_packet_context(
         session,
         claim=claim,
         document_key=PACKET,
-        title=PACKET_TITLE,
+        title=title,
         form_no=None,
         now=now,
     )

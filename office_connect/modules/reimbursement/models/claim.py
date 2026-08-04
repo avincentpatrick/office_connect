@@ -49,6 +49,35 @@ class ReimbClaim(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
         Index("ix_reimb_claims_cash_advance_id", "cash_advance_id"),
         Index("ix_reimb_claims_status", "status"),
         Index("ix_reimb_claims_kind", "kind"),
+        Index("ix_reimb_claims_spawned_from_claim_id", "spawned_from_claim_id"),
+        # One live "Reimbursement Due" spawn per liquidation (R-6-liq-settle,
+        # migration 0020). `cancelled` excluded so a mistaken spawn can be
+        # cancelled and re-taken — the same exclusion liquidation.LIVE_STATUSES
+        # makes for the same reason.
+        Index(
+            "uq_reimb_claims_spawn_per_liquidation",
+            "spawned_from_claim_id",
+            unique=True,
+            postgresql_where=text(
+                "spawned_from_claim_id IS NOT NULL "
+                "AND status IS DISTINCT FROM 'cancelled' AND deleted_at IS NULL"
+            ),
+        ),
+        # One live liquidation per cash advance (migration 0020) — the DB belt
+        # behind start_liquidation's `SELECT … FOR UPDATE`, deferred from
+        # R-6-liq-chain exactly as 0015 followed R-4-app's row lock.
+        # `IS DISTINCT FROM` rather than `<>` because `status` is nullable and
+        # `<>` is NULL-for-NULL, which would drop un-stamped rows out of the
+        # index — precisely where a duplicate would hide.
+        Index(
+            "uq_reimb_claims_live_liquidation_per_advance",
+            "cash_advance_id",
+            unique=True,
+            postgresql_where=text(
+                "kind = 'liquidation' AND cash_advance_id IS NOT NULL "
+                "AND status IS DISTINCT FROM 'cancelled' AND deleted_at IS NULL"
+            ),
+        ),
     )
 
     ref_no: Mapped[str | None]  # RB-YYYY-NNNN / LQ-YYYY-NNNN (allocated at submit)
@@ -82,6 +111,13 @@ class ReimbClaim(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     is_jo_cos: Mapped[bool] = mapped_column(server_default=text("false"))
     cash_advance_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("reimb_cash_advances.id")
+    )
+    # Spec §6.2's "Reimbursement Due" side-step made durable (R-6-liq-settle):
+    # the reimbursement of the difference points back at the liquidation that
+    # produced it, so neither document can be read without the other. NULL on
+    # every claim a traveller filed for themselves.
+    spawned_from_claim_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("reimb_claims.id")
     )
     # "Other expenses" total (spec §9.3 step 3) — persisted so resubmit recomputes
     # with it instead of silently resetting to zero (migration 0016). Itemized

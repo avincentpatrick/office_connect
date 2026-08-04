@@ -31,6 +31,7 @@ from office_connect.modules.reimbursement.models import (
     ReimbItineraryLeg,
 )
 from office_connect.modules.reimbursement.services.deadline import DEADLINE_KEY
+from office_connect.modules.reimbursement.services.status import LIQUIDATION_KIND
 
 #: Bump when a key changes meaning or disappears — the catalog references these
 #: by name, so a rename is a data migration.
@@ -89,8 +90,15 @@ async def _deadline_facts(
     (``services/cash_advance.py`` owns it), and a check that decides what a
     reviewer is told must read the source of truth, not a copy that a failed
     re-mirror could have left stale.
+
+    LIQUIDATIONS only (R-6-liq-settle). A "Reimbursement Due" spawn also carries
+    ``cash_advance_id`` — it must, or its DV could not net the advance it is the
+    balance of — but it answers no liquidation deadline. Un-guarded, this would
+    hand a reimbursement claim a ``liquidation.deadline`` fact and let a future
+    ``deadline_check`` on the reimbursement catalog flag a claim that was never
+    late for anything.
     """
-    if claim.cash_advance_id is None:
+    if claim.kind != LIQUIDATION_KIND or claim.cash_advance_id is None:
         return {}
     advance = (
         await session.execute(

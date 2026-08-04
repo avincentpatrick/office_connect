@@ -80,7 +80,20 @@ export function actionLabel(action: ClaimAction, status: ClaimStatus): string {
   }
   if (action === "resubmit") return "Resubmit";
   if (action === "submit") return "Submit";
-  return "Cancel";
+  if (action === "cancel") return "Cancel";
+  // `settle` is the liquidation chain's terminal verb (R-6-liq-settle). The
+  // server rewrites `approve` into it at handed_to_fms, because the same
+  // transition now also has to record the money.
+  if (action === "settle") return "Record settlement";
+  // Rendered by SettlementOutcome with the peso figure in it, not by the
+  // decision bar — this label is the fallback wording.
+  if (action === "spawn") return "Claim the difference";
+  // Exhaustive by construction: `action` is `never` here, so adding a verb to
+  // the ClaimAction union without labelling it fails `tsc`. The old bare
+  // `return "Cancel"` fallthrough silently rendered any new verb as a
+  // destructive Cancel button.
+  const exhaustive: never = action;
+  return exhaustive;
 }
 
 /** The plain-language consequence the approve confirm states (ui-standards §3.10). */

@@ -201,7 +201,11 @@ async def test_a_linked_cash_advance_supplies_the_liquidation_deadline(
     from office_connect.modules.reimbursement.services import cash_advance as ca
     from office_connect.modules.reimbursement.services.deadline import DEADLINE_KEY
 
-    cast = await standard_cast(app_session, make_user, packet=False)
+    # A LIQUIDATION: the deadline fact is kind-guarded (R-6-liq-settle), because
+    # an over-advance spawn also carries `cash_advance_id` and answers no clock.
+    cast = await standard_cast(
+        app_session, make_user, packet=False, kind="liquidation"
+    )
     advance = await ca.create_cash_advance(
         app_session,
         claimant_id=cast.staff.id,
@@ -226,7 +230,11 @@ async def test_the_deadline_fact_reads_the_advance_not_the_claim_mirror(
     from office_connect.modules.reimbursement.services import cash_advance as ca
     from office_connect.modules.reimbursement.services.deadline import DEADLINE_KEY
 
-    cast = await standard_cast(app_session, make_user, packet=False)
+    # A LIQUIDATION: the deadline fact is kind-guarded (R-6-liq-settle), because
+    # an over-advance spawn also carries `cash_advance_id` and answers no clock.
+    cast = await standard_cast(
+        app_session, make_user, packet=False, kind="liquidation"
+    )
     advance = await ca.create_cash_advance(
         app_session,
         claimant_id=cast.staff.id,
@@ -253,7 +261,11 @@ async def test_the_deadline_check_runs_for_real_against_a_linked_advance(
     from office_connect.core.checklist.checks import run_auto_checks
     from office_connect.modules.reimbursement.services import cash_advance as ca
 
-    cast = await standard_cast(app_session, make_user, packet=False)
+    # A LIQUIDATION: the deadline fact is kind-guarded (R-6-liq-settle), because
+    # an over-advance spawn also carries `cash_advance_id` and answers no clock.
+    cast = await standard_cast(
+        app_session, make_user, packet=False, kind="liquidation"
+    )
     advance = await ca.create_cash_advance(
         app_session,
         claimant_id=cast.staff.id,

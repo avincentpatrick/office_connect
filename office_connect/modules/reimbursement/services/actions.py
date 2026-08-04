@@ -26,8 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from office_connect.core import workflow as wf
 from office_connect.core.models import WorkflowInstance, WorkflowStep
 from office_connect.core.time import utc_now
-from office_connect.modules.reimbursement.models import ReimbClaim
+from office_connect.modules.reimbursement.models import ReimbCashAdvance, ReimbClaim
+from office_connect.modules.reimbursement.services import cash_advance as ca
 from office_connect.modules.reimbursement.services import checklist
+from office_connect.modules.reimbursement.services import settlement
 from office_connect.modules.reimbursement.services import status as st
 from office_connect.modules.reimbursement.services.lifecycle import is_claim_owner
 
@@ -40,6 +42,21 @@ DUE_SOON_WINDOW = timedelta(days=1)
 ON_TRACK = "on_track"
 DUE_SOON = "due_soon"
 OVERDUE = "overdue"
+
+#: The liquidation chain's terminal verb (R-6-liq-settle). NOT an engine action —
+#: the graph still authors ``approve`` at ``handed_to_fms``, and the engine still
+#: authorizes it. This is the client-facing name for "clear that gate, and record
+#: the money while you do", which is a different ROUTE
+#: (``POST /claims/{id}/settle``) driving the same transition.
+SETTLE = "settle"
+
+#: Spec §6.2's "one tap": claim the difference an over-advance left owing. Also
+#: not an engine action — it happens AFTER the chain is terminal, and it creates
+#: a new claim rather than moving this one. It belongs in the action set anyway,
+#: because that set is the client's only sanctioned answer to "what may I do
+#: here" (workflow-standards §3), and the alternative — letting the browser
+#: infer ownership from a claimant id — is the client computing permissions.
+SPAWN = "spawn"
 
 
 async def claim_actions(
@@ -75,7 +92,46 @@ async def claim_actions(
         # The approver sees a red callout explaining the gap instead, and
         # `return` — their actual remedy — is untouched.
         verbs = [verb for verb in verbs if verb != "approve"]
+    if (
+        "approve" in verbs
+        and claim.kind == st.LIQUIDATION_KIND
+        and (claim.status or st.DRAFT) == st.HANDED_TO_FMS
+    ):
+        # Same doctrine, one step further (R-6-liq-settle). A bare approve here
+        # is certain to fail — `_assert_advance_settled` refuses it — but the
+        # actor IS authorized to clear this gate; they just have to record the
+        # money while doing it. So the verb is REWRITTEN rather than dropped:
+        # dropping it would leave a hole where the approver needs a button, and
+        # `settle` is that button. `return` (FMS bouncing it back) is untouched.
+        verbs = [SETTLE if verb == "approve" else verb for verb in verbs]
+    if await _can_spawn(session, claim=claim, actor_user_id=actor_user_id):
+        verbs = [*verbs, SPAWN]
     return verbs
+
+
+async def _can_spawn(
+    session: AsyncSession, *, claim: ReimbClaim, actor_user_id: int
+) -> bool:
+    """May this actor claim the difference an over-advance left owing?
+
+    Mirrors ``settlement.spawn_reimbursement``'s own guards exactly — a settled
+    liquidation, the ``over_advance`` mode, no live spawn already, and the
+    CLAIMANT asking. Duplicating them here is the price of the R-4-screens
+    doctrine: the button must not be offered to someone certain to get a 403,
+    and the service must not trust the button. Both, or neither is safe.
+    """
+    if claim.kind != st.LIQUIDATION_KIND:
+        return False
+    if (claim.status or st.DRAFT) != st.SETTLED:
+        return False
+    if not await is_claim_owner(session, claim, actor_user_id):
+        return False
+    if claim.cash_advance_id is None:
+        return False
+    advance = await session.get(ReimbCashAdvance, claim.cash_advance_id)
+    if advance is None or advance.settlement_mode != ca.OVER_ADVANCE:
+        return False
+    return await settlement.spawn_for_liquidation(session, claim.id) is None
 
 
 def sla_state(due_at: datetime | None, *, now: datetime) -> str | None:

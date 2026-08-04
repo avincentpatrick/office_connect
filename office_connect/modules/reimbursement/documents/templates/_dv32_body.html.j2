@@ -61,7 +61,11 @@
       <td>Total claim</td>
       <td class="amount">{{ totals.grand | money }}</td>
     </tr>
-    {% if totals.advance %}
+    {# `!= "0.00"` is load-bearing, not belt-and-braces: money crosses into the
+       context as a 2-dp STRING, and "0.00" is truthy. A bare `{% if
+       totals.advance %}` printed `Less: cash advance (₱0.00)` on every claim
+       that never had one. Line 71 below always had it right. #}
+    {% if totals.advance and totals.advance != "0.00" %}
     <tr>
       <td>Less: cash advance</td>
       <td class="amount">({{ totals.advance | money }})</td>

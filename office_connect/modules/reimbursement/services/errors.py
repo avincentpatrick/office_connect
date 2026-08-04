@@ -375,13 +375,23 @@ def cash_advance_dates_invalid() -> APIError:
 # --- R-6-liq-chain: the liquidation workflow -------------------------------
 
 
-def liquidation_exists(*, claim_id: int, ref_no: str | None) -> APIError:
+def liquidation_exists(*, claim_id: int | None, ref_no: str | None) -> APIError:
     """One live liquidation per advance.
 
     Names the existing one so the caller can open it — a bare "already exists"
     would leave a traveller with a button that fails and no way to find the
     liquidation they already started (§9.1 principle 4).
+
+    Degrades to an unnamed sentence when raised from the ``IntegrityError``
+    behind the pre-flight (migration ``0020``'s belt): that path lost a race and
+    its session is aborted, so it cannot query for the winner.
     """
+    if claim_id is None:
+        return APIError(
+            409,
+            "reimb_liquidation_exists",
+            "This cash advance already has a liquidation. Reload to open it.",
+        )
     which = f"{ref_no} " if ref_no else ""
     return APIError(
         409,
@@ -414,4 +424,156 @@ def not_advance_holder() -> APIError:
         403,
         "reimb_not_advance_holder",
         "Only the traveller this cash advance was issued to can liquidate it.",
+    )
+
+
+# --- R-6-liq-settle: recording the settlement ------------------------------
+
+
+def settlement_required(*, claim_id: int) -> APIError:
+    """``settled`` asserts the advance is closed — refuse to assert it early.
+
+    The engine's ``approve`` carries no payload, so the money is recorded by a
+    separate, prior service call inside the same transaction. This is what makes
+    the generic approve route refuse to be the one that closes a liquidation,
+    and it NAMES the route that does the thing (§9.1 principle 4) rather than
+    leaving an Admin Officer holding a button that always fails.
+    """
+    return APIError(
+        409,
+        "reimb_settlement_required",
+        "Record the settlement before closing this liquidation — the refund "
+        "receipt or the amount still due has to be on the cash advance first.",
+        details=[{"claim_id": claim_id, "action": "settle"}],
+    )
+
+
+def liquidation_without_advance() -> APIError:
+    return APIError(
+        409,
+        "reimb_liquidation_without_advance",
+        "This liquidation is not linked to a cash advance, so there is nothing "
+        "to settle.",
+    )
+
+
+def not_a_liquidation() -> APIError:
+    return APIError(
+        422,
+        "reimb_not_a_liquidation",
+        "Only a liquidation is settled against a cash advance — a reimbursement "
+        "claim is paid, not settled.",
+    )
+
+
+def settlement_wrong_state(*, status: str) -> APIError:
+    return APIError(
+        409,
+        "reimb_settlement_wrong_state",
+        f"A liquidation is settled once FMS has processed it; this one is "
+        f"'{status}'. Walk the certifications first.",
+    )
+
+
+def settlement_already_recorded(*, or_no: str | None, settled_at: date | None) -> APIError:
+    """The double-tap answer.
+
+    Deliberately NOT the engine's generic ``workflow_state_conflict`` ("someone
+    finished it first"), which is a sentence about a race — this is a sentence
+    about a repeat, and the difference matters to whoever is reading it.
+    """
+    when = f" on {settled_at.isoformat()}" if settled_at else ""
+    which = f" (OR {or_no})" if or_no else ""
+    return APIError(
+        409,
+        "reimb_settlement_already_recorded",
+        f"This cash advance was already settled{when}{which}. A settled advance "
+        "is a closed record.",
+    )
+
+
+def settlement_totals_missing() -> APIError:
+    return APIError(
+        422,
+        "reimb_settlement_totals_missing",
+        "This liquidation's amounts have not been worked out, so there is no "
+        "settlement figure to record. Recompute the claim first.",
+    )
+
+
+def refund_receipt_required(*, amount: str) -> APIError:
+    return APIError(
+        422,
+        "reimb_refund_receipt_required",
+        f"₱{amount} is refundable, so the DOH official receipt number and date "
+        "are required — the receipt is the only proof the money came back.",
+    )
+
+
+def refund_receipt_not_applicable() -> APIError:
+    """An OR where nothing was refunded is a receipt for a payment that never
+    happened — and it is the line a COA auditor traces from the Liquidation
+    Report into the books."""
+    return APIError(
+        422,
+        "reimb_refund_receipt_not_applicable",
+        "Nothing is refundable on this liquidation, so there is no official "
+        "receipt to record.",
+    )
+
+
+def refund_amount_mismatch(*, expected: str, given: str) -> APIError:
+    """Money is server-computed (standing prohibition). A client may ECHO the
+    figure back so a stale screen is caught; it may never propose one."""
+    return APIError(
+        422,
+        "reimb_refund_amount_mismatch",
+        f"The refund on this liquidation is ₱{expected}, not ₱{given} — your "
+        "screen is out of date. Reload and record it again.",
+    )
+
+
+def spawn_not_over_advance(*, mode: str | None) -> APIError:
+    which = f"settled as '{mode}'" if mode else "has not been settled yet"
+    return APIError(
+        409,
+        "reimb_spawn_not_over_advance",
+        "A reimbursement is only claimed when the actual expenses exceeded the "
+        f"advance; this liquidation {which}.",
+    )
+
+
+def spawn_exists(*, claim_id: int | None, ref_no: str | None) -> APIError:
+    """Names the existing one, the same shape as ``liquidation_exists``.
+
+    Degrades to an unnamed sentence when raised from the ``IntegrityError``
+    behind the pre-flight: that path lost a race and its session is aborted, so
+    it cannot query for the winner. Naming the wrong claim would be worse than
+    naming none — the ``create_cash_advance`` precedent, same reasoning.
+    """
+    if claim_id is None:
+        return APIError(
+            409,
+            "reimb_spawn_exists",
+            "This liquidation already has its reimbursement claim. Reload to "
+            "open it.",
+        )
+    which = f"{ref_no} " if ref_no else ""
+    return APIError(
+        409,
+        "reimb_spawn_exists",
+        f"This liquidation already has its reimbursement claim ({which}"
+        f"#{claim_id}). Open that one instead of starting another.",
+        details=[{"claim_id": claim_id, "ref_no": ref_no}],
+    )
+
+
+def spawn_below_advance() -> APIError:
+    """A reimbursement claim can never print "Amount refundable" — that is a
+    liquidation's sentence, on a liquidation's form."""
+    return APIError(
+        422,
+        "reimb_spawn_below_advance",
+        "This claim now totals less than the cash advance it nets, so nothing "
+        "is due to you. Check the itinerary and the other expenses.",
     )

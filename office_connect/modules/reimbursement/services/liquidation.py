@@ -34,6 +34,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from office_connect.core.models import User
@@ -89,10 +90,14 @@ async def start_liquidation(
     lock order is advance → claim, and no other path locks the two together, so
     this cannot deadlock against ``lifecycle._locked_claim``.
 
-    A partial-unique index on ``(cash_advance_id) WHERE kind='liquidation' AND
-    status <> 'cancelled'`` is the DB belt behind this service lock and is
-    recorded as a migration ``0020`` candidate — the same order the claim↔
-    instance uniqueness took (service lock at R-4-app, index at ``0015``).
+    ``uq_reimb_claims_live_liquidation_per_advance`` (migration ``0020``) is the
+    DB belt behind this service lock — the same order the claim↔instance
+    uniqueness took (service lock at R-4-app, index at ``0015``). Its predicate
+    is deliberately WIDER than ``LIVE_STATUSES``: the index uses ``status IS
+    DISTINCT FROM 'cancelled'``, which includes an un-stamped NULL status, while
+    the service check uses ``IN (live states)``, which does not. The gap is
+    caught below and re-raised as the same named 409 the pre-flight produces, so
+    the two paths stay indistinguishable to a caller.
     """
     now = now or utc_now()
     set_audit_context(session, actor_id=actor_user_id)
@@ -136,13 +141,26 @@ async def start_liquidation(
     # Link BEFORE flushing anything else: link_claim mirrors deadline_date onto
     # the claim, which is what makes the seeded `deadline_check` and the
     # tracker's countdown ring live from the first read.
-    await ca.link_claim(
-        session, claim=claim, cash_advance=advance, actor_user_id=actor_user_id
-    )
-    # No-ops when the advance is already `liquidation_started` or `overdue` —
-    # filing late does not un-late it, and the §89 slot stays held either way.
-    await ca.mark_liquidation_started(
-        session, cash_advance=advance, actor_user_id=actor_user_id
-    )
-    await session.flush()
+    #
+    # The catch wraps `link_claim` rather than a trailing `flush()` because
+    # link_claim is what WRITES `cash_advance_id` and flushes it — the 0020 belt
+    # fires there, not later.
+    try:
+        await ca.link_claim(
+            session, claim=claim, cash_advance=advance, actor_user_id=actor_user_id
+        )
+        # No-ops when the advance is already `liquidation_started` or `overdue` —
+        # filing late does not un-late it, and the §89 slot stays held either way.
+        await ca.mark_liquidation_started(
+            session, cash_advance=advance, actor_user_id=actor_user_id
+        )
+        await session.flush()
+    except IntegrityError as exc:
+        # The 0020 belt caught a live liquidation the service check could not
+        # see (a NULL-status row — see the docstring). Same named 409, minus the
+        # claim id: this session is aborted and cannot query for the winner, and
+        # naming the wrong claim would be worse than naming none.
+        if "uq_reimb_claims_live_liquidation_per_advance" in str(exc.orig):
+            raise errors.liquidation_exists(claim_id=None, ref_no=None) from exc
+        raise
     return claim

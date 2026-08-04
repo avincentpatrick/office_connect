@@ -1,6 +1,11 @@
-import { Navigate, useParams } from "react-router";
+import { Navigate, useNavigate, useParams } from "react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../../api/http";
-import type { ClaimDetail } from "../../api/reimbursement";
+import {
+  reimbKeys,
+  spawnReimbursement,
+  type ClaimDetail,
+} from "../../api/reimbursement";
 import { Card } from "../../components/Card/Card";
 import { ErrorSummary } from "../../components/ErrorSummary/ErrorSummary";
 import { PageSkeleton } from "../../components/Skeleton/Skeleton";
@@ -13,6 +18,8 @@ import { ClaimActions } from "./ClaimActions";
 import { ClaimTimeline } from "./ClaimTimeline";
 import { CashAdvanceCard } from "./CashAdvanceCard";
 import { PacketPreview } from "./PacketPreview";
+import { SettlementOutcome } from "./SettlementDialog";
+import { toast } from "../../components/Toast/toast-bus";
 import {
   CLAIM_STATUS_TO_SEMANTIC,
   SLA_STATE_LABEL,
@@ -75,6 +82,54 @@ export function ClaimPage() {
 function claimTitle(claim: ClaimDetail): string {
   const noun = claim.kind === "liquidation" ? "Liquidation" : "Travel claim";
   return claim.ref_no ? `${claim.ref_no} — ${noun}` : noun;
+}
+
+/**
+ * The settled liquidation's outcome, plus the traveller's one tap when the
+ * advance did not cover the trip (spec §6.2).
+ *
+ * The button is gated on the SERVER's action set, never on a client-side
+ * comparison of claimant ids — workflow-standards §3, "the UI never computes
+ * permissions". `spawn` appears there only for the claimant, only on a settled
+ * over-advance, and only while no live spawn exists; the service re-checks all
+ * three, so neither layer is trusting the other.
+ */
+function SettlementOutcomePanel({ claim }: { claim: ClaimDetail }) {
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const spawn = useMutation({
+    mutationFn: () => spawnReimbursement(claim.id),
+    onSuccess: (created) => {
+      queryClient.setQueryData(reimbKeys.claim(created.id), created);
+      void queryClient.invalidateQueries({ queryKey: reimbKeys.claim(claim.id) });
+      void queryClient.invalidateQueries({ queryKey: reimbKeys.myWork() });
+      toast("Draft claim started — finish it in the wizard.", "success");
+      navigate(`/reimbursement/claims/${created.id}`);
+    },
+    onError: (error) => {
+      toast(
+        error instanceof ApiError
+          ? error.message
+          : "Something went wrong. Please try again.",
+      );
+      // A 409 means someone already claimed it (or this screen is stale) —
+      // pull the truth back so the button re-renders honestly.
+      if (error instanceof ApiError && error.status === 409) {
+        void queryClient.invalidateQueries({
+          queryKey: reimbKeys.claim(claim.id),
+        });
+      }
+    },
+  });
+
+  return (
+    <SettlementOutcome
+      claim={claim}
+      canSpawn={claim.available_actions.includes("spawn")}
+      spawning={spawn.isPending}
+      onSpawn={() => spawn.mutate()}
+    />
+  );
 }
 
 export function ClaimDetailView({ claim }: { claim: ClaimDetail }) {
@@ -197,6 +252,10 @@ export function ClaimDetailView({ claim }: { claim: ClaimDetail }) {
         {claim.cash_advance ? (
           <CashAdvanceCard advance={claim.cash_advance} />
         ) : null}
+        {/* How the money came out (R-6-liq-settle). Spec §6.3's derived-badge
+            doctrine one level up: a settlement is a fact about the RECORD, not
+            a status, so it renders beside the advance rather than as a chip. */}
+        <SettlementOutcomePanel claim={claim} />
         <PacketPreview claim={claim} canPrepare={canPreparePacket(claim)} />
       </div>
     </DetailPage>

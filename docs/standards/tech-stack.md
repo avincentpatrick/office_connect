@@ -186,6 +186,19 @@ schemas in non-component sibling files (react-refresh rule).
 | Git | Local commits per session; push + tag per phase (see `development-workflow.md` §4) |
 | Claude Code (AI assistant) | Pair-builds the project; session contract in `CLAUDE.md` |
 
+> **⚠ Deploying document/template work: restart `worker`, not just `app`.**
+> Learned the hard way at R-6-liq-settle (2026-08-04). The `app` container
+> reloads on edit; the Celery `worker` does **not** — but Jinja templates are
+> read from the bind-mount at RENDER time, so a worker left running holds STALE
+> Python while rendering FRESH markup. The failure is silent and asymmetric: a
+> new template referencing a new context key raises `'x' is undefined` inside
+> `RenderFailed`, which lands as `outcome="failed"` in a task result rather than
+> as an error anyone sees, and a newly registered `DocumentSpec` is simply
+> `UnknownDocument`. **No test can catch this** — a test process imports the
+> current code by construction. `scripts/deploy.ps1` already recreates every
+> service; the trap is the dev loop, where `docker compose restart worker beat`
+> is the missing step after touching `documents/`, `seeds.py` or any `ops/` task.
+
 ## 6. External services
 
 | Service | Role | Status |

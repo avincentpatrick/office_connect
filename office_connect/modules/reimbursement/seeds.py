@@ -284,12 +284,15 @@ REIMB_RETURN_REASONS = SeedDataset(
 # ``modules/reimbursement/documents/registry.py`` — the pair is asserted by
 # test_reimb_documents.py so a rename on either side cannot ship half-done.
 #
-# Only the three reimbursement `generated_doc` catalog rows appear here. CTC-47
-# is external_wet_sign and RER-46 is an upload: both are documents a HUMAN signs
-# or supplies, so generating them would assert something the system cannot know.
-# The liquidation catalog's LR-44 (GAM App 44) is seeded but NOT yet bound —
-# its DocumentSpec, body partial and binding row land with the settlement
-# figures it prints, at R-6-liq-settle.
+# Only `generated_doc` catalog rows appear here. CTC-47 is external_wet_sign and
+# RER-46 is an upload: both are documents a HUMAN signs or supplies, so
+# generating them would assert something the system cannot know.
+#
+# `claim_kind` is always EXPLICIT, never NULL-for-both, even though the column
+# permits it and `_bindings` now honours it: a generated form is per-kind by
+# construction, and the two kinds' documents share no COA appendix number. A
+# NULL row is a capability the R-9 catalog editor may one day need — not a
+# shortcut this seed should take.
 REIMB_TEMPLATE_MAPS = SeedDataset(
     name="reimb_template_maps",
     owner="Accounting Unit / resident COA auditor",
@@ -324,6 +327,21 @@ REIMB_TEMPLATE_MAPS = SeedDataset(
             "form_no": "GAM Vol. II, Appendix 32",
             "circular_version": _COA_CHECKLIST,
             "sort": 3,
+        },
+        # R-6-liq-settle. This row is what ACTIVATES the deliberately-inert
+        # LR-44 catalog row seeded at R-6-liq-chain — three sessions after the
+        # requirement was authored, exactly as the `deadline_check` substrate
+        # waited for the rule that discharged it. Under GAM 2015 Appendix 44 is
+        # the Liquidation Report (the "App 44 = Itinerary" numbering is the
+        # pre-2015 NGAS scheme).
+        {
+            "claim_kind": "liquidation",
+            "checklist_code": "LR-44",
+            "document_key": "reimb.lr44",
+            "title": "Liquidation Report",
+            "form_no": "GAM Vol. II, Appendix 44",
+            "circular_version": _COA_CHECKLIST,
+            "sort": 1,
         },
     ),
 )

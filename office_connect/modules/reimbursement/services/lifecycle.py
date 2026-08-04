@@ -51,6 +51,7 @@ from office_connect.core.time import MANILA, to_manila, to_utc, utc_now
 from office_connect.core.workdays import add_working_days, load_nonworking_dates
 from office_connect.core.workflow.steps import gate_steps
 from office_connect.modules.reimbursement.models import (
+    ReimbCashAdvance,
     ReimbClaim,
     ReimbConfig,
     ReimbReturnEvent,
@@ -58,6 +59,7 @@ from office_connect.modules.reimbursement.models import (
     ReimbStatusHistory,
 )
 from office_connect.modules.reimbursement.services import attachments as evidence
+from office_connect.modules.reimbursement.services import cash_advance as ca
 from office_connect.modules.reimbursement.services import checklist
 from office_connect.modules.reimbursement.services import errors
 from office_connect.modules.reimbursement.services import status as st
@@ -127,6 +129,34 @@ async def is_claim_owner(
     the same answer to synthesize a pre-instance action set (R-4-screens)."""
     actor = await session.get(User, actor_user_id)
     return bool(actor and actor.staff_id == claim.claimant_id)
+
+
+async def _assert_advance_settled(session: AsyncSession, claim: ReimbClaim) -> None:
+    """The money before the terminal state (R-6-liq-settle).
+
+    ``settled`` is not merely the next rung — it ASSERTS that the cash advance
+    is closed. Letting a bare ``approve`` assert it would leave a settled
+    liquidation standing against an advance still holding its PD 1445 §89 slot,
+    with no atomic way back. ``services/settlement.py::record_settlement``
+    records the money and then drives this same approve inside one transaction,
+    so the guard is already satisfied by the time it runs; anything else gets a
+    409 naming the route that does the thing.
+
+    Reads ``claim.status`` rather than re-reading the instance: the two are kept
+    in lockstep by ``_sync_claim_from_event`` inside this module's transaction
+    and the claim row is already locked, so a second engine read buys nothing.
+    """
+    if claim.cash_advance_id is None:
+        raise errors.liquidation_without_advance()
+    advance = (
+        await session.execute(
+            select(ReimbCashAdvance).where(
+                ReimbCashAdvance.id == claim.cash_advance_id
+            )
+        )
+    ).scalar_one_or_none()
+    if advance is None or advance.status != ca.SETTLED:
+        raise errors.settlement_required(claim_id=claim.id)
 
 
 async def _assert_return_reasons(
@@ -426,6 +456,16 @@ async def submit_claim(
     await compute_claim_totals(
         session, claim_id=claim.id, actor_user_id=actor_user_id
     )
+    # A reimbursement that nets a cash advance (the R-6-liq-settle spawn) must
+    # still be owed something. Edited below the advance it nets, ``settle``
+    # returns a refund — and DV-32 would print "Amount refundable" on a payment
+    # instrument, which is a liquidation's sentence on the wrong form.
+    if (
+        claim.kind == st.REIMBURSEMENT_KIND
+        and claim.cash_advance_id is not None
+        and to_money(claim.totals.get("to_refund") or 0) > 0
+    ):
+        raise errors.spawn_below_advance()
     # Documentary requirements (core-service #7, R-3). AFTER compute, because
     # the catalog rules read fresh totals; BEFORE start_instance, because an
     # incomplete packet must create no workflow instance and must never burn an
@@ -475,6 +515,16 @@ async def submit_claim(
     # number exists is a draft; this pass is the one that prints RB-YYYY-NNNN on
     # the filed original and supersedes whatever the claimant previewed.
     generate_on_commit(session, evidence.HOLDER_KIND, claim.id)
+    # A spawn burns its RB- number HERE, days after the liquidation that
+    # produced it settled — and the liquidation's own Liquidation Report prints
+    # that number ("claimed under reference RB-…"). Nothing else would ever
+    # regenerate it, so the archived LR would say "not yet filed" forever and
+    # the auditor would lose the trace between the two documents. One line, in
+    # the one place that knows.
+    if claim.spawned_from_claim_id is not None:
+        generate_on_commit(
+            session, evidence.HOLDER_KIND, claim.spawned_from_claim_id
+        )
     return claim
 
 
@@ -540,6 +590,15 @@ async def claim_action(
         # re-materializing mid-approval would violate "in-flight always
         # finishes" (workflow-standards §9).
         await checklist.assert_persisted_packet_complete(session, claim=claim)
+        # R-6-liq-settle: the last rung of the liquidation chain is a MONEY
+        # state. The engine's approve carries no payload, so the settlement is
+        # recorded by a prior call in this same transaction — see
+        # ``services/settlement.py``.
+        if (
+            claim.kind == st.LIQUIDATION_KIND
+            and (claim.status or st.DRAFT) == st.HANDED_TO_FMS
+        ):
+            await _assert_advance_settled(session, claim)
 
     key = idempotency_key or (
         f"{action}:{claim.id}:{instance.revision_no}"

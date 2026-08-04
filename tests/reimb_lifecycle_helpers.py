@@ -78,12 +78,15 @@ async def trip_claim(session, *, staff, packet=True, owner_user_id=None, **claim
     return claim
 
 
-async def standard_cast(session, make_user, *, packet=True):
+async def standard_cast(session, make_user, *, packet=True, **claim_kw):
     """Office → division tree + owner/approver/admin users + a submittable
     claim. Callers needing committed data (separate-session tests) commit.
 
     ``packet=False`` leaves the documentary checklist unsatisfied, for tests
-    that exercise the R-3 submit gate itself."""
+    that exercise the R-3 submit gate itself. ``**claim_kw`` reaches
+    ``make_claim`` — ``kind="liquidation"`` is the one that matters, now that
+    several behaviours (the liquidation deadline fact, the deadline re-mirror,
+    the LR-44 binding) are kind-guarded."""
     office = await make_org_unit(session, kind="office")
     division = await make_org_unit(session, kind="division", parent=office)
 
@@ -101,7 +104,7 @@ async def standard_cast(session, make_user, *, packet=True):
 
     await ensure_reimb_workflow(session)
     claim = await trip_claim(
-        session, staff=staff, packet=packet, owner_user_id=owner.id
+        session, staff=staff, packet=packet, owner_user_id=owner.id, **claim_kw
     )
     await session.flush()
     return SimpleNamespace(

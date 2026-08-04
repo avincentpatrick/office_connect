@@ -145,3 +145,39 @@ seam, keeping core worker-free (`lint-imports` stays green).
 (the log rides the same integrity proof as the business tables). Its free-text/SPI
 `payload` is `__audit_exclude__` (value withheld from the chain, field name kept);
 `comment` is kept in clear — it is the decision rationale COA needs.
+
+## 12. A decision that records DATA is a separate, prior service call
+
+`execute_action` takes an actor, a comment and a CAS token. It does **not** take a
+payload, and it must not grow one. A transition whose meaning depends on figures — a
+settlement, a disbursement, a receipt number — is therefore **two calls in one
+transaction**: a module service records the data, then drives the ordinary verb.
+
+```
+record_x(session, …)        # writes the facts, flushes
+  → lifecycle.claim_action(action="approve", …)   # the unchanged engine verb
+```
+
+Three rules make that safe, and all three are load-bearing:
+
+1. **One transaction, always.** The data write and the transition commit together or
+   not at all. Split across two requests, the first one's side effects (a released
+   lock, a freed slot, a notified party) stand alone with nothing to complete them,
+   and this platform has no compensating-transaction machinery to undo them.
+2. **The data write goes FIRST.** It must not touch `instance.row_version`, so the
+   CAS token the client read is still the token at transition time. Reversed, a
+   caller could pass a stale version and have the data recorded against a transition
+   the engine then refused.
+3. **The gate refuses the bare verb.** The module adds a precondition at that state —
+   *the data must already be there* — so the generic action route cannot reach the
+   state that asserts it. The refusal NAMES the route that does the thing (§9.1
+   principle 4); a bare "not allowed" leaves an operator holding a button that always
+   fails.
+
+The client-facing verb is then **rewritten, not dropped**: the actor is authorized to
+clear that gate, so `available_actions` offers the verb that WORKS (`settle` in place
+of `approve`) rather than leaving a hole where the button belongs.
+
+First instance: `modules/reimbursement/services/settlement.py` (R-6-liq-settle).
+Widening `execute_action` instead would have put one module's money on every future
+module's transition.

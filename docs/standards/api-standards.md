@@ -389,6 +389,24 @@ router. The conventions this establishes:
     in would make the whole file untrusted while still carrying `origin =
     'generated'`, and the `inline` disposition above would then be serving a
     claimant's bytes in our own origin — the exact thing this rule prevents.
+- **A generated document prints only facts the platform RECORDED, and names what
+  it recorded rather than what it inferred** (added R-6-liq-settle). Two edges:
+  - Where a workflow records the person who **entered** an external fact, the
+    document may name the **recorder** — never the external signatory. GAM App
+    44's certification C is cleared by the Admin Officer typing what the Head of
+    the Accounting Unit signed on paper; printing that officer in box C would
+    name the wrong person in a COA certification, which is worse than a blank
+    box. A recorded fact ABOUT a certification goes in a note beneath the
+    signature line, never on it — a name over an empty rule reads as a completed
+    certification to whoever is holding the page.
+  - A fact the platform does not have yet prints as a **blank rule plus a note
+    saying so**, never as a zero and never as a hidden section. `₱0.00` on a
+    refund line is indistinguishable from "nothing was refundable", and a hidden
+    section is how a reader never learns money is owed.
+  - Recording that fact later is what makes the document re-render, and that is
+    free: the fingerprint check means an unchanged document costs nothing, and
+    the earlier copy is **superseded, not voided** — it was reissued, not
+    invalidated, and `voided` would tell an auditor something untrue.
 
 ### 9d. Two doors onto one endpoint (Stage C R-5-packet, 2026-08-04)
 

@@ -36,6 +36,7 @@ from office_connect.modules.reimbursement.api.schemas import (
     LegOut,
     OrgUnitRef,
     PacketOut,
+    SpawnedClaimOut,
 )
 # The registry module, not the package: all this layer needs is the key, and a
 # package import would drag the generator (and its checklist dependency) into
@@ -50,6 +51,7 @@ from office_connect.core.time import to_manila, utc_now
 from office_connect.modules.reimbursement.services import actions, checklist, errors
 from office_connect.modules.reimbursement.services import cash_advance as ca_service
 from office_connect.modules.reimbursement.services import liquidation
+from office_connect.modules.reimbursement.services import settlement
 from office_connect.modules.reimbursement.services import attachments as evidence
 from office_connect.modules.reimbursement.services import deadline as dl
 from office_connect.modules.reimbursement.services import status as st
@@ -398,7 +400,18 @@ async def cash_advance_out(
     overdue_note: str | None = None,
 ) -> CashAdvanceOut:
     """Map an advance onto the wire, deriving the countdown server-side."""
-    state = dl.deadline_state(deadline=advance.deadline_date, today=today)
+    # A SETTLED advance has no countdown. `deadline_state` reads only the date,
+    # so without this a settled-but-late record would render a red "Overdue"
+    # ring and the COA consequence copy (6% interest, salary deduction) forever
+    # — on the very liquidation that answered it, and on the reimbursement
+    # spawned from it. The chip already says "Settled"; the ring would be
+    # threatening a traveller who is done (R-6-liq-settle).
+    settled = advance.status == ca_service.SETTLED
+    state = (
+        None
+        if settled
+        else dl.deadline_state(deadline=advance.deadline_date, today=today)
+    )
     staff = await _display_staff(session, advance.claimant_id)
     started = await liquidation.liquidation_for_advance(session, advance.id)
     return CashAdvanceOut(
@@ -413,10 +426,20 @@ async def cash_advance_out(
         status=advance.status,
         status_label=CA_STATUS_LABELS.get(advance.status, advance.status),
         settled_at=advance.settled_at,
+        settlement_mode=advance.settlement_mode,
+        refund_or_no=advance.refund_or_no,
+        refund_or_date=advance.refund_or_date,
+        refund_amount=(
+            money_str(advance.refund_amount)
+            if advance.refund_amount is not None
+            else None
+        ),
         deadline_date=advance.deadline_date,
         deadline_basis=advance.deadline_basis,
-        days_remaining=dl.days_remaining(
-            deadline=advance.deadline_date, today=today
+        days_remaining=(
+            None
+            if settled
+            else dl.days_remaining(deadline=advance.deadline_date, today=today)
         ),
         deadline_state=state,
         # Only once it bites. A permanent banner is wallpaper; one that appears
@@ -429,6 +452,26 @@ async def cash_advance_out(
         liquidation_status=started.status if started else None,
         created_at=advance.created_at,
         updated_at=advance.updated_at,
+    )
+
+
+def _spawn_out(claim: ReimbClaim | None) -> SpawnedClaimOut | None:
+    """A pointer between the two halves of an over-advance (R-6-liq-settle).
+
+    Deliberately thin — ref, status and its label, nothing more. The far side is
+    a full claim with its own detail endpoint; embedding more of it here would
+    invite the two copies to disagree about the one thing this pointer exists to
+    say, which is "it exists, and here is where it got to".
+    """
+    if claim is None:
+        return None
+    status_code = claim.status or st.DRAFT
+    vocab = st.vocabulary(claim.kind)
+    return SpawnedClaimOut(
+        claim_id=claim.id,
+        ref_no=claim.ref_no,
+        status=status_code,
+        status_label=vocab.labels.get(status_code, status_code),
     )
 
 
@@ -472,6 +515,14 @@ async def claim_detail(
                 today=today,
                 overdue_note=await ca_service.overdue_note(session, today=today),
             )
+    spawned_claim = _spawn_out(
+        await settlement.spawn_for_liquidation(session, claim.id)
+    )
+    spawned_from = _spawn_out(
+        await session.get(ReimbClaim, claim.spawned_from_claim_id)
+        if claim.spawned_from_claim_id is not None
+        else None
+    )
     return ClaimDetail(
         id=claim.id,
         ref_no=claim.ref_no,
@@ -509,6 +560,8 @@ async def claim_detail(
         checklist=await claim_checklist_summary(session, claim),
         packet=await claim_packet(session, claim),
         cash_advance=advance_out,
+        spawned_claim=spawned_claim,
+        spawned_from=spawned_from,
         created_at=claim.created_at,
         updated_at=claim.updated_at,
     )

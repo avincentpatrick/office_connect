@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C R-6-liq-settle: settlement (GAM App 44, the refund-OR capture, the over-advance spawn and migration 0020).**
+> **Resume Office-Connect — Stage C R-7: external tracking (the FMS hand-off, the pipeline board and the §7.5 >10-WD follow-up).**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -11,83 +11,89 @@ expand it into the full task and confirm with you before starting.
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
 - **Phase:** **Stage C IN PROGRESS** — **R-1 ✅ + R-2 ✅ + R-3 ✅ + R-4 ✅ +
-  R-5 ✅ (gen + packet) + R-6-clock ✅ + R-6-liq-chain ✅**. **A traveller can now
-  answer the clock.** R-6-clock built the question — a pinned COA 30-day
-  deadline, a countdown ring, a D-7/D-3/D-0/overdue ladder. This session built
-  the answer's *chain*: **`reimbursement.liquidation` is a SECOND definition on
-  the shared engine**, a liquidation is filed from the cash-advance card itself,
-  it burns an **`LQ-YYYY-NNNN`** number, and it walks
-  `draft → certify_b → certify_c → handed_to_fms → settled`. **Certification A
-  is folded into submit** (the claimant is the maker), certification B is the
-  Director on the new `reimb.liquidation.certify`, and certification C is the
-  Admin Officer *recording* FMS's Head of Accounting's wet signature under the
-  only mandatory-comment `approve` in either chain. The status vocabulary was
-  **generalized, not forked** — one `Vocabulary` per kind. The **first seeded
-  `deadline_check`** ships on `LIQ-30`.
-  **NO migration — head stays `0019`** (the kind enum, the varchar status column
-  and the on-demand reference-number counter all already allowed it).
-  **Verified: pytest 771 passed (+34) with ZERO failures**, lint-imports 3/3,
-  `alembic check` clean, seeds ×2 no-op, FE gate green (tsc + eslint +
-  **177 vitest**, +9, + build), and a **23/23 live smoke** through the real
-  stack — an authenticated HTTP round-trip plus the whole chain to `settled`.
+  R-5 ✅ (gen + packet) + R-6 ✅ (clock + liq-chain + liq-settle)**.
+  **R-6 IS COMPLETE — the liquidation loop closes.** R-6-clock built the
+  question, R-6-liq-chain built the chain, and this session built the *answer's
+  content*: **a liquidation can now be settled**. Before today no advance in this
+  system had ever been settled — `settled_at` had existed since migration `0013`
+  and had **never once been written**.
+  Spec §6.2's three outcomes all work: **refund** (the DOH OR number/date are
+  required and recorded), **exact**, and **over-advance** (the advance still
+  closes, and the traveller gets spec §6.2's literal "one tap, pre-filled" —
+  a draft reimbursement carrying the same trip, the same itinerary and a link to
+  the same advance, so its DV nets to the difference). **GAM Appendix 44 ships**
+  and the liquidation packet came free. **Recording the money and closing the
+  claim are ONE service call** — the engine's `approve` carries no payload, so
+  a data-carrying decision is a separate PRIOR call in the same transaction
+  (now **workflow-standards §12**).
+  **Migration `0020`** — 5 settlement columns, the claim↔claim spawn link, and
+  R-6-liq-chain's **deferred one-live-liquidation belt**.
+  **Verified: pytest 807 passed (+36) with ZERO failures**, lint-imports 3/3,
+  `0020` reversible + `alembic check` clean, seeds ×2 no-op, FE gate green
+  (tsc + eslint + **186 vitest**, +9, + build), a **25/25 live smoke** through
+  the real stack, and a print-layer check that the reissued LR-44 carries the OR
+  while its predecessor is `superseded` (not voided).
   **`module.reimbursement` is ON in dev.** Prod default stays OFF.
   **NOT pushed** — push cadence: **once at the Stage C QA gate**.
-- **Last session:** #22 — 2026-08-04 — **Stage C R-6-liq-chain: the liquidation
-  workflow**. R-6-liq was **SPLIT** into R-6-liq-chain / R-6-liq-settle at
-  kickoff (the fifth such split, after R-2, R-4, R-5 and R-6) — the seam is
-  chain-vs-money, and GAM App 44's entire content *is* the settlement figures.
-  Built: `services/status.py` generalized to one `Vocabulary` per claim kind
-  (+ the derived `ALL_TERMINAL_STATES` union), `ensure_liquidation_definition`
-  + `ensure_definitions` + a vocabulary-parameterized `_assert_graph_invariants`,
-  `reimb.liquidation.certify` RBAC, `REF_SCOPES` (`RB`/`LQ`) in `submit_claim`,
-  `services/liquidation.py::start_liquidation`, the six-row liquidation catalog
-  (incl. the **first seeded `deadline_check`**), `POST /cash-advances/{id}/
-  liquidate` + `liquidation_*` on `CashAdvanceOut`, and FE: the `ClaimStatus`
-  union, the certification labels/consequences, `LiquidateAction` on the
-  cash-advance card and the kind in the tracker title.
-- **The four kickoff decisions (all user-confirmed):** **split chain/settle**;
-  **certification A folded into submit** — A certifies that the *claimant*
-  incurred the expenses and the claimant is the MAKER, so authoring it as a gate
-  would ask `enforce_segregation` to let the originator clear their own step;
-  **CTC-47 belongs to BOTH kinds** (the natural key is `(claim_kind, code)`, and
-  a traveller with an advance files a liquidation while one without files a
-  reimbursement — same trip, same proof); and **liquidations reuse the 5-step
-  wizard**, since a liquidation IS an actual-expense claim over the same schema.
-- **Design notes worth remembering:** **generalize, don't fork** — four state
-  codes are genuinely shared between the chains, so a second `status.py` would
-  have duplicated them and drifted the first time one chain gained a state.
-  **The union-terminal set is DERIVED** because My-Work queries both kinds in one
-  statement: a hand-written list would have omitted `settled` and left every
-  finished liquidation in its claimant's inbox forever. **The liquidation chain
-  adds NO engine verb** — its certifications are `approve` at gate states, so the
-  un-gated `api/actions.py` drives it with zero new routes and zero new schemas
-  (rule 10 paying off: the second consumer of a shared engine cost less than the
-  first). **"Director IV" is a SCOPE, not a role** — a permission whose holder is
-  grant data, because a `director` role would encode a chain DOH DO 2019-0225 has
-  not confirmed. **`CRT-C` is `{"always": false}` for a structural reason**: the
-  checklist gate is a PRE-workflow gate, so a required wet-sign row would block
-  submit and certification B, demanding the accountant's signature before the
-  chain that obtains it had started.
-- **One real defect found by the gate, not by a test:** `CashAdvancesPage` passed
-  `<ErrorSummary items={…}>` where the prop is `errors`, so the record dialog
-  would have **white-screened on any server error** — including the PD 1445 §89
-  409 that R-6-clock built its named message for. It survived R-6-clock because
-  `tsc -b` is incremental and the stale build info never re-checked that file.
-  Fixed; every other call site in the codebase already used `errors`.
+- **Last session:** #23 — 2026-08-04 — **Stage C R-6-liq-settle: settlement**.
+  Shipped as ONE increment (user-confirmed at kickoff — the seam that justified
+  the five prior splits was absent, because App 44's refund line PRINTS the OR
+  that only settlement recording produces). Built: `services/settlement.py`
+  (`record_settlement` + `spawn_reimbursement`), `cash_advance.mark_settled`,
+  the `_assert_advance_settled` chokepoint in `claim_action`, the
+  `approve → settle` verb rewrite + the new `spawn` verb in `claim_actions`,
+  the LR-44 `DocumentSpec` + `_lr44_body.html.j2` + its binding seed row, the
+  `advance`/`settlement`/`certifications` context blocks + `MONEY_LABELS` +
+  `PACKET_TITLES` (`CONTEXT_VERSION` → 2), migration `0020`, the un-gated
+  `POST /claims/{id}/settle` + the gated `POST /claims/{id}/spawn-reimbursement`,
+  the over-advance nudge, and FE `SettlementDialog` + `SettlementOutcome`.
+- **The four kickoff decisions (all user-confirmed):** **one increment, not a
+  split**; **record + close is ONE act** (the split alternative fails concretely
+  — `mark_settled` frees the §89 slot on commit, so a settlement whose approve
+  never followed would let the traveller take a new advance while a live
+  liquidation stood against the old one, and `0020`'s belt then forbids the
+  repair; no compensating transaction exists in this codebase); **the spawn
+  copies trip + legs + the advance link** so the DV nets honestly rather than
+  parking a bare difference in "other expenses"; and **evidence carry-over is
+  DEFERRED** with honest FE copy ("Start your claim", never "done").
+- **Design notes worth remembering:** **the brief was wrong and grep was
+  cheap** — `mark_settled` did *not* exist. **Do NOT copy `mark_overdue`'s
+  guard**: its allow-list would make an `overdue` advance unsettleable, and
+  those are exactly the ones Accounting must close. **The spawn overloads
+  `cash_advance_id`**, so three readers were kind-guarded — one of which was a
+  defect this increment created (a settled-but-late advance would have shown a
+  red Overdue ring and the COA interest copy forever). **Certification C stays
+  blank on the printed form forever**: the platform holds the Admin Officer who
+  *recorded* the signature, not the accountant who gave it, and there is a test
+  whose only job is to stop that being "helpfully" filled in.
+- **Three defects found in code this increment did not write:**
+  `documents/service.py::_bindings` used `.in_([kind, None])` — SQL `IN` never
+  matches NULL, so `claim_kind = NULL` ("both kinds", per its own model comment)
+  was unreachable, silently, with a missing government form as the failure mode.
+  `_dv32_body.html.j2` tested `{% if totals.advance %}` where `money_str(0)` is
+  the truthy string `"0.00"`, so **every** reimbursement DV printed
+  `Less: cash advance (₱0.00)`. Plus the settled-advance countdown above. All
+  three fixed.
+- **⚠ OPS INVARIANT the live smoke caught and no test can:** the suite was green
+  and the smoke still failed — the Celery **worker holds stale Python while
+  reading Jinja templates fresh from the bind-mount**, so it rendered new markup
+  against an old context (`'money_labels' is undefined`) and could not resolve
+  the new `reimb.lr44` spec at all. After touching `documents/`, `seeds.py` or
+  anything under `ops/`: **`docker compose restart worker beat`**. Recorded in
+  `tech-stack.md` §5.
 - **Test-hygiene note (confirmed again this session):** a full-suite run leaves
   `module.reimbursement` OFF in dev — `test_reimb_api_flag_gate.py`'s
   `reimb_flag_off` fixture restores whatever state it captured. Flip it back with
   `python -m office_connect.ops.bootstrap set-flag module.reimbursement --on`.
 - **Blockers / waiting on user:** none.
-- **⚠ Open questions for the accountant / resident COA auditor:** the A/B/C
-  chain's **SHAPE is settled** (R-0 item 2 is now partial), but its **amount
-  tiers** still need DOH DO 2019-0225/-0225A — both chains stay untiered and gain
-  tiers as an authored v2. **Wet-signature capture** narrowed to one question:
-  certification C is recorded as a mandatory comment and `CRT-C` holds the signed
-  page, so what remains is whether a frozen SNAPSHOT must bind to the step
-  (core-service #3's unbuilt half). **The CTC-47 question is CLOSED** — it
-  belongs to both kinds; the dichotomy was false, because the catalog is per-kind
-  rather than exclusive.
+- **⚠ Open questions for the accountant / resident COA auditor:** **amount
+  tiers** for both chains still need DOH DO 2019-0225/-0225A (now its own R-0
+  item) — both stay untiered and gain tiers as an authored v2. **Wet-signature
+  capture** narrowed AGAIN, from the print side: App 44 now states exactly what
+  the platform holds, so the only question left is whether the signed page must
+  be BOUND to the step as a frozen snapshot (core-service #3's unbuilt half) or
+  whether filing it under `CRT-C` suffices. The A/B/C **shape** and the **CTC-47**
+  question are both CLOSED.
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
@@ -95,63 +101,62 @@ expand it into the full task and confirm with you before starting.
 Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS - DONE: the shared core
 workflow engine (#11), R-1 (#12), R-2-engine (#13), R-2-shell (#14), R-4-app (#15),
 R-2-wizard (#16), R-4-screens (#17), R-3 (#18), R-5-gen (#19), R-5-packet (#20),
-R-6-clock (#21) and R-6-liq-chain (#22). R-6-liq was SPLIT: R-6-liq-chain shipped the
-kind-aware status vocabulary, the `reimbursement.liquidation` definition
-(draft -> certify_b -> certify_c -> handed_to_fms -> settled, certification A folded
-into submit), LQ- numbers, services/liquidation.py::start_liquidation, the liquidation
-checklist catalog incl. the FIRST seeded deadline_check (LIQ-30), the liquidate
-endpoint, and the FE card action. Suite at 771 passed, 0 failures. Head 0019.
-Task: Stage C R-6-liq-settle - SETTLEMENT (spec 6.2's Refund Recorded / Reimbursement
-Due side-steps, 8's `advance - actual`, 10, 13, 14 R-6). The chain exists; now build
-what CLOSES it.
-Build: (1) GAM App 44 Liquidation Report - a fifth DocumentSpec in
-documents/registry.py, a `_lr44_body.html.j2` partial registered in BODY_PARTIALS, and
-a reimb_template_maps row with claim_kind='liquidation' binding checklist_code 'LR-44'
--> document_key 'reimb.lr44'. THE CATALOG ROW IS ALREADY SEEDED AND DELIBERATELY INERT
-(generated_doc never blocks) - this increment is what activates it. Decide whether a
-liquidation packet (the reimb.packet analogue) is in scope or a separate pass.
-(2) SETTLEMENT RECORDING. services/per_diem.py::settle(grand, advance) ALREADY computes
-(to_reimburse, to_refund) and is unit-tested - what is missing is the RECORDING:
-  - refund side (advance > actual): capture the DOH OR no./date and call
-    cash_advance.mark_settled (it exists, has no caller yet). Needs columns -> 0020.
-  - over-advance side (actual > advance): spawn a linked, pre-filled reimbursement
-    claim of the DIFFERENCE, one tap (spec 6.2 "one tap, pre-filled"). Needs a
-    claim<->claim link column -> 0020.
-  - the exact-match case (both zero) must settle cleanly with neither side-step.
-(3) Migration 0020: the spawned-claim link + the refund-OR columns, PLUS the deferred
-DB belt from R-6-liq-chain - a partial-unique index on reimb_claims (cash_advance_id)
-WHERE kind='liquidation' AND status <> 'cancelled' AND deleted_at IS NULL. The service
-lock ships and works; the index is the belt behind it, exactly as 0015 followed
-R-4-app's row lock. Recorded as a 0020 candidate in the delta register.
-(4) WHERE settlement is recorded in the CHAIN. Open question to settle at kickoff:
-`settled` is currently reached by an `approve` from handed_to_fms with no money
-recorded. Either settlement is captured BEFORE that approve (a form on the claim) or
-the approve itself carries it. Prefer the former - the engine's approve takes no
-payload, and inventing one would fork execute_action.
-Also: spec 13's KPI asks for overdue-CA count + peso total; check whether settlement
-closes that loop.
+R-6-clock (#21), R-6-liq-chain (#22) and R-6-liq-settle (#23). **R-6 IS COMPLETE** - the
+cash-advance loop closes end to end: record -> 30-day clock -> liquidate -> certify
+A/B/C -> FMS -> SETTLE (refund with its DOH OR / exact / over-advance) -> and, on an
+over-advance, one tap spawns the pre-filled reimbursement for the difference. GAM App 44
+ships. Suite at 807 passed, 0 failures. Head 0020. FE 186 vitest.
+Task: Stage C R-7 - EXTERNAL TRACKING (spec 5.6/6.1 row 7, 7.5, 9.5, 13, 14's R-7 row).
+Everything up to `handed_to_fms` is ours; R-7 is about the part that ISN'T.
+Build (confirm scope at kickoff before writing code):
+(1) The FMS hand-off record. `reimb_external_events` EXISTS (models/tracking.py,
+append-only, migration 0013) and has NO writer - R-7 is what gives it one. Decide what
+an external event IS: a status relay from FMS (received / processing / paid / returned),
+a date, a reference, a note - and who may record one.
+(2) The `fms_returned` state is AUTHORED on the claim chain and has no screen. Spec 6.1
+row 7 is the Admin Officer relaying FMS's comments onward. NOTE the liquidation chain
+deliberately has NO `fms_returned` (delta row 116) - if FMS bounces liquidations too,
+that is definition v2, not a new state on v1.
+(3) Spec 7.5's ">10 working days with FMS" follow-up. R-4-app deliberately did NOT stamp
+an SLA on `handed_to_fms` (the holder is `external_fms` and the ladder is holder-only),
+and recorded that the >10-WD case is an ADMIN DASHBOARD FILTER, not a notification.
+That filter is R-7's to build.
+(4) The pipeline board (spec 9.5). Consider whether it is R-7 or R-8.
+Also worth deciding at kickoff: spec 13's KPI surface ("overdue CAs count + peso total",
+"liquidation compliance % settled within 30 days") - the SUBSTRATE is now complete and
+correct (settlement moves an advance out of UNLIQUIDATED_STATUSES, so the overdue count
+finally stops over-counting), but NO KPI code exists anywhere and master-plan 119 places
+reports in Stage H. Compliance % must derive from `settled_at` vs `deadline_date`, NEVER
+from the transient `overdue` status - that flag is produced by a daily beat, so an
+advance settled before the sweep never records it and a status-based count would be
+beat-cadence-dependent. Do not add a "was_overdue" column.
 Available to build on - do NOT rebuild any of it:
 CORE - the workflow engine (#11), reference numbers (#5), checklist engine (#7),
 documents (#8) + snapshots (#3), attachments (#2), notifications outbox, core/workdays.
 MODULE - services/lifecycle.py is the ONLY sanctioned caller of start_instance/
-execute_action; services/cash_advance.py is the ONLY writer of reimb_cash_advances and
-exposes mark_settled/link_claim/remirror_deadline; services/liquidation.py owns the
-create-from-advance path; services/status.py is kind-aware (add no state without adding
-it to that kind's Vocabulary - _assert_graph_invariants will refuse to publish);
-documents/registry.py + the _*_body.html.j2 partials + packet.html.j2 show how a form
-and a packet section are added.
-NOTE the vocabulary contract: `settled` is already authored, labelled and in
-ALL_TERMINAL_STATES. Adding a "refund_recorded" STATE is probably wrong - spec 6.2 calls
-it a SIDE-STEP, not a status, and the derived-badge doctrine (6.3) says money facts live
-on the record, not in the status column.
-pytest 771 (0 failures), lint-imports 3/3, FE gate green (177). Dev flag ON - but a full
+execute_action; services/cash_advance.py is the ONLY writer of reimb_cash_advances;
+services/settlement.py owns record_settlement + spawn_reimbursement; services/status.py
+is kind-aware (add no state without adding it to that kind's Vocabulary -
+_assert_graph_invariants will refuse to publish).
+NOTE workflow-standards 12, NEW this session and the rule R-7 is most likely to meet:
+the engine's `approve` carries NO payload, so a decision that must RECORD DATA is a
+separate, prior service call in the same transaction - never a widened execute_action.
+An FMS status relay that carries a date and a reference is exactly that shape. The
+client-facing verb is then REWRITTEN, not dropped (`settle` in place of `approve`), so
+the actor still has a button.
+NOTE also: `documents/service.py::_bindings` and `services/checklist.py::_catalog` now
+BOTH honour `claim_kind IS NULL` = "both kinds". No seeded row uses it yet.
+OPS: after touching documents/, seeds.py or ops/, run `docker compose restart worker
+beat` - the worker holds stale Python while reading templates fresh from the bind-mount,
+and the failure is a silent `outcome="failed"` no test can catch (tech-stack 5).
+pytest 807 (0 failures), lint-imports 3/3, FE gate green (186). Dev flag ON - but a full
 suite run leaves it OFF; `python -m office_connect.ops.bootstrap set-flag
 module.reimbursement --on` restores it.
 Push cadence: once at the Stage C QA gate.
-Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - the R-6-liq-chain
-rows and section 3's R-0 tracker), docs/standards/workflow-standards.md, master-plan
-1.1 #3/#5/#7/#8, api-standards 9/9a/9b/9c, ui-standards 3+4, and spec 5.5, 6.2, 8
-(settlement), 9.2, 10, 13 and 14's R-6 row.
+Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - the R-6-liq-settle
+rows and section 3's R-0 tracker), docs/standards/workflow-standards.md (9 + the NEW
+12), api-standards 9/9a/9b/9c, ui-standards 3+4, master-plan 1.1 #3/#5/#7/#8, and spec
+5.6, 6.1 row 7, 7.5, 9.5, 13 and 14's R-7 row.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed.
 ```
 
@@ -163,7 +168,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet + **R-6-clock ✅** + **R-6-liq-chain ✅**) | 11–22 | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet + **R-6 ✅** clock/liq-chain/liq-settle) | 11–23 | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
@@ -184,6 +189,87 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-04 (session 23 — Stage C R-6-liq-settle: settlement)** — **R-6 is
+  complete.** R-6-clock built the question, R-6-liq-chain built the chain, and
+  this session built the answer's *content*. The measure of what was missing:
+  `reimb_cash_advances.settled_at` had existed since migration `0013` and had
+  **never once been written**, and `settled` was reached by a bare `approve`
+  that recorded no money at all. Shipped as ONE increment — the seam that
+  justified the five prior splits was absent, because GAM App 44's refund line
+  prints the OR number that only settlement recording produces.
+  - **The money and the terminal state are one act, on a concrete argument.**
+    The engine's `approve` carries no payload, so the obvious shape was two
+    calls — record, then approve. That was rejected because `mark_settled`
+    releases the PD 1445 §89 slot the instant it commits: a settlement whose
+    approve never followed would let the traveller take a NEW advance while a
+    live liquidation still stood against the old one, and `0020`'s belt index
+    then forbids repairing it. No compensating transaction exists anywhere in
+    this codebase. Folded into one service call in one transaction, every
+    failure rolls back together. `lifecycle.claim_action` gains the chokepoint
+    that stops any other path asserting `settled` early, and the refusal NAMES
+    the route that does the thing. Generalized into **workflow-standards §12**,
+    because every future module with a money-carrying terminal step meets it.
+  - **The client-facing verb is rewritten, not dropped.** R-4-screens' rule says
+    never offer a button certain to fail; the naive reading here deletes
+    `approve` and leaves a hole exactly where the approver needs a button. The
+    actor IS authorized to clear that gate — they just have to carry the money
+    while doing it — so `available_actions` offers `settle` instead. `spawn`
+    joins on the same reasoning: the alternative was the browser comparing
+    claimant ids, which is the client computing permissions.
+  - **The brief was wrong, and grep was cheap.** `PROGRESS.md` asserted twice
+    that `cash_advance.mark_settled` existed with no caller. It never existed.
+    Written from scratch — and the one guard that mattered was *not* copying
+    `mark_overdue`'s allow-list, which would have made an `overdue` advance
+    unsettleable. Overdue advances are precisely the ones Accounting must close.
+  - **The spawn is honest about the money, and that costs something.** Copying
+    the trip, the itinerary AND the `cash_advance_id` is what makes DV-32 print
+    the standard GAM shape — total claim, less cash advance, amount due the
+    payee — with the difference on the payee line. Parking a bare difference in
+    "other expenses" would have printed a fabricated expense category and an
+    empty itinerary for a trip that demonstrably happened. The price is that
+    `cash_advance_id` now means two things, so three readers were kind-guarded;
+    one of them was a defect this increment CREATED (a settled-but-late advance
+    would otherwise show a red Overdue ring and the COA interest/salary-deduction
+    copy forever, on a record the traveller had already answered).
+  - **What a generated form may assert about a certification.** `_dv32_body`'s
+    rule survives intact and lands somewhere new: certification B's clearer is a
+    fact the platform genuinely holds, so it is REPORTED in a note beneath a
+    blank rule — never on the signature line, because a name over an empty rule
+    reads as a completed certification to whoever holds the page. Certification
+    C stays blank forever: the platform holds the Admin Officer who *recorded*
+    the wet signature, not the accountant who gave it, and naming the recorder
+    there would put the wrong person in a COA certification. There is now a test
+    whose only job is to stop that being "helpfully" filled in. Written up as an
+    **api-standards §9c corollary**.
+  - **A pre-settlement Liquidation Report is honest, and the conditional is
+    three-way.** A blank OR line *is* GAM App 44 at the stage it is at — the
+    traveller walks it to the cashier and the number is written on. What would
+    be dishonest is printing `₱0.00` (indistinguishable from "nothing
+    refundable") or hiding the section so nobody learns money is owed. Settling
+    reissues it, and the earlier copy is **superseded, not voided**: it was
+    reissued, not invalidated.
+  - **Three defects found in code this increment did not write.**
+    `documents/service.py::_bindings` used `.in_([kind, None])` — SQL `IN` never
+    matches NULL, so the "NULL = both kinds" semantic its own model documents was
+    unreachable, silently, with a missing government form as the failure mode.
+    `_dv32_body.html.j2` tested `{% if totals.advance %}` where `money_str(0)` is
+    the truthy string `"0.00"`, so **every** reimbursement DV in the system
+    printed `Less: cash advance (₱0.00)`. Plus the settled-advance countdown.
+  - **The live smoke earned its keep on something no test can catch.** The suite
+    was green at 807 and the smoke still failed twice: the Celery worker holds
+    STALE Python while reading Jinja templates FRESH from the bind-mount, so it
+    rendered new markup against an old context (`'money_labels' is undefined`)
+    and could not resolve the newly registered `reimb.lr44` at all. A test
+    process imports current code by construction, so this is structurally
+    invisible to pytest. Recorded as an ops invariant in `tech-stack.md` §5:
+    **restart the worker, not just the app.**
+  - **Verified:** pytest **807 (+36), 0 failures**; lint-imports 3/3; `0020`
+    reversible (down→up) + `alembic check` clean; seeds ×2 no-op; FE gate green
+    (tsc + eslint + **186 vitest**, +9, + build); **25/25 live smoke** through
+    the real stack — both money branches, the §89 slot release, the spawn's
+    netting — plus a print-layer check that the reissued LR-44 carries the OR
+    and its predecessor is `superseded`.
 
 - **2026-08-04 (session 22 — Stage C R-6-liq-chain: the liquidation workflow)**
   — the module gains the *answer* to the clock R-6-clock built. **R-6-liq was

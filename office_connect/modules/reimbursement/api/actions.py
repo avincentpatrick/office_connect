@@ -32,13 +32,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from office_connect.core.auth.dependencies import require_permission
 from office_connect.core.auth.principal import Principal
 from office_connect.core.db import get_session
-from office_connect.modules.reimbursement.api.deps import claim_detail
+from office_connect.modules.reimbursement.api.deps import (
+    can_manage_cash_advances,
+    claim_detail,
+    get_claim,
+)
 from office_connect.modules.reimbursement.api.schemas import (
     ApproveIn,
     ClaimDetail,
     ReturnIn,
+    SettleIn,
 )
-from office_connect.modules.reimbursement.services import lifecycle
+from office_connect.modules.reimbursement.services import errors, lifecycle, settlement
 
 router = APIRouter(prefix="/api/v1/reimbursement", tags=["reimbursement"])
 
@@ -89,5 +94,47 @@ async def return_claim(
         expected_version=body.expected_version,
     )
     detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
+    await session.commit()
+    return detail
+
+
+@router.post("/claims/{claim_id}/settle", response_model=ClaimDetail)
+async def settle_claim(
+    claim_id: int,
+    body: SettleIn,
+    principal: Principal = Depends(require_permission("reimb.claim.read")),
+    session: AsyncSession = Depends(get_session),
+):
+    """Close a liquidation, recording how its money came out (spec §6.2).
+
+    **On this router, not the gated one.** Settlement is a decision on an
+    instance already in the chain — the exact case the flag must never gate.
+    Behind ``require_feature`` a flag-OFF would 404 this route and strand every
+    liquidation at ``handed_to_fms``, each one still holding its claimant's PD
+    1445 §89 slot with no way to release it.
+
+    Coarse ``reimb.claim.read`` at the route like its siblings, with the real
+    rule below: spec §3.2 gives "Record settlement (refund OR / payout)" to the
+    Admin Officer and the System Admin, and ``can_manage_cash_advances`` is the
+    same org-scoped check the cash-advance writes use. The engine's
+    ``resolve_authority`` then remains the authorization of record for the
+    transition this drives — two gates, and both must pass.
+    """
+    claim = await get_claim(session, claim_id)
+    if not await can_manage_cash_advances(
+        session, actor_user_id=principal.user_id, claimant_id=claim.claimant_id
+    ):
+        raise errors.not_claim_owner()
+    settled = await settlement.record_settlement(
+        session,
+        claim_id=claim_id,
+        actor_user_id=principal.user_id,
+        or_no=body.or_no,
+        or_date=body.or_date,
+        refund_amount=body.refund_amount,
+        comment=body.comment,
+        expected_version=body.expected_version,
+    )
+    detail = await claim_detail(session, settled, actor_user_id=principal.user_id)
     await session.commit()
     return detail

@@ -48,6 +48,7 @@ from office_connect.modules.reimbursement.services import errors
 from office_connect.modules.reimbursement.services.checklist_facts import (
     effective_config,
 )
+from office_connect.modules.reimbursement.services.status import LIQUIDATION_KIND
 
 #: CA statuses that still hold the §89 slot (the partial-unique index predicate).
 #: ``overdue`` is deliberately among them: an advance does not stop blocking
@@ -60,6 +61,16 @@ OPEN = "open"
 LIQUIDATION_STARTED = "liquidation_started"
 SETTLED = "settled"
 OVERDUE = "overdue"
+
+#: How a liquidation's money came out (spec §6.2's two side-steps, plus the case
+#: the spec does not name because it needs no side-step). Derived from
+#: ``per_diem.settle`` and PINNED on the advance at the moment settlement is
+#: recorded — the outcome is a historical fact, and a later recomputation of the
+#: claim must not be able to re-explain it. Code, not DDL: see the model comment.
+REFUND = "refund"
+EXACT = "exact"
+OVER_ADVANCE = "over_advance"
+SETTLEMENT_MODES: frozenset[str] = frozenset({REFUND, EXACT, OVER_ADVANCE})
 
 #: The COA warning copy (spec §4). Config, not a constant — see ``overdue_note``.
 OVERDUE_NOTE_KEY = "liquidation.overdue_note"
@@ -348,6 +359,54 @@ async def mark_liquidation_started(
     return True
 
 
+async def mark_settled(
+    session: AsyncSession,
+    *,
+    cash_advance: ReimbCashAdvance,
+    actor_user_id: int,
+    mode: str,
+    refund_amount: Decimal | None = None,
+    or_no: str | None = None,
+    or_date: date | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """Close the advance and record HOW it closed (R-6-liq-settle).
+
+    ``settled_at`` has existed since migration ``0013`` and this is its first
+    writer. Everything a settlement asserts lands together: the status flip that
+    releases the PD 1445 §89 slot, the timestamp, the actor, the branch of spec
+    §6.2 that was taken, and — on the refund branch only — the DOH official
+    receipt that evidences the money coming back.
+
+    **The guard is deliberately NOT ``mark_overdue``'s.** That one allows only
+    ``open``/``liquidation_started``; copied here it would make an ``overdue``
+    advance unsettleable, and an overdue advance is precisely the one Accounting
+    most needs to close. Anything not already settled may be settled.
+
+    Returns True only when this call is what changed the row (idempotent), the
+    same contract as its two neighbours. Flushes, never commits.
+    """
+    if mode not in SETTLEMENT_MODES:
+        # Programmer error, not a user refusal — a settlement mode is derived
+        # from `settle`, never supplied by a caller with a choice.
+        raise ValueError(f"unknown settlement mode: {mode!r}")
+    if cash_advance.status == SETTLED:
+        return False
+
+    set_audit_context(session, actor_id=actor_user_id)
+    cash_advance.status = SETTLED
+    cash_advance.settled_at = now or utc_now()
+    cash_advance.settled_by = actor_user_id
+    cash_advance.settlement_mode = mode
+    cash_advance.refund_amount = (
+        to_money(refund_amount) if refund_amount is not None else None
+    )
+    cash_advance.refund_or_no = or_no
+    cash_advance.refund_or_date = or_date
+    await session.flush()
+    return True
+
+
 async def link_claim(
     session: AsyncSession,
     *,
@@ -371,18 +430,25 @@ async def link_claim(
 async def remirror_deadline(
     session: AsyncSession, *, cash_advance: ReimbCashAdvance
 ) -> int:
-    """Push a moved deadline onto every claim linked to this advance.
+    """Push a moved deadline onto every LIQUIDATION linked to this advance.
 
     Returns the number of claims updated. Called by the API layer after an edit
     that moved the clock — kept separate from ``update_cash_advance`` so the
     service stays a single-table writer and the fan-out is visible at its call
     site rather than hidden inside a PATCH.
+
+    Kind-filtered (R-6-liq-settle): a "Reimbursement Due" spawn also carries
+    ``cash_advance_id`` — it has to, or its DV could not net the advance it is
+    the balance of — but it is answering no clock, and mirroring a liquidation
+    deadline onto it would put a countdown on a claim that owes nobody a
+    liquidation.
     """
     claims = (
         (
             await session.execute(
                 select(ReimbClaim).where(
-                    ReimbClaim.cash_advance_id == cash_advance.id
+                    ReimbClaim.cash_advance_id == cash_advance.id,
+                    ReimbClaim.kind == LIQUIDATION_KIND,
                 )
             )
         )

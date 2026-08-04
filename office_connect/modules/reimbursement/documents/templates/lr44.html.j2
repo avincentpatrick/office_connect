@@ -1,0 +1,11 @@
+{# Liquidation Report — GAM Vol. II, Appendix 44 (checklist code LR-44).
+
+   The standalone form: core's page frame plus the shared body. The substance —
+   why the netting prints in the `advance − spent` direction the settlement
+   service computes, and what each certification box may and may not assert —
+   lives in `_lr44_body.html.j2`, which the liquidation packet also includes. #}
+{% extends "_base.html.j2" %}
+
+{% block content %}
+{% include "_lr44_body.html.j2" %}
+{% endblock %}
