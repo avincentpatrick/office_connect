@@ -733,3 +733,56 @@ def queue_not_permitted() -> APIError:
         "This queue shows other people's claims, so it is for approvers and "
         "the Admin Officer. Your own claims are on My Work.",
     )
+
+
+def insights_not_permitted() -> APIError:
+    """R-8. The queue's refusal, worded for an AGGREGATE.
+
+    Deliberately its own slug rather than a borrowed ``queue_not_permitted``:
+    api-standards §9f's rule is that the sentence must be true of the surface
+    that refused, and "your own claims are on My Work" is the wrong remedy here
+    — nobody's My Work answers "why do packets come back". What this surface
+    hides is other people's failures in aggregate, so the message says that and
+    points at the thing an ordinary claimant CAN act on.
+    """
+    return APIError(
+        403,
+        "reimb_insights_not_permitted",
+        "Insights summarises why other people's claims were returned, so it is "
+        "for approvers and the Admin Officer. Your own returns, with their "
+        "reasons, are on each claim's tracker.",
+    )
+
+
+def promotion_not_permitted() -> APIError:
+    """R-8. Promoting is tenant-wide, so a scoped grant may not reach it.
+
+    Separate from the read refusal because the actor here is NOT being told
+    "this surface is not yours" — they are reading it perfectly legitimately.
+    They are being told that this particular button changes what every claimant
+    in the agency sees, and a grant covering one division cannot do that. The
+    message says which grant is missing, so the remedy is actionable rather than
+    mysterious (§9.1 principle 4).
+    """
+    return APIError(
+        403,
+        "reimb_promotion_not_permitted",
+        "Promoting a reason shows a warning to every claimant in the agency, so "
+        "it needs an agency-wide review grant. Ask a System Administrator to "
+        "promote it, or to widen your grant.",
+    )
+
+
+def reason_not_promotable(code: str) -> APIError:
+    """R-8. A retired reason cannot become an advisory.
+
+    The fail-safe direction on an advisory is the opposite of the usual one:
+    when in doubt, do NOT warn. Warning claimants about a rule nobody enforces
+    any more costs the warning its credibility, and every other warning with it.
+    """
+    return APIError(
+        422,
+        "reimb_reason_not_promotable",
+        f"'{code}' is no longer an active return reason, so it cannot be shown "
+        "as a warning. Reactivate it first if it still applies.",
+    )

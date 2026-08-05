@@ -22,7 +22,12 @@ merge is a sort at the end, deliberately, so there is exactly one line where the
 two lanes meet and it is after every positional decision has been made.
 
 ``GET /return-reasons`` mirrors ``reference.py::list_regions`` — a bounded,
-seeded lookup behind the module's read permission.
+seeded lookup behind the module's read permission. Since R-8 each row also
+carries ``promoted``, and the wizard's step-5 advisory is nothing but a filter
+over that flag: the taxonomy the approver picks FROM and the warnings the
+claimant is shown are the same seven rows, which is the whole point of a
+learning loop. Deliberately NOT a second endpoint — one cached list means the
+two can never disagree about what a reason is called.
 """
 
 from __future__ import annotations
@@ -63,7 +68,15 @@ _EXTERNAL = "external"
 
 def _reason_out(row: ReimbReturnReasonCatalog) -> ReturnReasonOut:
     return ReturnReasonOut(
-        id=row.id, code=row.code, label=row.label, category=row.category
+        id=row.id,
+        code=row.code,
+        label=row.label,
+        category=row.category,
+        # R-8. This one boolean is the entire wire between an Admin Officer's
+        # click on Insights and a warning the next claimant reads at wizard step
+        # 5 — which is what makes spec §14's "promotion creates a working
+        # warning with NO DEPLOY" true rather than aspirational.
+        promoted=bool(row.promoted_check),
     )
 
 

@@ -72,4 +72,10 @@ async def test_return_reasons_seeded(app_session):
         await app_session.execute(select(ReimbReturnReasonCatalog))
     ).scalars().all()
     assert len(reasons) >= 7
-    assert any(r.promoted_check for r in reasons)  # at least one learnable pre-check
+    # R-8 INVERTED this assertion. `promoted_check` used to be seeded loosely as
+    # "this reason COULD be promoted" (three rows carried True); it now means
+    # "this reason IS promoted", i.e. a warning every claimant sees at wizard
+    # step 5. Nothing ships promoted, because a warning nobody authored is a
+    # warning nobody can defend — the advisory's fail-safe direction is the
+    # opposite of the packet gate's: when in doubt, do not warn.
+    assert not any(r.promoted_check for r in reasons)

@@ -3,7 +3,11 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ClaimDetail } from "../../api/reimbursement";
 import { renderRoutes, stubFetch } from "../../test/harness";
-import { completeClaim, documentsPending } from "../../test/reimb-fixtures";
+import {
+  completeClaim,
+  documentsPending,
+  makeReturnReason,
+} from "../../test/reimb-fixtures";
 import { ClaimConfirmationPage } from "./ClaimConfirmationPage";
 import { ReviewStepPage } from "./ReviewStepPage";
 
@@ -152,5 +156,80 @@ describe("the documentary submit gate (spec §2 / §9.3 step 5)", () => {
     // The panel may be empty precisely because we believed it was clear —
     // refetching is what makes the path appear.
     await waitFor(() => expect(reads).toBeGreaterThan(1));
+  });
+});
+
+describe("the promoted pre-check at step 5 (spec §11, R-8)", () => {
+  const REASONS = "GET /api/v1/reimbursement/return-reasons";
+
+  it("warns about promoted reasons WITHOUT blocking the submit", async () => {
+    // Spec §11's advisory, and the line it must never cross. R-3's hard gate is
+    // about MISSING DOCUMENTS; letting a statistic refuse a legitimate claim
+    // would be conflating "often returned" with "incomplete".
+    stubFetch({
+      "GET /api/v1/reimbursement/claims/7": () => ({ body: completeClaim() }),
+      [REASONS]: () => ({
+        body: [
+          makeReturnReason({ id: 1, promoted: true }),
+          makeReturnReason({
+            id: 2, code: "PER_DIEM_CALC", label: "Per-diem miscomputed",
+            category: "wrong_amount", promoted: false,
+          }),
+        ],
+      }),
+    });
+    renderRoutes(ROUTES, "/reimbursement/claims/7/review");
+
+    expect(
+      await screen.findByText(/Claims like yours are often returned because/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Missing official receipt")).toBeInTheDocument();
+    // Only the PROMOTED ones — the rest of the taxonomy is the approver's
+    // picker, not a list of things to worry a claimant with.
+    expect(screen.queryByText("Per-diem miscomputed")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit claim" })).toBeEnabled();
+  });
+
+  it("carries the reason and never a count", async () => {
+    // Spec §11 is aggregates-only and oversight-scoped: what usually goes wrong
+    // is guidance a claimant needs; how many colleagues it caught is other
+    // people's failures, and this surface is not scoped to show them.
+    stubFetch({
+      "GET /api/v1/reimbursement/claims/7": () => ({ body: completeClaim() }),
+      [REASONS]: () => ({ body: [makeReturnReason({ promoted: true })] }),
+    });
+    const { container } = renderRoutes(ROUTES, "/reimbursement/claims/7/review");
+
+    await screen.findByText(/often returned because/);
+    expect(container.textContent).not.toMatch(/\d+ returns/);
+  });
+
+  it("says nothing at all when no reason is promoted", async () => {
+    stubFetch({
+      "GET /api/v1/reimbursement/claims/7": () => ({ body: completeClaim() }),
+      [REASONS]: () => ({ body: [makeReturnReason({ promoted: false })] }),
+    });
+    renderRoutes(ROUTES, "/reimbursement/claims/7/review");
+
+    await screen.findByRole("button", { name: "Submit claim" });
+    expect(
+      screen.queryByText(/often returned because/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("stays silent when the taxonomy cannot be read", async () => {
+    // The fail-safe direction here is the OPPOSITE of the usual one. Everywhere
+    // else the safe answer is to block or to flag; for an advisory it is to say
+    // nothing, because an unexplained warning is worse than no warning.
+    stubFetch({
+      "GET /api/v1/reimbursement/claims/7": () => ({ body: completeClaim() }),
+      [REASONS]: () => ({ status: 500, body: { error: { code: "x", message: "boom" } } }),
+    });
+    renderRoutes(ROUTES, "/reimbursement/claims/7/review");
+
+    expect(
+      await screen.findByRole("button", { name: "Submit claim" }),
+    ).toBeEnabled();
+    expect(screen.queryByText(/often returned because/)).not.toBeInTheDocument();
   });
 });

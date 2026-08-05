@@ -550,6 +550,12 @@ class ReturnReasonOut(BaseModel):
     code: str
     label: str
     category: str
+    #: R-8: has an Admin Officer promoted this reason to a pre-check? The wizard
+    #: reads exactly this to decide what to warn about at step 5, which is what
+    #: makes a promotion take effect with no deploy (spec §14's R-8 sentence).
+    #: It carries the REASON and never a count — the claimant is being told what
+    #: trips people up, not how many colleagues it tripped up.
+    promoted: bool = False
 
 
 class TimelineEventOut(BaseModel):
@@ -625,3 +631,61 @@ class MarkPaidIn(BaseModel):
     paid_on: date | None = None
     comment: str | None = None
     expected_version: int | None = None
+
+
+# --- R-8: insights + the learning loop (spec §11) --------------------------
+
+
+class ReasonRankOut(BaseModel):
+    """One row of the ranked return-reason list (spec §9.2's Insights row).
+
+    **There is no person dimension here and there never may be.** Spec §11 says
+    aggregates only, mirroring the §14.7 privacy pattern; a ``claimant_id``, an
+    org unit or a claim id on this row would each be a drill-down from "why
+    packets come back" to "who gets them back", which is precisely what the
+    surface must not offer.
+    """
+
+    reason_id: int
+    code: str
+    label: str
+    category: str
+    #: Returns citing this reason inside the window. A return citing three
+    #: reasons contributes 1 to each — so the column sums to more than
+    #: ``total_returns``, and the copy says "returns citing this", never
+    #: "returns".
+    count: int
+    prior_count: int
+    #: up | down | flat | new. ``new`` is separate from ``up`` because "up from
+    #: 0" reads as a trend when it is a first appearance.
+    trend: str
+    promoted: bool
+    #: Whether this reason could be promoted at all. A retired reason still
+    #: ranks (it explains the returns it caused) but can no longer become a
+    #: warning, and the button must say so rather than 422 on click.
+    promotable: bool
+
+
+class ReturnInsightsOut(BaseModel):
+    """The Insights surface — spec §11's ranked list, and nothing more.
+
+    Deliberately NOT spec §13's KPI dashboard: no cycle time, no return RATE,
+    no per-division volume, no time filter and no deltas-vs-period. Those are
+    Stage H (master-plan §119) and R-7-board deferred them on the same grounds.
+    ``total_returns`` is context for the header, never a denominator — a rate
+    needs a submission count this surface does not compute, and half a rate is
+    worse than none.
+    """
+
+    #: The server's window, so the header qualifier quotes it rather than a
+    #: literal the browser has to keep in step (api-standards §9g).
+    window_days: int
+    #: The Manila date the window opens on — what "since" means in the header.
+    period_start: date
+    #: Returns in the window, counted ONCE each however many reasons they cite.
+    total_returns: int
+    #: May this actor promote? The R-4-screens doctrine — the UI is never
+    #: offered a button certain to be refused (here, for want of an agency-wide
+    #: grant).
+    can_promote: bool
+    items: list[ReasonRankOut]

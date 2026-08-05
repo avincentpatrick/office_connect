@@ -109,6 +109,15 @@ REIMB_CONFIGS = SeedDataset(
         _cfg("board.done_window_days", {"days": 90},
              "The pipeline board's Done column covers the last 90 days",
              "build spec §9.6 (pipeline board)"),
+        # R-8. Calendar days, same as the board window and for the same reason:
+        # it bounds a display period, not a deadline. The window is ALSO the
+        # trend's comparison length — "12 returns, up from 7" means "…than in
+        # the 90 days before that" — so widening this key widens both halves
+        # together, which is the only way the sentence stays true.
+        _cfg("insights.window_days", {"days": 90},
+             "Insights ranks return reasons over the last 90 days, against the "
+             "90 days before that",
+             "build spec §11 (comment-learning loop)"),
     ),
 )
 
@@ -268,6 +277,21 @@ REIMB_CHECKLIST = SeedDataset(
 )
 
 # --- Return-reason taxonomy ------------------------------------------------
+#
+# `promoted_check` is DELIBERATELY ABSENT from every row (R-8), and its absence
+# is load-bearing. `apply_dataset` writes only the keys a row dict contains, so
+# a column named here is re-asserted on every seed run — which for this column
+# would mean **every `seed` silently demotes every reason an Admin Officer
+# promoted**, undoing the learning loop on the next deployment and leaving no
+# trace but a warning that quietly stopped appearing. Omitted, the column keeps
+# its `server_default false` at insert and is thereafter owned by exactly one
+# writer: `services/insights.py::set_promoted`.
+#
+# Nothing ships promoted. R-8 reinterpreted this column from the seed's original
+# loose "this reason COULD be promoted" (three rows carried `True`) to "this
+# reason IS promoted", and three warnings nobody chose would invert the
+# advisory's fail-safe direction: when in doubt, do not warn. Migration `0022`
+# resets the three historical values.
 REIMB_RETURN_REASONS = SeedDataset(
     name="reimb_return_reason_catalogs",
     owner="Admin Officer / resident COA auditor",
@@ -277,19 +301,19 @@ REIMB_RETURN_REASONS = SeedDataset(
     natural_key=("code",),
     rows=(
         {"code": "MISSING_OR", "label": "Missing official receipt",
-         "category": "missing_doc", "promoted_check": True},
+         "category": "missing_doc"},
         {"code": "PER_DIEM_CALC", "label": "Per-diem miscomputed",
-         "category": "wrong_amount", "promoted_check": True},
+         "category": "wrong_amount"},
         {"code": "OBSOLETE_FORM", "label": "Obsolete / wrong form version",
-         "category": "wrong_form", "promoted_check": False},
+         "category": "wrong_form"},
         {"code": "UNSIGNED", "label": "Missing required signature",
-         "category": "no_signature", "promoted_check": False},
+         "category": "no_signature"},
         {"code": "LATE_LIQUIDATION", "label": "Beyond the 30-day liquidation deadline",
-         "category": "late", "promoted_check": False},
+         "category": "late"},
         {"code": "FARE_CLASS", "label": "Above-economy fare without certification",
-         "category": "policy", "promoted_check": True},
+         "category": "policy"},
         {"code": "OTHER", "label": "Other (see comment)",
-         "category": "other", "promoted_check": False},
+         "category": "other"},
     ),
 )
 

@@ -64,6 +64,20 @@ async def test_flag_off_404s_the_whole_surface_even_authenticated(
         # counts over it, so it takes the queue's answer, not the actions'
         # exemption.
         ("GET", "/api/v1/reimbursement/board", {}),
+        # R-8: Insights is the same read again, and PROMOTION is a config edit
+        # on a lookup catalog — neither strands an in-flight instance, so both
+        # take the queue's answer rather than the actions router's exemption.
+        ("GET", "/api/v1/reimbursement/insights/return-reasons", {}),
+        (
+            "POST",
+            "/api/v1/reimbursement/insights/return-reasons/1/promote",
+            {"headers": CSRF},
+        ),
+        (
+            "POST",
+            "/api/v1/reimbursement/insights/return-reasons/1/demote",
+            {"headers": CSRF},
+        ),
         ("GET", "/api/v1/reimbursement/claims/1", {}),
         ("GET", "/api/v1/reimbursement/claims/1/timeline", {}),
         # R-7-events: the FMS status relay is gated for the same §9e reason as

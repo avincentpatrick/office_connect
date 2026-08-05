@@ -24,6 +24,7 @@ from office_connect.modules.reimbursement.api import (
     checklist,
     claims,
     external,
+    insights,
     my_work,
     queue,
     reference,
@@ -40,6 +41,7 @@ router.include_router(claims.router)
 router.include_router(cash_advances.router)
 router.include_router(checklist.router)
 router.include_router(external.router)
+router.include_router(insights.router)
 router.include_router(my_work.router)
 router.include_router(queue.router)
 router.include_router(reference.router)

@@ -89,6 +89,7 @@ first**. Required states in parentheses.
 | **File upload** | a real, label-associated `<input type="file">` with a keyboard-reachable drop zone as its `<label>`; drag-and-drop is a mouse-only enhancement over that one control (never a drop-only affordance). States: idle / dragging / busy / error / disabled. Announces completion in a polite live region; resets its value after every emit so the same file can be re-picked. `capture` is opt-in only — on mobile it FORCES the camera and removes the gallery option. |
 | **Callout** | inline, status-coloured aside (§2 semantics) explaining a condition next to the decision it affects. `<section aria-labelledby>`; the status word is `sr-only` text so meaning never rides colour alone (§6). **Does not take focus and is not `role=alert`** — that is Error summary's job. |
 | **Countdown ring** | a deadline rendered as remaining time against a total, in semantic colour (§2): green on track / amber due soon / red overdue. The ring itself is **decorative and `aria-hidden`** — the state is carried by adjacent real text ("12 days left · due Aug 2, 2026"), never by the arc or its colour. Takes a server-derived state and day count; it **computes nothing**, because a deadline a browser worked out is a deadline a wrong clock can get wrong. Renders an honest "not started" when there is no deadline yet, never a full or empty ring. |
+| **Ranked bar list** | an ordered list of counts, largest first, each with a bar showing its share **of the largest row — never of a total**. Bars are `aria-hidden` decoration; every number is real text on the row (`valueText` is required for exactly that reason), so a screen reader hears "12 returns", not a rectangle. It **does not re-order** — the order arrives from the server and is the content. A zero row keeps its place and draws no bar at all. Optional per-row `meta` line and `action` slot. |
 
 > **Inventory amendment 2026-07-28 (R-2-shell):** **Error summary** added as
 > the fourteenth component. master-plan §2 R-2 names it as a deliverable; it is
@@ -239,6 +240,32 @@ first**. Required states in parentheses.
 > gives an `<iframe>` no real window, so axe throws while trying to message it.
 > The frame ELEMENT's own rules still run; only its inner content is skipped,
 > and that content is a PDF the browser renders, not markup we author.
+
+> **Inventory amendment 2026-08-06 (R-8):** row 23, **Ranked bar list**. Spec
+> §9.2's Insights row names a "ranked return-reasons bar list" and nothing in
+> the inventory covered it. It is a component rather than another page-local
+> composition (the R-5 / R-5-packet answer) for one reason: **a bar encodes a
+> quantity, and an encoding is exactly what §3 exists to standardize.** The
+> per-diem table deferred at R-2-wizard is markup — a `<table>` carries its own
+> semantics and a screen reader reads every cell. A bar carries none, so getting
+> it wrong is an accessibility defect rather than an inconsistency, and the next
+> consumer (Stage H's KPI surface) would get it wrong independently.
+>
+> It is built to the **Countdown ring doctrine** above, and adds two rules of
+> its own that bind any future quantity graphic:
+> 1. **A bar is a share of the LARGEST ROW, never of a total.** Scaling to a sum
+>    renders each bar as a percentage of the whole, which is a *rate* — a claim
+>    the underlying data usually cannot support (here the denominator would be
+>    submissions, which is spec §13 and Stage H). A component that makes a rate
+>    easy to draw is a component that will draw one nobody computed.
+> 2. **Zero draws nothing, and keeps its row.** A hairline bar is
+>    indistinguishable from a real small value, and on this surface the zero row
+>    is the most valuable one on the screen — it is what a successful promotion
+>    looks like.
+>
+> The component **does not sort**. The order arrives from the server and IS the
+> content, so a client-side re-sort would be a second ranking to keep in step
+> with the first.
 
 ## 4. Layout templates — LOCKED
 
@@ -409,6 +436,7 @@ under `web/src/components/<Name>/`.
 | Chip group | `<fieldset>` (bare group `id` for ErrorSummary anchors) + `<legend>`; wrapped `flex` of chips, each a `sr-only` checkbox + `<label>` `min-h-11 rounded-lg border-border`; selected = `peer-checked:border-brand bg-brand text-brand-contrast`; focus ring via `peer-focus-visible:`. |
 | Form dialog | Dialog chrome (above) with a `<form>` body: title, optional muted description, caller's fields, then Cancel (secondary, wrapped in `Dialog.Close`) + submit (`type="submit"`, danger when destructive, `loading` while in flight). Submit is NOT wrapped in `Close`. Panel scrolls (`max-h-[90vh] overflow-y-auto`) — dialog forms grow on a phone. |
 | Countdown ring | inline SVG: a track circle plus a `stroke-dasharray`/`dashoffset` arc in `currentColor`, the wrapper coloured `status-done` / `status-due` / `status-blocked` from the **server's** state. `<svg aria-hidden focusable="false">` with the number centered as SVG text for sighted readers, and the full sentence ("12 days left · due Aug 2, 2026 · On track") as real text beside the ring for everyone. `null` state renders a dashed track and "Not started" — never a full or empty arc. Sizes `sm` (list rows) / `md` (detail rails); both ≥44 px so a linked ring is a legal touch target. |
+| Ranked bar list | `<ol aria-label>`; each `<li>` is label + `valueText` on one baseline row, then an `aria-hidden` track (`h-2 border-border bg-surface`) holding a `bg-brand` fill at `count / max` per cent, then an optional muted `meta` line with the row's `action` right-aligned. `max` is guarded to ≥1 so an empty or all-zero list divides safely and simply draws no fill. Neutral `brand`, never a semantic status colour: a ranking is not a verdict, and colouring the top row red would say "this is bad" about a number nobody has judged. |
 
 **Template notes (§4 as-built):** all six templates exist in
 `web/src/layouts/`. The **App shell** takes a `minimal` mode (brand bar only)

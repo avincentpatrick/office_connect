@@ -572,3 +572,57 @@ the one that would have cost an afternoon.
 **Not a filter surface.** The board takes no query parameters at all — no
 `?limit=`, no status, no kind. A client-tunable cap on a board is a request to
 page a board, and paging is what the list endpoint next door is for.
+
+## §9h. An aggregate over other people's work: the scope IS the privacy boundary (R-8, 2026-08-06)
+
+`GET /reimbursement/insights/return-reasons` is the first endpoint whose entire
+purpose is **summarising other people's failures**. The board aggregates money
+(§9g); this aggregates mistakes, and the difference is not one of degree — a
+peso total is a fact about work, a ranked list of why packets came back is a
+fact about how people perform. Build spec §11 says *"aggregates only, mirroring
+the §14.7 pattern; per-person return counts are visible only to the person
+themselves"*, and §14.7 is the privacy-preserving query log: ids and parameter
+names, never values.
+
+Four rules, and the first is the one that makes the rest enforceable.
+
+- **An aggregate may span only rows the actor could already read one at a
+  time.** The ranking is computed over `queue.oversight_scope`'s subtree, using
+  the same `base_query` the queue and the board use — not a second predicate
+  that happens to agree today. That makes the privacy claim *structural*: the
+  surface cannot reveal anything the actor could not have assembled by opening
+  claims by hand, so there is no new disclosure to reason about and **no
+  minimum-cell suppression is applied**. (A small division's counts are indeed
+  about few people; the actor already oversees exactly those people. Suppression
+  would protect nobody from anybody, while making the numbers wrong.)
+
+- **The response carries no person dimension, and there is nowhere to add
+  one.** No claimant, no org unit, no claim id, no drill-down from a reason to
+  the claims that cited it. The rule is about the SHAPE, not the UI: a field
+  nobody renders today is a field somebody renders next quarter. Where a
+  per-person figure is genuinely wanted, it belongs on that person's own
+  surface — spec §11's "visible only to the person themselves" — which here is
+  the claim tracker they already have.
+
+- **The write rule may be narrower than the read rule, and must be when a write
+  is tenant-wide.** Reading the ranking needs oversight of somebody; *promoting*
+  a reason shows a warning to every claimant in the tenant, so it needs an
+  **agency-wide** grant (`org_unit IS NULL`), not merely the permission. A
+  scoped grant producing a tenant-wide effect is a scope escalation that looks
+  exactly like the button working. The corollary is the R-4-screens doctrine
+  unchanged: the envelope carries `can_promote` so the UI never offers a control
+  certain to be refused, and the refusal names the missing grant.
+
+- **A refusal must be true of the surface that refused.** §9f established
+  "refuse, do not return an empty list"; the second half is that the sentence
+  has to fit. Insights does NOT reuse the queue's `reimb_queue_not_permitted`
+  ("your own claims are on My Work") — My Work answers no part of "why do
+  packets come back". It gets its own slug and names the surface that *does*
+  answer what this actor can legitimately ask: their own returns, with reasons,
+  on their own claim tracker.
+
+**Also settled here:** a count is never quietly a rate. `total_returns` rides
+the envelope as the header's context and is documented as such; a return *rate*
+needs a submissions denominator this surface does not compute (spec §13 →
+Stage H). Shipping half a rate is worse than shipping none, because a
+plausible-looking percentage is the number people quote.

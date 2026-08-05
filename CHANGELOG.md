@@ -12,6 +12,35 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-8 — Insights, and turning a recurring return into a warning
+  claimants see first** (2026-08-06): every time an approver sends a claim back
+  they have to pick a reason from a fixed list. Those reasons have been
+  accumulating since the approval screens shipped, and nothing has ever looked
+  at them. A new **Insights** page, for approvers and the Admin Officer, ranks
+  them: which reasons brought packets back most often in the **last 90 days**,
+  and whether each is happening more or less than in the 90 days before that. A
+  reason that has dropped to nothing keeps its place in the list — that is what
+  a fixed problem looks like, and it would be a shame to hide it.
+  **The payoff is one button.** Next to any reason, an Admin Officer with an
+  agency-wide review grant can **Promote to pre-check**. From that moment, every
+  claimant reaching the last step of the wizard sees a plain warning — *"Claims
+  like yours are often returned because… Missing official receipt"* — while they
+  can still do something about it. **No deployment, no restart, no downtime**:
+  the promotion takes effect immediately, and **Stop warning** switches it off
+  just as quickly. Nothing ships promoted; every warning on the system is one a
+  person chose to put there.
+  **The warning never blocks a submit.** It is a heads-up, not a gate. Only
+  genuinely missing documents can stop a claim being filed, and "this often goes
+  wrong" is not the same statement as "your packet is incomplete".
+  **Insights counts reasons, never people.** There is no per-person breakdown,
+  no way to go from a reason to whose claim it was, and no names anywhere on the
+  page. You only see the claims you already oversee, so the summary can never
+  tell you anything you could not have found by opening those claims yourself —
+  and someone who oversees nobody is told plainly that this page is not theirs,
+  and pointed at their own claim tracker, where their own returns and reasons
+  have always been. The warning a claimant sees names the reason and never a
+  number: what usually goes wrong is useful advice; how often it happened to
+  colleagues is not theirs to read.
 - **Stage C R-7-board — the pipeline board: how much is where** (2026-08-05):
   a new **Pipeline board** for approvers and the Admin Officer, alongside My
   Work and the Claim queue. My Work answers "what is mine" and the queue answers

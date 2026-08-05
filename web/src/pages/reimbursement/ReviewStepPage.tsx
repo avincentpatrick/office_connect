@@ -9,6 +9,7 @@ import {
   type ClaimTotals,
 } from "../../api/reimbursement";
 import { Button } from "../../components/Button/Button";
+import { Callout } from "../../components/Callout/Callout";
 import {
   ErrorSummary,
   type ErrorSummaryItem,
@@ -25,6 +26,7 @@ import {
 } from "./checklist-status";
 import { canPreparePacket } from "./claim-status";
 import { ClaimStepGuard } from "./ClaimStepGuard";
+import { useReturnReasons } from "./use-claim";
 import { ClaimTotalsCard } from "./MoneyStepPage";
 import { PacketPreview } from "./PacketPreview";
 import {
@@ -142,6 +144,48 @@ function TotalsTable({ totals }: { totals: ClaimTotals }) {
   );
 }
 
+/**
+ * Spec §11's promoted pre-check, at wizard step 5 (R-8).
+ *
+ * *"One click creates a warning-level auto-check shown at wizard step 5 —
+ * 'Claims like yours are often returned because…'"*. This is that warning, and
+ * four things about it are deliberate:
+ *
+ * 1. **It is advisory and can never gate.** It is not in `blocked`, does not
+ *    touch the Submit button, and nothing it says is read by the packet gate.
+ *    R-3's hard gate is about MISSING DOCUMENTS; conflating "often returned"
+ *    with "incomplete" would let a statistic refuse a legitimate claim.
+ * 2. **Fail-safe runs the OTHER way here.** Everywhere else the safe answer is
+ *    to block or to flag; for an advisory it is to say nothing. So a failed or
+ *    still-loading taxonomy fetch renders nothing at all — an unexplained
+ *    warning is worse than no warning.
+ * 3. **It carries the reasons, never the numbers.** How often a reason happens
+ *    is other people's failures (spec §11, aggregates only, oversight-scoped);
+ *    what usually goes wrong is guidance, and only the second belongs here.
+ * 4. **It reads the same taxonomy the return dialog does**, so the wording a
+ *    claimant is warned with is the wording an approver will pick — and one
+ *    cached list means the two can never drift.
+ */
+function ReturnedOftenCallout() {
+  const reasons = useReturnReasons();
+  const promoted = (reasons.data ?? []).filter((reason) => reason.promoted);
+  if (promoted.length === 0) return null;
+
+  return (
+    <Callout status="warn" title="Claims like yours are often returned because…">
+      <ul className="flex list-disc flex-col gap-1 pl-5">
+        {promoted.map((reason) => (
+          <li key={reason.id}>{reason.label}</li>
+        ))}
+      </ul>
+      <p className="mt-2 text-sm text-text-muted">
+        This is a heads-up, not a blocker — you can still submit. Fixing any of
+        these now saves a round trip.
+      </p>
+    </Callout>
+  );
+}
+
 function ReviewForm({ claim }: { claim: ClaimDetail }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -253,6 +297,12 @@ function ReviewForm({ claim }: { claim: ClaimDetail }) {
             Pre-submit it is always a draft copy: no reference number has been
             allocated yet, and the card says so. */}
         <PacketPreview claim={claim} canPrepare={canPreparePacket(claim)} />
+
+        {/* R-8. ABOVE the gate on purpose: the gate says what you must fix, the
+            advisory says what people usually get wrong, and reading them in
+            that order would put "you cannot submit" after "here is a tip".
+            Below the packet, because it is about the packet you just read. */}
+        <ReturnedOftenCallout />
 
         {/* Spec §9.3 step 5: "Submit disabled until required items clear, with
             the blocking items listed inline." GOV.UK would keep the button

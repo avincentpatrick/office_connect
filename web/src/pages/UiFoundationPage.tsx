@@ -18,6 +18,7 @@ import { SummaryList } from "../components/SummaryList/SummaryList";
 import { TextareaField } from "../components/TextareaField/TextareaField";
 import { WorkItemRow } from "../components/WorkItemRow/WorkItemRow";
 import { PipelineCard } from "../components/PipelineCard/PipelineCard";
+import { RankedBarList } from "../components/RankedBarList/RankedBarList";
 import { Skeleton } from "../components/Skeleton/Skeleton";
 import { StatusChip } from "../components/StatusChip/StatusChip";
 import { Stepper } from "../components/Stepper/Stepper";
@@ -178,6 +179,53 @@ export function UiFoundationPage() {
               to="/reimbursement/board"
             />
           </div>
+        </div>
+      </AdminSection>
+
+      <AdminSection title="9b. Ranked bar list">
+        {/* R-8, ui-standards §3.23. Built to the CountdownRing doctrine: the
+            bars are aria-hidden decoration and every number is real text, so a
+            screen reader hears "12 returns" rather than a rectangle. Bars scale
+            against the LARGEST row, never a total — a share of a total would be
+            a rate, which this data cannot support. The zero row keeps its place
+            and draws no bar at all. */}
+        <div className="max-w-xl">
+          <RankedBarList
+            label="Return reasons, most cited first"
+            items={[
+              {
+                id: 1,
+                label: "Missing official receipt",
+                count: 12,
+                valueText: "12 returns",
+                meta: "Up from 7 · Shown as a warning at step 5",
+                action: (
+                  <Button variant="secondary" className="min-h-11 px-3 py-1 text-sm">
+                    Stop warning
+                  </Button>
+                ),
+              },
+              {
+                id: 2,
+                label: "Per-diem miscomputed",
+                count: 5,
+                valueText: "5 returns",
+                meta: "Down from 9",
+                action: (
+                  <Button variant="secondary" className="min-h-11 px-3 py-1 text-sm">
+                    Promote to pre-check
+                  </Button>
+                ),
+              },
+              {
+                id: 3,
+                label: "Obsolete / wrong form version",
+                count: 0,
+                valueText: "None this period",
+                meta: "Down from 4 — none this period",
+              },
+            ]}
+          />
         </div>
       </AdminSection>
 

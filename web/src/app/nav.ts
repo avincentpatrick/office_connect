@@ -1,5 +1,13 @@
 import type { LucideIcon } from "lucide-react";
-import { Banknote, Home, Inbox, LayoutGrid, Palette, ReceiptText } from "lucide-react";
+import {
+  Banknote,
+  Home,
+  Inbox,
+  LayoutGrid,
+  Lightbulb,
+  Palette,
+  ReceiptText,
+} from "lucide-react";
 import { isFeatureOn } from "../lib/flags";
 
 /**
@@ -74,6 +82,19 @@ export const NAV_GROUPS: NavGroup[] = [
         requiredRoles: ["admin_officer", "approver", "system_admin"],
         intentKeywords: [
           "board", "pipeline", "overview", "totals", "how much", "where",
+        ],
+      },
+      {
+        // R-8. Spec §9.2 puts Insights on Desktop for the Admin/Director
+        // audience, so it sits with the board and the queue under the same
+        // role gate — discoverability, not authorization.
+        label: "Insights",
+        to: "/reimbursement/insights",
+        icon: Lightbulb,
+        requiredModule: "module.reimbursement",
+        requiredRoles: ["admin_officer", "approver", "system_admin"],
+        intentKeywords: [
+          "insights", "returns", "why", "reasons", "learning", "pre-check",
         ],
       },
       { label: "UI foundation", to: "/ui-foundation", icon: Palette, devOnly: true },

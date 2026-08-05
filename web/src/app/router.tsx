@@ -10,6 +10,7 @@ import { CashAdvancesPage } from "../pages/reimbursement/CashAdvancesPage";
 import { ClaimBoardPage } from "../pages/reimbursement/ClaimBoardPage";
 import { ClaimPage } from "../pages/reimbursement/ClaimPage";
 import { ClaimQueuePage } from "../pages/reimbursement/ClaimQueuePage";
+import { InsightsPage } from "../pages/reimbursement/InsightsPage";
 import { ItineraryStepPage } from "../pages/reimbursement/ItineraryStepPage";
 import { DocumentsStepPage } from "../pages/reimbursement/DocumentsStepPage";
 import { MoneyStepPage } from "../pages/reimbursement/MoneyStepPage";
@@ -50,6 +51,11 @@ export const router = createBrowserRouter([
           // R-7-board. Same doctrine again: the board is reachable by anyone
           // and refused by the server for anyone who oversees nobody.
           { path: "board", element: <ClaimBoardPage /> },
+          // R-8. Same doctrine a fourth time: reachable by anyone, refused by
+          // the server for anyone who oversees nobody — and this is the one
+          // surface where that refusal is a PRIVACY boundary rather than a
+          // tidiness one (spec §11's "aggregates only").
+          { path: "insights", element: <InsightsPage /> },
           { path: "claims/:claimId", element: <ClaimPage /> },
           { path: "claims/:claimId/trip", element: <TripStepPage /> },
           { path: "claims/:claimId/itinerary", element: <ItineraryStepPage /> },

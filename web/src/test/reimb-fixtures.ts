@@ -14,6 +14,9 @@ import type {
   MyWorkResponse,
   PacketSummary,
   QueueItem,
+  ReasonRank,
+  ReturnInsights,
+  ReturnReason,
   TimelineEvent,
   WorkItem,
 } from "../api/reimbursement";
@@ -522,9 +525,18 @@ export function makeTimeline(
     : base.map((event, index) => ({ ...event, ...overrides[index] }));
 }
 
-export const RETURN_REASONS = [
-  { id: 1, code: "MISSING_OR", label: "Missing official receipt", category: "missing_doc" },
-  { id: 2, code: "PER_DIEM_CALC", label: "Per-diem miscomputed", category: "wrong_amount" },
+// `promoted: false` on both since R-8: the default fixture is a taxonomy with
+// nothing promoted, matching the seed (nothing ships as a warning). A test that
+// wants the wizard advisory says so explicitly.
+export const RETURN_REASONS: ReturnReason[] = [
+  {
+    id: 1, code: "MISSING_OR", label: "Missing official receipt",
+    category: "missing_doc", promoted: false,
+  },
+  {
+    id: 2, code: "PER_DIEM_CALC", label: "Per-diem miscomputed",
+    category: "wrong_amount", promoted: false,
+  },
 ];
 
 // --- R-3: the documentary packet -------------------------------------------
@@ -723,4 +735,53 @@ export function makeSettledAdvance(
     overdue_note: null,
     ...overrides,
   });
+}
+
+// --- R-8: insights + the learning loop --------------------------------------
+
+export function makeReturnReason(
+  overrides: Partial<ReturnReason> = {},
+): ReturnReason {
+  return {
+    id: 1,
+    code: "MISSING_OR",
+    label: "Missing official receipt",
+    category: "missing_doc",
+    promoted: false,
+    ...overrides,
+  };
+}
+
+export function makeReasonRank(overrides: Partial<ReasonRank> = {}): ReasonRank {
+  return {
+    reason_id: 1,
+    code: "MISSING_OR",
+    label: "Missing official receipt",
+    category: "missing_doc",
+    count: 12,
+    prior_count: 7,
+    trend: "up",
+    promoted: false,
+    promotable: true,
+    ...overrides,
+  };
+}
+
+export function makeReturnInsights(
+  overrides: Partial<ReturnInsights> = {},
+): ReturnInsights {
+  return {
+    window_days: 90,
+    period_start: "2026-05-08",
+    total_returns: 15,
+    can_promote: true,
+    items: [
+      makeReasonRank(),
+      makeReasonRank({
+        reason_id: 2, code: "PER_DIEM_CALC", label: "Per-diem miscomputed",
+        category: "wrong_amount", count: 5, prior_count: 9, trend: "down",
+      }),
+    ],
+    ...overrides,
+  };
 }

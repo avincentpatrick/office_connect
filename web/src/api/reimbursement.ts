@@ -409,6 +409,17 @@ export interface ReturnReason {
   code: string;
   label: string;
   category: string;
+  /**
+   * R-8. Has an Admin Officer promoted this reason to a pre-check? The wizard's
+   * step-5 advisory is nothing but a filter over this flag, which is what makes
+   * a promotion take effect with no deploy — and it is why the wizard reads
+   * this list rather than a second endpoint: the taxonomy an approver picks
+   * FROM and the warnings a claimant is shown can never disagree about a label.
+   *
+   * The advisory carries the REASON and never a count. What trips people up is
+   * guidance; how many colleagues it tripped up is other people's failures.
+   */
+  promoted: boolean;
 }
 
 /**
@@ -508,6 +519,50 @@ export interface ClaimBoardResponse {
   done_window_days: number;
 }
 
+// --- R-8: insights + the learning loop (spec §11) --------------------------
+
+/** Direction of travel against the previous window of the same length. */
+export type ReasonTrend = "up" | "down" | "flat" | "new";
+
+/**
+ * One row of the ranked return-reason list (R-8, spec §9.2's Insights row).
+ *
+ * **There is no person on this row and there never may be.** Spec §11 is
+ * aggregates-only, mirroring the §14.7 privacy pattern: a claimant, an org unit
+ * or a claim id here would each turn "why packets come back" into "who gets
+ * them back", which is the one thing this surface must not do.
+ */
+export interface ReasonRank {
+  reason_id: number;
+  code: string;
+  label: string;
+  category: string;
+  /**
+   * Returns CITING this reason inside the window. A return citing three reasons
+   * contributes 1 to each, so this column sums to more than `total_returns` —
+   * the copy must say "returns citing this", never "returns".
+   */
+  count: number;
+  prior_count: number;
+  trend: ReasonTrend;
+  promoted: boolean;
+  /** A retired reason still ranks (it explains its own history) but cannot
+   * become a warning — so the button says so rather than 422ing on click. */
+  promotable: boolean;
+}
+
+export interface ReturnInsights {
+  /** The server's window. The header qualifier quotes it, never a literal. */
+  window_days: number;
+  /** ISO date the window opens on — what "since" means in the header. */
+  period_start: string;
+  /** Returns in the window, counted ONCE each however many reasons they cite. */
+  total_returns: number;
+  /** May this actor promote? Never inferred from a role on the client. */
+  can_promote: boolean;
+  items: ReasonRank[];
+}
+
 /** Filters the queue accepts. All optional; all narrow, none widen. */
 export interface ClaimQueueFilters {
   status?: ClaimStatus;
@@ -567,6 +622,12 @@ export const reimbKeys = {
   checklist: (id: number) => [...reimbKeys.all, "claim", id, "checklist"] as const,
   regions: () => [...reimbKeys.all, "regions"] as const,
   returnReasons: () => [...reimbKeys.all, "return-reasons"] as const,
+  // R-8. Its own key, NOT under `queues()`: promoting invalidates this AND
+  // `returnReasons()` — the second is the one that makes the warning appear in
+  // the wizard, and it is literally the acceptance line ("a working warning
+  // with no deploy"). Nothing a claim transition does changes a ranking window,
+  // so it deliberately does not ride the queue prefix's invalidations.
+  insights: () => [...reimbKeys.all, "insights"] as const,
   // `claimantId` is part of the key because the same endpoint serves both the
   // traveller's own list and Accounting's view of someone else's — caching them
   // under one key would show an Admin Officer the last claimant they looked at.
@@ -922,6 +983,32 @@ export function fetchTimeline(id: number): Promise<TimelineEvent[]> {
 
 export function fetchReturnReasons(): Promise<ReturnReason[]> {
   return api<ReturnReason[]>("/reimbursement/return-reasons");
+}
+
+// --- R-8: insights + the learning loop -------------------------------------
+
+const INSIGHTS = "/reimbursement/insights/return-reasons";
+
+export function fetchReturnInsights(): Promise<ReturnInsights> {
+  return api<ReturnInsights>(INSIGHTS);
+}
+
+/**
+ * Promote (or demote) one reason — spec §11's "one click".
+ *
+ * Both directions return the WHOLE refreshed ranking rather than the row they
+ * changed, following every other mutation in this module: one response carries
+ * the write and the state the screen must now show, so there is no window in
+ * which the button and the list disagree.
+ */
+export function setReasonPromoted(
+  reasonId: number,
+  promoted: boolean,
+): Promise<ReturnInsights> {
+  return api<ReturnInsights>(
+    `${INSIGHTS}/${reasonId}/${promoted ? "promote" : "demote"}`,
+    { method: "POST" },
+  );
 }
 
 // --- R-3: the documentary packet -------------------------------------------

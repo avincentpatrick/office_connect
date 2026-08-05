@@ -13,6 +13,7 @@ import {
   fetchClaimQueue,
   fetchMyWork,
   fetchRegions,
+  fetchReturnInsights,
   fetchReturnReasons,
   fetchTimeline,
   reimbKeys,
@@ -118,6 +119,19 @@ export function useClaimBoard() {
   return useQuery({
     queryKey: reimbKeys.board(),
     queryFn: fetchClaimBoard,
+    retry: false,
+  });
+}
+
+/**
+ * Insights (R-8) — the ranked return reasons. `retry: false` for the third time
+ * and the same reason: an actor who oversees nobody gets a 403, which the page
+ * renders as the server's own explanation rather than asking twice more.
+ */
+export function useReturnInsights() {
+  return useQuery({
+    queryKey: reimbKeys.insights(),
+    queryFn: fetchReturnInsights,
     retry: false,
   });
 }
