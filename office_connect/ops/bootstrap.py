@@ -35,6 +35,10 @@ Subcommands:
 - ``set-flag``      — flip a module feature flag ON/OFF (R-2-wizard; audited
                       UPDATE through ``oc_app``; the dev-walkthrough + go-live
                       switch — migration/seed defaults stay fail-safe OFF).
+- ``pilot-roster``  — report **who can reach the reimbursement module** (R-9).
+                      Read-only, safe in production. The flag says whether the
+                      module is on; RBAC grants say for whom, and this prints
+                      that list — including which holders are AGENCY-WIDE.
 - ``send-test-email`` — send a test email through the selected driver (or log in
                       dev) to prove the notification seam is wired.
 
@@ -83,6 +87,7 @@ from office_connect.core.workflow import get_published_version
 
 # ops is the composition root: it may import modules (import-linter forbids only
 # core→modules / core→ops; module seeds live in the module, wiring lives here).
+from office_connect.modules.reimbursement.fixtures import load_pilot_fixtures
 from office_connect.modules.reimbursement.seeds import apply_reimbursement_seeds
 from office_connect.modules.reimbursement.workflow import (
     DEFINITION_CODES as REIMB_DEFINITION_CODES,
@@ -231,6 +236,23 @@ async def _load_fixtures(session: AsyncSession) -> dict[str, Any]:
         "org_units_created": ingest.org_units_created,
         "staff_created": ingest.staff_created,
     }
+
+
+# ------------------------------------------------------- load-pilot-fixtures
+async def _with_pilot_fixtures(settings: Settings) -> dict[str, Any]:
+    """Run the module's demo-cast builder and commit.
+
+    Thin wrapper rather than a body: the cast itself lives in
+    ``modules/reimbursement/fixtures.py`` because it is the module's knowledge
+    (its claim shapes, its computation, its §14 list). ops owns the wiring and
+    the environment refusal — the same split ``seed-workflows`` follows.
+    """
+    async def _work(session: AsyncSession) -> dict[str, Any]:
+        result = await load_pilot_fixtures(session)
+        await session.commit()
+        return result
+
+    return await _with_app_session(settings, _work)
 
 
 # --------------------------------------------------------------- seed-rbac
@@ -392,6 +414,143 @@ async def _set_flag(session: AsyncSession, key: str, enabled: bool) -> dict[str,
     }
 
 
+# --------------------------------------------------------------- pilot-roster
+#: The permission prefix that defines the reimbursement pilot cohort. Anyone
+#: holding any of these can reach some part of the module; nobody else can.
+_PILOT_PREFIX = "reimb."
+
+
+async def _pilot_roster(
+    session: AsyncSession, prefix: str, limit: int
+) -> dict[str, Any]:
+    """**Who is in the pilot right now** — spec §14's *"flag ON for pilot cohort
+    only"*, answered as a report rather than as a schema.
+
+    R-9's confirmed posture (see api-standards §9i): the feature flag answers
+    *"is this module on"* and RBAC grants answer *"for whom"*. Those are two
+    different questions and conflating them is what a per-cohort flag column
+    would do. Nothing in this codebase auto-assigns a role — there is no default
+    grant path anywhere — so the set of people who can reach the module is
+    exactly the set of people an administrator granted a role to. The cohort is
+    therefore already precise; what it was missing is a way to READ it.
+
+    That gap is the real risk, and it is worth naming plainly: a cohort you
+    cannot enumerate is a cohort you cannot verify, and "the pilot" silently
+    becoming "the agency" would look like nothing at all. One global ``staff``
+    grant to somebody outside the pilot is all it takes. This command is the
+    control that makes it visible, so run it before go-live and after any grant
+    change.
+
+    Read-only, and safe in production — it prints role/permission metadata and
+    the actor's login email, never claim data.
+    """
+    from office_connect.core.models import OrgUnit, Permission, RolePermission
+
+    flag = (
+        await session.execute(
+            select(FeatureFlag).where(FeatureFlag.key == "module.reimbursement")
+        )
+    ).scalar_one_or_none()
+
+    now = utc_now()
+    rows = (
+        await session.execute(
+            select(
+                User.id,
+                User.email,
+                User.is_active,
+                Role.code,
+                UserRole.org_unit_id,
+                OrgUnit.name,
+                UserRole.valid_from,
+                UserRole.valid_to,
+                Permission.code,
+            )
+            .join(UserRole, UserRole.user_id == User.id)
+            .join(Role, Role.id == UserRole.role_id)
+            .join(RolePermission, RolePermission.role_id == Role.id)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .join(OrgUnit, OrgUnit.id == UserRole.org_unit_id, isouter=True)
+            .where(Permission.code.startswith(prefix))
+            .order_by(User.email, Role.code, Permission.code)
+        )
+    ).all()
+
+    members: dict[int, dict[str, Any]] = {}
+    for (
+        user_id, email, is_active, role_code, org_unit_id, org_unit_name,
+        valid_from, valid_to, perm_code,
+    ) in rows:
+        # A grant outside its validity window grants nothing (delegation/OIC),
+        # so it must not appear as pilot membership — the roster has to match
+        # what the app would actually authorize, not what the table records.
+        if (valid_from is not None and valid_from > now) or (
+            valid_to is not None and valid_to <= now
+        ):
+            continue
+        member = members.setdefault(
+            user_id,
+            {
+                "user_id": user_id,
+                "email": email,
+                "login_active": bool(is_active),
+                "grants": [],
+                "permissions": set(),
+            },
+        )
+        member["permissions"].add(perm_code)
+        grant = {
+            "role": role_code,
+            # NULL org unit = AGENCY-WIDE. Spelled out because it is the single
+            # most consequential cell in this report: an agency-wide review
+            # grant is what lets someone promote a return reason into a warning
+            # every claimant in the tenant sees (api-standards §9h).
+            "scope": org_unit_name if org_unit_id is not None else "AGENCY-WIDE",
+            "org_unit_id": org_unit_id,
+            "valid_from": valid_from,
+            "valid_to": valid_to,
+        }
+        if grant not in member["grants"]:
+            member["grants"].append(grant)
+
+    roster = []
+    for member in members.values():
+        member["permissions"] = sorted(member["permissions"])
+        roster.append(member)
+    roster.sort(key=lambda m: m["email"])
+
+    agency_wide = [
+        m["email"]
+        for m in roster
+        if any(g["org_unit_id"] is None for g in m["grants"])
+    ]
+    # "State what the page is hiding" (api-standards §9f), applied to a report:
+    # the COUNTS always describe the whole cohort and only the detail list is
+    # capped, so a truncated roster can never read as a small pilot. `limit=0`
+    # means no cap.
+    shown = roster if limit <= 0 else roster[:limit]
+    return {
+        "flag": {
+            "key": "module.reimbursement",
+            "on": bool(flag and flag.enabled and flag.is_active),
+        },
+        "cohort_size": len(roster),
+        "agency_wide_count": len(agency_wide),
+        "agency_wide_holders": sorted(agency_wide)[: (limit if limit > 0 else None)],
+        "members_shown": len(shown),
+        "members": shown,
+        "note": (
+            "The flag answers 'is this module on'; these grants answer 'for "
+            "whom'. Nothing auto-assigns a role, so this list IS the pilot "
+            "cohort. Review agency_wide_holders especially — an agency-wide "
+            "reimb.claim.review grant can promote a return reason into a "
+            "warning shown to every claimant in the tenant (api-standards §9h). "
+            "cohort_size and agency_wide_count are never capped; only the "
+            "members detail is (--limit, 0 = all)."
+        ),
+    }
+
+
 # --------------------------------------------------------- ingest-directory
 def _read_directory_csv(path: str | None) -> list[dict[str, Any]]:
     """Parse a directory CSV file into row mappings (transport-only; the core
@@ -444,6 +603,11 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser(
         "load-fixtures", help="load synthetic dev fixtures (refused in production)"
     )
+    sub.add_parser(
+        "load-pilot-fixtures",
+        help="load the spec §14 reimbursement demo cast — 6 travellers, 10 "
+        "trips, an aged cash advance (refused in production)",
+    )
     ref = sub.add_parser(
         "load-reference",
         help="upsert reference data (idempotent, environment-aware; all envs)",
@@ -483,6 +647,22 @@ def main(argv: list[str] | None = None) -> int:
     onoff = flag.add_mutually_exclusive_group(required=True)
     onoff.add_argument("--on", action="store_true", help="enable the flag")
     onoff.add_argument("--off", action="store_true", help="disable the flag")
+    roster = sub.add_parser(
+        "pilot-roster",
+        help="report who can reach the reimbursement module (read-only; the "
+        "pilot cohort IS the grant list — api-standards §9i)",
+    )
+    roster.add_argument(
+        "--prefix",
+        default=_PILOT_PREFIX,
+        help=f"permission prefix defining the cohort (default: {_PILOT_PREFIX})",
+    )
+    roster.add_argument(
+        "--limit",
+        type=int,
+        default=200,
+        help="cap the members detail (0 = all); the COUNTS are never capped",
+    )
     mail = sub.add_parser(
         "send-test-email", help="send a test email via the selected driver"
     )
@@ -507,6 +687,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         result = asyncio.run(_with_app_session(settings, _load_fixtures))
+    elif args.command == "load-pilot-fixtures":
+        # Same hard refusal as `load-fixtures`, for the same reason and with
+        # more at stake: this one writes claims and a cash advance, i.e. money
+        # records, and a synthetic ₱18,000 advance in a real ledger is not a
+        # tidy-up job.
+        if settings.app_env == "production":
+            print(
+                "refusing to load pilot fixtures in production "
+                "(APP_ENV=production)",
+                file=sys.stderr,
+            )
+            return 1
+        result = asyncio.run(_with_pilot_fixtures(settings))
     elif args.command == "load-reference":
         only = set(args.dataset) if args.dataset else None
         result = asyncio.run(
@@ -523,6 +716,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "set-flag":
         result = asyncio.run(
             _with_app_session(settings, lambda s: _set_flag(s, args.key, args.on))
+        )
+    elif args.command == "pilot-roster":
+        result = asyncio.run(
+            _with_app_session(
+                settings, lambda s: _pilot_roster(s, args.prefix, args.limit)
+            )
         )
     elif args.command == "ingest-directory":
         result = asyncio.run(

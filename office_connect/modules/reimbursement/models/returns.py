@@ -53,6 +53,12 @@ class ReimbReturnEvent(PKMixin, Base):
     __table_args__ = (
         Index("ix_reimb_return_events_claim_id", "claim_id"),
         Index("ix_reimb_return_events_step_id", "step_id"),
+        # R-9: `services/insights.py` reads this table exclusively through a
+        # `created_at >= cutoff` window, and the table is append-only and grows
+        # forever while the window stays fixed at 90 days — so selectivity falls
+        # monotonically and the seq scan that is optimal today stops being so.
+        # Cheap on an append-only table with a monotonic key (migration 0023).
+        Index("ix_reimb_return_events_created_at", "created_at"),
     )
 
     claim_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("reimb_claims.id"))

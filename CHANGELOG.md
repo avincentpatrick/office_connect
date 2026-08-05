@@ -11,7 +11,54 @@ makes the push-per-phase rule auditable.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-08-05 — Stage C complete: the Local Travel Reimbursement module
+
+The first user-facing module. A traveller can file a claim, have it approved,
+followed to FMS and paid; a cash advance can be liquidated and settled; and the
+whole thing gets better as it is used. Everything below since `0.2.0`.
+
 ### Added
+- **Stage C R-9 — hardening, and proving who can see what** (2026-08-05): the
+  last piece before a pilot, and it adds almost nothing you can click. What it
+  adds is evidence.
+  **Claims are not office gossip.** They carry where someone went, why, and how
+  much they were paid for it. Every way of asking for a claim was tested from
+  the wrong chair — a colleague, a chief from a different division, someone with
+  no oversight role at all — across the claim, its timeline, its documents, its
+  cash advance, its FMS history and the packet PDF itself. All refused, in the
+  same words, so the refusal never becomes a hint.
+  **A refusal that says too much.** Asking to submit somebody else's claim used
+  to answer *"this claim is already in the approval workflow"* — true, helpful,
+  and none of the asker's business. Repeat it against one id after another and
+  you could map which claims exist and which had been filed, without ever
+  reading one. Now every such request gets the identical answer whatever state
+  the claim is in, and a claim that was never issued is indistinguishable from
+  one you are simply not entitled to.
+  **Who the pilot is, answerable in one command.** Switching the module on is
+  one setting; who can actually use it is decided by the roles an administrator
+  grants, and nothing is ever granted automatically. A new report lists everyone
+  who currently holds any reimbursement permission, what scope they hold it at,
+  and which of them hold it agency-wide — so "only the pilot office" is
+  something you can check rather than assume.
+  **Demo data that computes its own money.** Six sample travellers (one JO/COS),
+  ten trips including the ₱5,500 worked example, and a cash advance deliberately
+  aged to five days before its COA deadline so the countdown shows amber. Every
+  peso is calculated by the same engine that serves real claims. Nothing in it
+  is pre-approved: a demo that shipped fake approvals would be putting decisions
+  nobody made into the audit trail.
+  **Known limits, written down rather than discovered.** The audit-log integrity
+  check now has a stated size beyond which it needs rebuilding, and the two
+  summary screens have measured timings and an index added for the year when
+  they will need it.
+
+### Changed
+- **Refusals on other people's claims are now uniform** (see above). If you had
+  scripted against the old `409` reply when submitting a claim that was not
+  yours, you now get the same `403` every other foreign-claim request returns.
+  Acting on a claim you legitimately oversee is unaffected: an Admin Officer who
+  is not the current approver still gets the specific "not your step" answer.
+
+### Added *(earlier in Stage C)*
 - **Stage C R-8 — Insights, and turning a recurring return into a warning
   claimants see first** (2026-08-06): every time an approver sends a claim back
   they have to pick a reason from a fixed list. Those reasons have been

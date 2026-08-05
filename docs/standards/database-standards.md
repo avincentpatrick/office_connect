@@ -161,6 +161,48 @@ override, every config or flag change, every soft delete. The app DB role has
 > unremovably into the chain. Broader person-field SPI (staff PII) joins the
 > denylist with the query-log middleware in Increment B4.
 
+### 7a. `verify_chain` has a size budget, and it is MEMORY (R-9, 2026-08-05)
+
+`verify_chain(rows)` takes a materialized list and walks it from genesis. That
+is correct — the chain is only meaningful end to end — but it means the whole
+log is resident at once. Measured on the dev database at the Stage C gate:
+
+| Rows | Table size | Load | Verify | Wall | Peak process RSS |
+|---|---|---|---|---|---|
+| 501,423 | ~350 MB | 11.4 s | 7.3 s | **18.7 s** | **1,474 MiB (3.01 KiB/row)** |
+
+**Time is not the constraint; memory is.** 19 s is nothing for an integrity
+check that never runs in a request path. 1.47 GiB is the number that binds, it
+is ~3 KiB of resident memory per row, and it scales linearly with no headroom
+trick available — the `AuditLog` instances, their two JSONB payloads and the ORM
+identity map are the cost.
+
+> **Measure RSS, not `tracemalloc`.** The first pass at this table used
+> `tracemalloc`, which reported 1.22 GiB and — more misleadingly — a 77.7 s wall
+> time, roughly **4× inflated** by its own tracing overhead. Had that number
+> been published it would have made a 19-second job look like a minute-and-a-bit
+> one, and someone would eventually have "optimised" the wrong thing.
+> `resource.getrusage(...).ru_maxrss` is what an OOM killer actually sees.
+
+**The threshold, stated so nobody has to rediscover it:** on the target on-prem
+Windows Server container sizing, plan for **≈1 million rows** as the last
+comfortable full-chain verification (~2.9 GiB peak at the measured rate). Past
+that the current implementation is a memory risk, not a slow job, and the
+failure mode is an OOM-killed verification — which reads as "the integrity check
+is broken" at exactly the moment somebody is asking whether the log is
+trustworthy.
+
+**What replaces it at that size** (deferred, not designed): verify in ordered
+batches, carrying only `prev_hash` across the boundary, with `yield_per` so the
+result set streams instead of materializing. The chain's shape already permits
+this — each row depends only on its predecessor. Also worth having then: a
+stored high-water mark so routine runs verify only the segment appended since
+the last clean verification, with full-chain runs kept for the QA gate.
+
+**Note on the dev figure:** 466k rows accumulated in roughly two weeks of test
+runs, which is suite churn, not production traffic. Do not extrapolate the
+*date* from it — extrapolate the row count, which is the thing that binds.
+
 ## 8. Soft deletes (standing rule 6)
 
 - **Semantics:** `deleted_at IS NULL` = live row. Soft-deleting sets

@@ -131,6 +131,51 @@ async def is_claim_owner(
     return bool(actor and actor.staff_id == claim.claimant_id)
 
 
+#: The permissions that make an actor an overseer of somebody else's claim —
+#: the same set ``services/queue.py`` scopes its list on, duplicated here rather
+#: than imported because ``queue`` imports ``lifecycle`` (``config_int``) and the
+#: reverse edge would be a cycle. Pinned equal by test.
+_OVERSIGHT_PERMS: tuple[str, ...] = (
+    "reimb.claim.review",
+    "reimb.claim.fms_update",
+    "reimb.claim.approve",
+)
+
+
+async def may_see_claim(
+    session: AsyncSession, claim: ReimbClaim, actor_user_id: int
+) -> bool:
+    """Owner, or an overseer whose grant covers the claim's org unit.
+
+    The service-layer twin of ``api/deps.can_read_claim`` — deliberately a
+    separate function rather than an import, because ``api`` imports ``services``
+    and the reverse would be a cycle. It exists so a service can answer *"is this
+    caller entitled to hear ANYTHING about this record"* before composing a
+    message that describes the record's condition (R-9; see ``submit_claim``).
+
+    Derives the org unit the same way ``submit_claim`` does — the instance's unit
+    once submitted, else the claimant's section/division — so a pre-instance
+    draft is still placeable and a scoped approver is not locked out of it.
+    """
+    if await is_claim_owner(session, claim, actor_user_id):
+        return True
+    org_unit_id = None
+    if claim.workflow_instance_id is not None:
+        instance = await session.get(WorkflowInstance, claim.workflow_instance_id)
+        org_unit_id = instance.org_unit_id if instance is not None else None
+    if org_unit_id is None:
+        staff = await session.get(Staff, claim.claimant_id)
+        org_unit_id = (staff.section_id or staff.division_id) if staff else None
+    if org_unit_id is None:
+        # Unplaceable: a scoped grant must not reach it. "I could not determine
+        # whose this is" is not a reason to describe it to someone.
+        return False
+    for perm in _OVERSIGHT_PERMS:
+        if await authorize_scoped(session, actor_user_id, perm, org_unit_id):
+            return True
+    return False
+
+
 async def _assert_advance_settled(session: AsyncSession, claim: ReimbClaim) -> None:
     """The money before the terminal state (R-6-liq-settle).
 
@@ -467,10 +512,25 @@ async def submit_claim(
     # rather than starting an instance on a guessed chain.
     chain = definition_code(claim.kind)
     ref_scope = REF_SCOPES[claim.kind or st.REIMBURSEMENT_KIND]
-    if claim.workflow_instance_id is not None:
-        raise errors.claim_already_submitted()
+    # AUTHORIZATION BEFORE STATE, and the order is load-bearing (R-9).
+    #
+    # These two checks were the other way round until the R-9 security suite
+    # asked for the first time what a STRANGER gets back. A state refusal
+    # describes the record — "this claim is already in the approval workflow" —
+    # so raising it before the ownership check turned this route into an oracle:
+    # POST /claims/{id}/submit against ids you do not own answers "no such
+    # claim" / "exists, not yet submitted" / "exists, already submitted", one id
+    # at a time, from any ordinary `staff` login. That is the agency's filing
+    # volume and pipeline state, readable by anyone, through an endpoint whose
+    # own tests all passed because every one of them submitted its OWN claim.
+    #
+    # The general rule this instance establishes: a caller must be proven
+    # entitled to the record before any message about the record's condition is
+    # composed. See ``cancel_draft_claim`` for the same fix.
     if not await is_claim_owner(session, claim, actor_user_id):
         raise errors.not_claim_owner()
+    if claim.workflow_instance_id is not None:
+        raise errors.claim_already_submitted()
     # Cancelled is terminal even pre-submit (no instance exists to make the
     # engine refuse) — without this, a cancelled draft would resurrect here and
     # burn a never-reused RB number. Checked under the row lock, so a
@@ -582,6 +642,14 @@ async def claim_action(
     set_audit_context(session, actor_id=actor_user_id)
 
     claim = await _locked_claim(session, claim_id)
+    # Authorization before state, third instance (R-9). Everything past this
+    # point is the engine's to authorize — it holds the step, the permission and
+    # the segregation rules — but the engine can only be consulted once an
+    # INSTANCE exists. So the one branch it cannot cover is the one that says
+    # "there is no instance", and raising that to a stranger distinguishes a
+    # never-submitted draft from a claim id that was never issued.
+    if not await may_see_claim(session, claim, actor_user_id):
+        raise errors.not_claim_owner()
     if claim.workflow_instance_id is None:
         raise errors.claim_not_in_workflow()
     instance = await session.get(WorkflowInstance, claim.workflow_instance_id)
@@ -717,10 +785,14 @@ async def cancel_draft_claim(
     set_audit_context(session, actor_id=actor_user_id)
 
     claim = await _locked_claim(session, claim_id)
-    if claim.workflow_instance_id is not None:
-        raise errors.claim_already_submitted()
+    # Authorization before state — see the long note in ``submit_claim``. The
+    # leak here is the same shape and slightly worse: a cancel probe is a WRITE
+    # attempt, so the distinction between "already submitted" and "not yours"
+    # tells a stranger which drafts are still sitting unfiled.
     if not await is_claim_owner(session, claim, actor_user_id):
         raise errors.not_claim_owner()
+    if claim.workflow_instance_id is not None:
+        raise errors.claim_already_submitted()
     if not comment:
         raise wf.errors.comment_required()
     # Idempotence belt: a double-cancel must not append a no-op

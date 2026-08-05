@@ -67,7 +67,7 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | §6.1 gate reads "all required items non-missing", literally | **`generated_doc` items NEVER block** — a system-produced artifact cannot be a precondition of entering the workflow that produces it. Not an R-5 dodge: it stays true after the template engine ships, because generation happens downstream of submit. Without it the three always-on `generated_doc` seed rows (IOT-45, AR-01, DV-32) would make every claim in the tenant permanently unsubmittable. `data_only` is excluded too (the claim's own data IS the evidence — nothing to attach, though it can still flag). Blocking evidence = `upload` + `external_wet_sign` | the gate must be shippable before R-5 |
 | master-plan #7 "missing required items block transitions" (plural) | Enforced on **submit, resubmit and approve** — never on `return` or `cancel`. Blocking a return would trap a claim whose packet is incomplete inside the chain, the exact opposite of the rule's intent. Approve reads **persisted rows only** and does NOT re-materialize: fresh evaluation mid-approval would let a catalog edit retroactively block an in-flight claim (workflow-standards §9, "in-flight always finishes"). Row existence encodes what was required at submit, so no `required_snapshot` column is needed | master-plan §1.1 #7 vs workflow-standards §9 |
 | §5.3 grammar with no stated failure direction | **Evaluation is TOTAL, validation is STRICT.** `evaluate_required_rule` never raises (it runs on every packet read over admin-editable JSONB); `validate_required_rule` raises and gates the seeds. An unparseable rule fails **OPEN** with a visible `unparseable` flag, not closed: with waivers deferred there is no escape hatch, so blocking on a rule we could not read would strand the claim forever (§9.1 principle 4). The catalog is seed-only until the R-9 admin editor and the seeds are validated, so an unparseable rule cannot reach data today. **When the catalog editor ships, waivers must ship with it and this flips to fail-closed** | §9.1 principle 4 vs compliance safety — recorded so the trade is revisited deliberately |
-| §5.3 six auto-check types | **Four implemented over data that exists**: `file_present`, `amount_threshold`, `date_within_trip` (over LEG dates today, widening to receipt dates when OCR lands), `sum_matches`. `keyword_absent` (needs OCR, R-9) and `deadline_check` (needs the liquidation clock, R-6) are **registered and implemented but return `skipped` with a named reason** when their substrate is absent — so a seeded rule using one is visibly inert rather than silently passing. Spec §5.3's example key `liquidation.deadline_working_days` does not exist (the seeded key is `liquidation.deadline`, and calendar-vs-working is still an open R-0 item) — do not seed a `deadline_check` before R-6 resolves it | honest inertness over a silent pass |
+| §5.3 six auto-check types | **Four implemented over data that exists**: `file_present`, `amount_threshold`, `date_within_trip` (over LEG dates today, widening to receipt dates when OCR lands), `sum_matches`. `keyword_absent` (needs OCR — **re-deferred at R-9 to Stage H**, see below) and `deadline_check` (needs the liquidation clock, R-6 — **now live**) are **registered and implemented but return `skipped` with a named reason** when their substrate is absent — so a seeded rule using one is visibly inert rather than silently passing. Spec §5.3's example key `liquidation.deadline_working_days` does not exist (the seeded key is `liquidation.deadline`, and calendar-vs-working is still an open R-0 item) — do not seed a `deadline_check` before R-6 resolves it. **R-9 re-deferred `keyword_absent`/OCR out of Stage C, deliberately**: this row and master-plan §1.1 both said "R-9" while build spec §14's R-9 row never asks for OCR, so the promise was one this project made to itself. Shipping it would have meant a new system dependency (Tesseract in the worker image), an extraction stage on the attachments pipeline and a new published fact — into the session whose deliverable is *evidence the existing eight increments hold up*. It costs nothing to wait: the check is registered, returns a NAMED `skipped`, and **no seeded rule uses it**, so nothing is silently passing. Lands with the OCR substrate at **Stage H** | honest inertness over a silent pass |
 | §5.3 `auto_checks` `on_exceed: "require_item:RER"` | **Carried through as `CheckResult.remedy` and RENDERED, never executed** as a materialization directive. It names code `RER` while the catalog code is `RER-46`, and it sits on the RER-46 row itself (self-referential). An executable "require_item:X" would make materialization order-dependent and let one catalog row conjure another | the seeded directive is incoherent as written — scope fence |
 | §5.3 `attachment_ids int[]` on the item | **`reimb_attachments` is the source of truth; `reimb_checklist_items.attachment_ids` is a DISPLAY MIRROR.** The join row has the FK, the soft-delete columns and the custody state; db-standards §11 forbids putting in JSONB anything other code must join on. The mirror is always REASSIGNED, never `.append()`-ed — the column has no `MutableList`, so an in-place mutation would leave the row un-dirty and silently not persist | db-standards §11 + the same doctrine as `reimb_claims.status` |
 | — (no upload convention) | **The module owns its upload endpoint** (`POST /claims/{id}/checklist/{catalog_id}/attachments`, on the GATED router) rather than reusing core's generic `POST /attachments` plus a link call: attaching is upload + join row + mirror + status recompute in ONE transaction, and the real rule ("may this actor edit THIS claim's packet") cannot be expressed by a coarse `attachment.upload` permission. Every byte still goes through `core.attachments` (Rule 10). Downloads stay on the core route, scoped by the `register_holder_authorizer` seam Stage B built for exactly this — **zero core router change** | recorded as **api-standards §9b**: Rule 10 + atomicity + §9's coarse-at-route/exact-in-service doctrine |
@@ -175,6 +175,13 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | — (the wizard reads the approver's taxonomy) | **No second endpoint for the advisory.** `GET /return-reasons` — the return dialog's own chip source — gained `promoted`, and the wizard filters on it. One cached list means the wording a claimant is warned with and the wording an approver picks can never drift, and it is what makes the acceptance line testable end to end: promote → invalidate `reimbKeys.returnReasons()` → the warning is there, with no deploy | one list, one set of labels |
 | — (a THIRD test-hygiene shape) | **A promotion mutates SHARED SEEDED DATA**, tenant-wide by design. A test that promotes and does not demote leaves a warning standing for every later test and for the next developer's dev database — the same class as the aged claims that leaked for three sessions (#24–#26) and the counted-surface trap (row above), wearing a third coat. Every promoting test undoes itself in a `finally`; `test_reimbursement_seeds.py`'s "nothing ships promoted" is the canary. Also: `reimb_return_events` REVOKEs UPDATE, so a window/trend fixture **INSERTs** a row with an explicit `created_at` — it cannot backdate one | delta rows 151/165, generalized from dates → counts → shared seed rows |
 
+| §14 R-9 "flag ON for pilot cohort only" | **A cohort is a GRANT LIST, not a flag dimension.** `core_feature_flags` stays a tenant-wide boolean; the flag answers *"is this module on"*, RBAC grants answer *"for whom"*. Verified before deciding: **nothing in the codebase auto-assigns a role** — there is no default-grant path — so a user reaches the module only because an administrator granted them one, and the grant list already IS the cohort, scoped per org unit, time-bounded, revocable and audited. Giving the flag an org dimension would have been a second, weaker copy of that, plus a rewrite of the one endpoint the hard prohibitions say must never 500. **The honest risk is stated rather than discovered:** a cohort you cannot enumerate is a cohort you cannot verify, and one global `staff` grant admits an outsider invisibly — so the posture ships with its control, `bootstrap pilot-roster`. Pinned by the census driving all 32 routes with a grant-less user | api-standards §9i; spec §14 asks for a cohort, not for a schema |
+| §14 R-9 "security suite (scope filters!)" | **Tested by ATTACKER, not by endpoint — and the difference found a defect.** Every increment tested its own surface; what had never been tested was the SET. `submit_claim`/`cancel_draft_claim` checked claim STATE before OWNERSHIP, returning `409 already_submitted` to a stranger — an enumeration oracle over every claim in the agency (exists-unsubmitted / exists-submitted / never-issued) from any `staff` login, with **every existing test passing** because each submitted its own claim. The rule was already written in `services/drafts.py`'s comment and two functions one file over did not follow it. Now **api-standards §9i**: authorization precedes state. Fixed in three places incl. `claim_action`'s no-instance branch (the one branch the engine cannot authorize, since authorizing needs an instance) via the new `lifecycle.may_see_claim` | a doctrine in one module's comment is not a standard |
+| — (the census, and why it reads the app) | **`test_reimb_authz_census.py` enumerates `app.routes`; a route with no declared rule FAILS.** §9f had been applied four times by remembering. The table records each of the 32 routes' gate class, route permission and exact service rule, and is machine-checked against the running app through two new markers (`oc_permission`/`oc_feature_flag`) on core's dependency factories — a closure is opaque to introspection, and grepping the source would have re-created the hand-list problem this replaces. Reading the table also makes §9f's warning visible as data: **28 of 32 routes are gated on a permission an ordinary traveller holds**, so on almost every route the route gate provably cannot be the scope rule | absence never fails a hand-written list |
+| — (test hygiene, made mechanical) | **The fourth recurrence is where you stop asking people to remember.** Sessions #24–#27 each lost time to shared state left modified: a holiday row, aged `holder_since`, a promoted reason. Every fix was a `finally` plus a docstring. R-9 added session-scoped **`seed_guard`** — snapshots every seeded row's mutable columns and FAILS the run on unrestored drift (proven against a deliberate leaked promotion) — and made `_backdate` a **context manager that owns its own undo**, so the aging cannot be taken without the restore. Guards LIVE rows only: a properly retired row (rule 6) is not drift, but retiring a genuinely seeded one still reports | delta row 168's third shape, now enforced rather than documented |
+| — (`verify_chain`'s real limit) | **Its budget is MEMORY, not time.** 501,423 audit rows → 18.7 s and **1.47 GiB peak RSS** (~3 KiB/row, linear, no headroom trick). 19 s is nothing for a job nobody runs in a request path; 1.47 GiB is not nothing at 3× that. **Measure RSS, not `tracemalloc`** — the first pass used the latter and reported a 77.7 s wall time, ~4× inflated by its own tracing overhead, which would have sent someone optimising a 19-second job. Threshold recorded at **≈1M rows** with the batched replacement sketched, in database-standards §7a. Worth stating because the failure mode is an OOM-killed verification, which reads as *"the integrity check is broken"* at exactly the moment somebody is asking whether the log can be trusted | a budget nobody wrote down is a budget nobody meets |
+| §14 fixtures "used everywhere" | **Data, never workflow history.** `load-pilot-fixtures` builds the six travellers, ten trips and aged advance with **server-computed** money (the §8 example returns ₱6,500 from the engine; the figure appears nowhere in the fixture file) and leaves every claim a DRAFT. Submitting them would mean writing hash-chained audit rows asserting people made decisions they never made — in the one structure whose entire value is that you can believe it. The manual test guide (§4-M) drives the chain by hand. Also: the advance goes through `services/cash_advance` rather than a bare INSERT, because the first attempt's direct insert left `deadline_date` NULL — an advance with no countdown, which is the one thing the fixture exists to show | rule 10 (sanctioned writer) + an audit chain is only worth what it asserts |
+
 *(Grows as build proceeds — every divergence from the spec lands here.)*
 
 ## 3. R-0 confirmations tracker (spec §15 — user decisions)
@@ -261,9 +268,268 @@ Feature flag: `module.reimbursement` (fail-safe OFF) · Ref numbers:
 | R-7-events | **The FMS journey record — relaying what FMS says, recording what FMS did.** `services/external.py`: the FIRST EVER writer of `reimb_external_events` (shipped inert in `0013`, zero writers and zero readers until now) — `record_external_event` is a PURE APPEND enforcing MEMBERSHIP of the closed set and never ORDER (spec §6.1 row 6's "any order/skips allowed"), on BOTH claim kinds; plus `record_payout`, workflow-standards §12's **second instance** (reference + `paid` event first, then the unchanged `approve`, one transaction) and `lifecycle._assert_payout_recorded`, the chokepoint that refuses the bare verb and NAMES `/mark-paid`. Migration **`0021`** (`payout_ref` / `paid_on` / `paid_by`; no unique index — one LDDAP-ADA pays many vouchers). Core: **`attachments.start_retention`**, which finally starts the GRDS-2023 clock `services/attachments.py` has been parking since R-2 — every claim attachment in the system was permanently non-disposable. Two spec §12 notifications (`notify_external_status`, `notify_paid` — the *Paid* half of a row only half-built at R-6-liq-settle). `GET /claims/{id}/timeline` merges both lanes into ONE chronology with `to_status` NULL on an FMS row. Routes: relay on the GATED router (a relay strands nothing), `/mark-paid` UN-GATED beside `/settle` (it drives a transition). FE: `FmsStatusDialog` + `MarkPaidDialog` + `PaidOutcome`, the merged tracker, the rail's "Latest from FMS", the queue row's last-heard status | ✅ complete | pytest **860 (+38), 0 failures**, lint-imports 3/3, `0021` reversible (down→up) + `alembic check` clean, seeds ×2 no-op, FE gate green (**214 vitest**, +21) + build; live smoke **28/28** through the real stack, which is what caught the duplicate-payment-notification defect | 25 |
 | R-7-board | **The pipeline board — how much is where. CLOSES R-7.** Spec §9.6's "module's public face": three columns (In Bureau / With FMS / Done) that are GROUPS of statuses, each headed by a count and a server-summed peso total. `services/status.py` gains a per-kind **`board_column`** mapping ON the `Vocabulary` — mandatory per state, with the column sets derived and an import-time invariant that also proves them **pairwise disjoint** (the cross-kind `GROUP BY` would otherwise double-count). `services/queue.py` gains **`include_terminal`** on `base_query` (the trap its own R-7-queue docstring flagged: Done is entirely terminal and a queue excludes exactly that), plus `column_totals` — **ONE grouped aggregate**, `SUM((totals->>'grand')::numeric)`, never a Python sum over the 20-card page — and `board_card_query` with Done sorting `updated_at DESC` because a terminal state clears `holder_since`. Done is **bounded to `board.done_window_days` (90, fail-soft)**; the live columns are not. Route is **`GET /board`, not `/claims/board`** — `claims.router` is included first and `/claims/{claim_id}` would swallow the literal segment and 422 (now api-standards **§9g**). `api/queue.py`'s row-building is extracted into `_queue_rows`/`_urgency_first` so all three columns share ONE batched pass. FE: the pre-built `BoardPage` + `PipelineCard` **wired rather than rebuilt** — the layout gains `total`/`footer`/`loading`/`emptyState` and the card an optional `to` (ui-standards §3/§4 amended; spec §9.6's "clicking a card opens the tracker" vs the inventory's "no link affordance"), plus `boardMeta`/`daysPhrase`, `ClaimBoardPage`, the route and the nav entry. **No migration — head stays `0021`** | ✅ complete | pytest **890 (+30), 0 failures**, lint-imports 3/3, `alembic check` clean (no migration), seeds ×2 no-op, FE gate green (**230 vitest**, +16) + build; live smoke **47/47** whose centrepiece is a RECONCILIATION: the three columns hand-bucketed from a raw `GROUP BY` over `reimb_claims`, column for column and peso for peso (spec §14's "board totals match DB"), plus a real `/mark-paid` moving ₱6,500 from With FMS to Done with the board's grand total unchanged | 26 |
 | R-8 | **Insights + the comment-learning loop — the first feature that makes the system get BETTER as it is used.** Spec §11 / Objective 3: every return has stored its reasons since R-4-screens and nothing had ever read them back. `services/insights.py`: `ranked_reasons` — **ONE grouped statement over BOTH windows** (`count(*) FILTER`, 90 days vs the 90 before), `jsonb_array_elements_text` unnested and grouped **on the text element** (a SQL `::bigint` would 500 the surface on one junk element, where `queue._GRAND`'s cast is safe only because `compute.py` is its sole writer), bucketed in Python so an unmapped id is LOGGED — `column_totals`'s shape and its reason. Built on `queue.base_query(include_terminal=True)` so the SECURITY predicate has one definition. Plus `set_promoted` (load-and-mutate, never a bulk UPDATE — the R-7-events lesson) and `may_promote` (**agency-wide** `reimb.claim.review`: the write rule is narrower than the read rule, a first for this module, because a promotion warns every claimant in the tenant). `api/insights.py` = `GET /insights/return-reasons` + `/promote` + `/demote` on the gated router, `/insights` a **sibling segment** (§9g, pinned both ways). `promoted_check` **reinterpreted** from "can be promoted" to "IS promoted" + migration **`0022`** resetting the three seeded `True`s, and **removed from the seed rows** — leaving it there would have made every `seed` run silently demote every promotion. `promoted` added to `GET /return-reasons`, which is the entire wire from the Admin Officer's click to the claimant's warning. New `insights.window_days` config (90, fail-soft). FE: **`RankedBarList`** (inventory row 23, CountdownRing doctrine — bars `aria-hidden`, every number real text, scaled to the LARGEST row never a total), `InsightsPage`, `insights-copy.ts`, and the step-5 `Callout` that is structurally incapable of gating. New standards: **api-standards §9h** (the scope IS the privacy boundary) + ui-standards §3/§8 | ✅ complete | pytest **907 (+17), 0 failures**, lint-imports 3/3, `0022` reversible (down→up, restoring exactly the three seeded codes) + `alembic check` clean, seeds ×2 no-op, FE gate green (**260 vitest**, +30) + build; live smoke **28/28** whose centrepiece is a RECONCILIATION — six reasons, both windows, against a raw `GROUP BY` over **535 real return events**, reason for reason — plus the graded line driven end to end (promote → the claimant's taxonomy carries the warning with **no deploy or restart** → demote), and a 441,731-row audit chain verified intact | 27 |
-| R-9 | Per spec §14 (hardening + the pilot gate) — CLOSES Stage C | not started | — | — |
+| R-9 | **Hardening + the pilot gate — CLOSES Stage C.** Not a feature increment: the deliverable is EVIDENCE that eight increments hold up. **The security suite** — `test_reimb_authz_census.py` enumerates `app.routes` and requires every one of the **32** module routes to carry a declared rule (a new route with no rule FAILS rather than being missed), reading the wiring off the app through new `oc_permission`/`oc_feature_flag` markers on `require_permission`/`require_feature`; `test_reimb_scope_security.py` drives every read path from the WRONG actor, organised by attacker rather than by endpoint. **It found a real defect on its first run:** `submit_claim`/`cancel_draft_claim` checked claim STATE before OWNERSHIP, so a stranger got `409 already_submitted` back — an enumeration oracle over every claim in the agency, from any `staff` login, with every existing test passing because they all submitted their own claim. Fixed in three places (+ `claim_action`'s no-instance branch, via the new `lifecycle.may_see_claim`); now api-standards **§9i**. **The pilot cohort** is a STATED posture, not a schema: the flag answers "is this module on", RBAC grants answer "for whom", and the new `bootstrap pilot-roster` makes the cohort enumerable (nothing auto-assigns a role, so the grant list already IS the cohort). **Perf:** both aggregates measured at ~5 ms, migration `0023` (`ix_reimb_return_events_created_at` — for year two, not today), and `verify_chain` given a MEMORY budget (501k rows → 18.7 s / 1.47 GiB RSS; threshold ≈1M rows, database-standards §7a). **Fixtures:** `modules/reimbursement/fixtures.py` + `load-pilot-fixtures` discharge spec §14's list in full. **Test hygiene made MECHANICAL** after four recurrences: a session-scoped `seed_guard` fails the run if seeded reference data was modified and not restored, and `_backdate` became a context manager that owns its own undo. Plus the §14 discharge table (§4a), the manual test guide (§4-M), and the OCR/`keyword_absent` re-deferral to Stage H | ✅ complete | pytest **1003 (+96), 0 failures**, lint-imports 3/3, `0023` reversible + `alembic check` clean, migrations replayed `0012`→head, seeds idempotent from an EMPTY database, FE gate green (**260 vitest**) + build; live smoke **42/42** as FOUR actors incl. the scoped Admin Officer #27 could not cover | 28 |
+
+## 4-M. Manual test guide (Stage C)
+
+Plain-language walkthrough proving the reimbursement vertical end to end — the
+QA-gate requirement in `development-workflow.md` §6 step 2, and the script a
+pilot demo follows. Shape borrowed from `foundation.md` §8.
+
+**Setup.** Stack up (`docker compose up -d`; ports 8001/5432/6380, SPA on 5174):
+
+```bash
+docker compose exec app alembic upgrade head                       # head = 0023
+docker compose exec app python -m office_connect.ops.bootstrap load-reference
+docker compose exec app python -m office_connect.ops.bootstrap seed-rbac
+docker compose exec app python -m office_connect.ops.bootstrap seed-workflows
+docker compose exec app python -m office_connect.ops.bootstrap load-fixtures
+docker compose exec app python -m office_connect.ops.bootstrap load-pilot-fixtures
+docker compose exec app python -m office_connect.ops.bootstrap set-flag module.reimbursement --on
+```
+
+> A full `pytest` run leaves the flag OFF (`test_reimb_api_flag_gate.py` restores
+> whatever it captured). Re-run the last line before demoing.
+
+You need three logins with different scopes — a traveller, a **scoped** Admin
+Officer, and an approver. Grant them with the RBAC admin API or `grant_role`;
+confirm with `pilot-roster` (step 11).
+
+1. **The module is switched on, and off means gone.** `GET
+   /api/v1/config` → `features["module.reimbursement"] = true`. Flip it off
+   (`set-flag … --off`) and load `/api/v1/reimbursement/my-work` → **404**, not
+   403 — an OFF module is indistinguishable from an absent one. Flip it back on.
+2. **File a claim.** As the traveller, open `/reimbursement/claims/new`. The
+   claimant block is prefilled from the directory (you cannot type someone
+   else's name — server-side, WCAG 2.2 §3.3.7). Walk the 5 steps. On the money
+   step press *Recalculate*: for a 3-day NCR trip with two ₱500 fares the server
+   returns **per diem ₱5,500, transport ₱1,000, grand ₱6,500** (spec §8). The
+   browser computes nothing — every peso figure on screen came over the wire.
+3. **The checklist gates the submit.** On *Documents*, leave a required item
+   empty and press Submit on *Review* → **422** with the missing items named and
+   a deep link to each. Upload them; a taxi fare over ₱300 raises an amber flag
+   demanding an RER — note it **does not block** (flags never block alone).
+   Submit → an `RB-2026-NNNN` reference and a confirmation panel.
+   *Demo data:* the `[demo] … RER threshold` claim already has the >₱300 fares.
+4. **The JO/COS conditional.** Repeat step 2 as the JO/COS traveller
+   (`D-0006`, Dexter Pascual) — one extra checklist item appears that did not
+   for a permanent employee. That is the rule grammar, not a hardcoded branch.
+5. **Approve on a phone.** As the approver, open the claim on a narrow viewport.
+   The decision bar is sticky at the bottom. Press *Return*, pick ≥1 reason from
+   the taxonomy (it will not submit without one), add a comment → the claim goes
+   back to the traveller, who sees the reasons on their tracker. Fix and
+   resubmit → the chain restarts at step 1 with a new revision.
+6. **The packet.** Open the claim as the approver → the combined PDF previews
+   inline (cover + COA checklist + evidence manifest + IOT-45 / AR-01 / DV-32).
+   Attach another file → the packet is **voided** and re-offered; regenerate and
+   the cover's source fingerprint has changed. That is the "modified after
+   signature" re-flag doing its job.
+7. **Hand to FMS and relay.** As the Admin Officer, approve past `admin_review`
+   → the claim reaches `handed_to_fms` and leaves everybody's My Work (its
+   holder is `external_fms`). Record FMS statuses out of order — *With
+   Accounting* before *With Budget* — both are accepted; the 422 you get for an
+   unknown status says the three are legal **in any order**. Check the queue's
+   *Over 10 working days* filter: it counts Manila working days off the holiday
+   calendar, and no browser computes it.
+8. **Pay it.** *Mark paid* demands a payout reference and a date — a blank
+   reference is refused, and the refusal names the honest alternative (relay
+   *Payment processing* instead). The claimant gets **one** notification, not
+   two. The claim moves to Done on the board and the board's grand total is
+   unchanged by the move.
+9. **The liquidation clock.** Open the Accounting register → `DV-DEMO-0001`
+   (₱18,000) shows an **amber** countdown ring at about D-5 with the COA
+   consequence copy. Press *Liquidate* → an `LQ-2026-NNNN` claim pre-filled from
+   the advance. Certify B, record certification C's paper signature as a
+   mandatory comment, hand to FMS, then *Settle*: record a refund OR if the
+   advance exceeded the spend, or spawn a reimbursement claim if it fell short —
+   the spawn is pre-filled and links both halves.
+10. **The learning loop, with no deploy.** As an Admin Officer with an
+    **agency-wide** review grant, open *Insights*. Reasons are ranked over 90
+    days with a trend against the 90 before. Press *Promote to pre-check* on
+    one. Without restarting anything, open the wizard as a traveller → step 5
+    now carries a plain warning naming that reason, and it **cannot block the
+    submit**. Press *Stop warning* → it is gone. Try the same promote as a
+    **scoped** Admin Officer → refused, because the effect is tenant-wide.
+11. **Scope, from the wrong chair (R-9 — the part worth doing slowly).** Signed
+    in as traveller B, request traveller A's claim id directly:
+    `/api/v1/reimbursement/claims/<A's id>` → **403 `reimb_not_claim_owner`**.
+    Same for `/timeline`, `/checklist`, `/external-events`, the cash advance,
+    and `/api/v1/attachments/<id>/content` (the packet bytes). Now probe
+    `POST …/submit` against **three** ids — A's submitted claim, an unsubmitted
+    draft, and `999999999`: the two real claims must answer **identically**, or
+    the endpoint is an oracle (api-standards §9i). Ask for `/claims`, `/board`
+    and `/insights/return-reasons` as a traveller → **403 with three different
+    sentences**, each naming the surface that does answer them. Finally, as a
+    **scoped** Admin Officer, confirm the board's column counts and peso totals
+    cover only their own office — check the **headers**, not just the cards.
+12. **Who is in the pilot.** `docker compose exec app python -m
+    office_connect.ops.bootstrap pilot-roster` → every holder of any `reimb.*`
+    permission, their scope, and which are `AGENCY-WIDE`. On a clean pilot box
+    that list should be short and every name recognisable. The flag says the
+    module is on; this says who it is on **for**.
+13. **Audit integrity.** `docker compose exec worker python -m office_connect.ops
+    backup-and-drill` → `verify: ok`. Every promotion, waiver, settlement and
+    status change above is in that chain.
+
+## 4a. Spec §14 QA discharge table (the Stage C gate's audit trail)
+
+Build spec §14 gives every phase an *"automated QA must prove"* column. This
+table walks it **clause by clause** and names where each is discharged. It is
+the artifact a reviewer actually reads at the gate: "the suite is green" is not
+evidence that the *specified* things are true.
+
+Test files are under `tests/`. Where a clause is discharged by a specific test,
+the test name is given — those are the ones worth re-reading if the clause is
+ever questioned.
+
+| Phase | Clause from spec §14 | Discharged by |
+|---|---|---|
+| **R-1** | Migrations idempotent | `test_migrations.py` + `conftest.migrated_db` (upgrade to head runs once per session; a re-run is the idempotence check) |
+| R-1 | Seeds load | `test_reimbursement_seeds.py`; `bootstrap load-reference` ×2 = no-op |
+| R-1 | Config editable | `test_reimbursement_seeds.py::test_eo77_three_cluster_rates` / `test_region_maps_to_cluster` (effective-dated lookups); every cadence value reads fail-soft through `lifecycle.config_int`, exercised in `test_reimb_cash_advances.py` and `test_reimb_checklist_facts.py` |
+| R-1 | Rates render with sources | `test_reimbursement_seeds.py::test_config_carries_legal_source` (asserts `COA Circular 97-002` on the liquidation config) |
+| **R-2** | Worked example computes ₱5,500 | `test_per_diem_engine.py` **and independently** `test_reimb_pilot_fixtures.py::test_the_worked_example_still_computes_5500_per_diem` (two different paths to the same anchor) |
+| R-2 | HUC/other switch | `test_per_diem_engine.py` (3-cluster EO 77 routing); `cluster_switch_trip` factory |
+| R-2 | 50-km rule | `test_per_diem_engine.py` + the `within_50km_commuter` / `within_50km_overnight` factories |
+| R-2 | Autosave survives refresh | FE: `web/src/pages/reimbursement/TripStepPage.test.tsx` (save-and-return); the server-side half — the draft PATCH the reload reads back — is pinned by `test_reimb_api_drafts.py` |
+| **R-3** | JO/CO conditional appears only for JO/COS | `test_checklist_grammar.py`, `test_reimb_checklist_service.py`; demo evidence via `test_reimb_pilot_fixtures.py::test_exactly_one_traveller_is_jo_cos` |
+| R-3 | Taxi >₱300 demands RER | `test_checklist_checks.py` (`amount_threshold`); fixture pinned by `test_a_taxi_fare_crosses_the_rer_threshold` |
+| R-3 | Submit blocked on missing | `test_reimb_checklist_gate.py` |
+| R-3 | Flag ≠ block | `test_checklist_engine.py` (flags never block alone) |
+| R-3 | Waiver logged | `test_checklist_engine.py::test_a_human_waiver_outranks_every_machine_verdict` (the precedence rule) + `test_checklist_grammar.py`. **Note:** the waiver *UI/API* is not built — the catalog/taxonomy admin editor is a recorded deferral, and R-3's grammar docstring promises that when it ships, waivers ship with it and `evaluate_required_rule` flips to fail-CLOSED. The engine half is done and tested; the surface is not |
+| **R-4** | No null holders (property across all transitions) | `reimb_lifecycle_helpers.assert_holder_invariant` — *a holder exists IFF the claim is non-terminal* — applied after every transition in `test_reimb_lifecycle_actions.py` and `test_reimb_liquidation_lifecycle.py` (both chains). Holder SELECTION is separately pinned by `test_reimb_holder_resolution.py` (deepest scope wins, ties by lowest user id, zero matches fail closed) |
+| R-4 | Return requires reason | `test_reimb_lifecycle_actions.py::test_return_requires_reason` + `::test_return_rejects_reasons_outside_the_live_taxonomy` — enforced in `claim_action` (the service), so every caller is covered, not just the HTTP dialog |
+| R-4 | Resubmit restarts chain | `test_reimb_lifecycle_actions.py::test_return_paths_never_orphan` (drives `returned → resubmit → division_approval → approve → admin_review → return`, asserting the holder invariant at every rung) |
+| R-4 | SLA reminder fires to holder only, never superior | `test_reimb_sla_notifications.py::test_escalation_notifies_holder_only_and_dedups` |
+| R-4 | Phone viewport passes | FE: `DetailPage.actions` sticky decision bar tests |
+| **R-5** | Placeholder merge exact | `test_reimb_documents.py`, `test_document_render.py` |
+| R-5 | Edit-after-sign voids + re-flags | `test_document_snapshots.py` (`stale_snapshots` reports, never voids) |
+| R-5 | C-step upload path works | `test_reimb_checklist_api.py` (CRT-C evidence) |
+| R-5 | Google-down degrades non-blocking | `test_storage_gdrive.py`; `PdfRenderer` injectable so a renderer outage never blocks |
+| **R-6** | Deadline from `date_return` incl. holiday calendar | `test_reimb_liquidation_clock.py`, `test_calendar_workdays.py` |
+| R-6 | Refund path records OR | `test_reimb_settlement.py::test_a_refund_records_the_official_receipt` (+ `::test_a_refund_without_its_receipt_is_refused` and `::test_a_receipt_where_nothing_was_refunded_is_refused` — both directions) |
+| R-6 | Over-advance spawns pre-filled claim | `test_reimb_settlement.py::test_the_spawn_nets_the_advance_to_the_difference` |
+| R-6 | D-notifications fire | `test_reimb_liquidation_reminders.py` (D-7/D-3/D-0/overdue ladder) |
+| **R-7** | Statuses skip/reorder legally | `test_reimb_external_events.py` (membership enforced, order never) |
+| R-7 | Board totals match DB | `test_reimb_api_board.py` + the #26 live smoke's hand-bucketed `GROUP BY` reconciliation |
+| R-7 | >10-day external filter | `test_reimb_api_queue.py::test_the_threshold_boundary_is_exclusive` |
+| **R-8** | Promotion creates a working warning with no deploy | `test_reimb_api_insights.py::test_promoting_shows_the_reason_to_the_wizard_with_no_deploy` |
+| R-8 | Aggregates only | `test_reimb_api_insights.py` (no person dimension; scope-bounded; traveller refused) + api-standards §9h |
+| **R-9** | **Scoped visibility enforced per §3.2 (owner cannot read others' claims via API)** | **`test_reimb_scope_security.py`** — three attackers × every read path; `test_a_traveller_cannot_read_another_travellers_claim` is §3.2's literal sentence |
+| R-9 | (same, as a property over future surfaces) | `test_no_list_or_aggregate_leaks_a_foreign_claim_to_a_traveller`; `test_reimb_authz_census.py` fails on any route with no declared rule |
+| R-9 | **Flag ON for pilot cohort only** | `test_reimb_authz_census.py::test_an_actor_with_no_reimb_grants_is_refused_on_every_route` (all 32 routes) + `bootstrap pilot-roster` + api-standards §9i |
+| R-9 | Resilience / perf budgets | `EXPLAIN ANALYZE` recorded in §4b below; migration `0023`; `verify_chain` budget in database-standards §7a |
+| R-9 | Fixtures polish | `office_connect/modules/reimbursement/fixtures.py` + `test_reimb_pilot_fixtures.py` (spec §14's full list) |
+
+**Three clauses NOT fully discharged, and why** — recorded rather than quietly
+counted as done, because a discharge table that only lists successes is a
+marketing document.
+
+1. **R-3 "waiver logged" — engine yes, surface no.** The precedence rule (a human
+   waiver outranks every machine verdict) is implemented and tested, but there is
+   no UI or API to *record* one: waivers ship with the catalog/taxonomy admin
+   editor, which is a recorded deferral, and R-3's grammar docstring commits that
+   `evaluate_required_rule` flips to **fail-CLOSED** when it lands.
+2. **Spec §14's fixture list mentions "the real blank templates from Drive."**
+   The generated forms are authored Jinja templates matching the GAM appendices;
+   no blank originals were ever supplied. The demo fixture ships trips, receipts
+   and an advance, not those files.
+3. **`keyword_absent` / OCR** — see delta row 70. Re-deferred to Stage H at R-9,
+   with the reason stated: build spec §14's R-9 row never asked for it, the check
+   returns a named `skipped` rather than a silent pass, and no seeded rule uses
+   it.
+
+## 4b. Perf budgets, measured at the Stage C gate (2026-08-05)
+
+Numbers, not adjectives. Measured against the dev database (501,423 audit rows;
+4,173 claims; 567 return events).
+
+| Surface | Plan shape | Time |
+|---|---|---|
+| `queue.column_totals` (board headers) | Merge join `reimb_claims` × `core_workflow_instances`, one `GROUP BY status` with `SUM((totals->>'grand')::numeric)` | **5.1 ms** |
+| `insights.ranked_reasons` (both windows) | Same join + hash join to `reimb_return_events`, lateral `jsonb_array_elements_text` **Memoized** (601 hits / 10 misses) | **5.2 ms** |
+
+**One index added** (`0023`): `ix_reimb_return_events_created_at`. The plan
+showed a seq scan on that filter, which is currently *correct* — 615 rows. It
+was added anyway because the table is append-only and grows forever while its
+read window stays fixed at 90 days, so selectivity falls monotonically and the
+plan must flip eventually. Cost is one B-tree on a monotonic key. Reasoning in
+full in the migration's docstring.
+
+**Not added:** a GIN index on `reason_ids`. It would serve a "which events cite
+reason X" query that nothing asks and §9h says nothing should — the aggregate
+has no drill-down by design.
+
+**`verify_chain` has a size budget and it is MEMORY** — 501k rows → 18.7 s and
+**1.47 GiB peak RSS**. Full analysis, the ~1M-row threshold and what replaces it:
+`docs/standards/database-standards.md` §7a.
 
 ## 5. Decisions log
+
+- **2026-08-05 (session 28 — Stage C R-9: hardening + the pilot gate. R-9 and
+  STAGE C CLOSED)** — a gate session, not a feature session. Spec §14's R-9 row
+  grades two sentences, and most of the work went into making them *provable*
+  rather than *asserted*.
+  - **Four kickoff decisions, all user-confirmed.** (1) **Grants ARE the pilot
+    cohort** — the flag stays a tenant-wide boolean. Verified first: there is no
+    default-role assignment path anywhere in the codebase, so a user reaches the
+    module only because an administrator granted them a role, and the grant list
+    already *is* the cohort. What it lacked was a way to READ it, which is the
+    new `pilot-roster` command. (2) **OCR / `keyword_absent` re-deferred to
+    Stage H** — two docs said "R-9" while build spec §14's R-9 row never asked
+    for it. (3) **A dev-only demo seeder** discharges R-1's fixture debt.
+    (4) **`stage-c-complete` + v0.3.0**, pushed at the gate.
+  - **The security suite found a real defect on its first run, and the shape of
+    it is the lesson.** `submit_claim` and `cancel_draft_claim` checked the
+    claim's STATE before its OWNERSHIP, so a stranger POSTing `/submit` against
+    an id they did not own got back *"This claim is already in the approval
+    workflow"* — a correct, well-worded sentence about somebody else's claim.
+    Paired with `claim_not_in_workflow` for drafts and `reimb_claim_not_found`
+    for unissued ids, that is a three-way **enumeration oracle** over every
+    claim in the agency, available from any ordinary `staff` login. Every test
+    passed, because every test submitted its own claim. And the rule was already
+    written down — one file over, in `services/drafts.py::owned_editable_claim`,
+    with a comment naming the exact hazard. A doctrine living in one module's
+    comment is not a standard, so it became **api-standards §9i**:
+    *authorization precedes state; a caller must be proven entitled to a record
+    before any message describing that record's condition is composed.*
+    Fixed in three places, including `claim_action`'s no-instance branch — the
+    one branch the workflow engine can never authorize, because authorizing
+    needs an instance and that branch is the one that says there isn't one.
+  - **The census is the durable artifact.** §9f's rule (*a list may not borrow a
+    row's read rule*) had been applied four times, each time because a person
+    remembered. `test_reimb_authz_census.py` enumerates `app.routes` and
+    requires all **32** module routes to carry a declared gate class, route
+    permission and exact service rule — a new route with no row **fails** rather
+    than being missed. It reads the wiring off the running app rather than out
+    of the source, via two new introspection markers (`oc_permission`,
+    `oc_feature_flag`) on core's dependency factories; a closure is otherwise
+    opaque, and grepping the source would have re-created the hand-list problem
+    the file exists to remove. It also replaced the hand-maintained probe tuple
+    in `test_reimb_api_flag_gate.py`, which kept only its ordering contracts.
+  - **Test hygiene stopped being a matter of memory.** Four recurrences across
+    #24–#27, in three costumes (a holiday row, aged `holder_since`, a promoted
+    reason), each fixed with a `finally` and a docstring asking the next person
+    to remember. R-9 added a session-scoped **`seed_guard`** that snapshots every
+    seeded row's mutable columns and **fails the run** if the suite changed one
+    without putting it back — proven non-vacuous against a deliberate leaked
+    promotion — and turned `_backdate` into a context manager that owns its own
+    undo. Live rows only: a properly retired test row (rule 6) is not drift.
+  - **Perf budgets are numbers, not adjectives.** Both aggregates ~5 ms
+    (§4b). Migration `0023` adds the `created_at` index the Insights window
+    filters on — knowingly **unused today**, because the table is append-only
+    and grows forever while its window stays fixed at 90 days, so the plan must
+    flip eventually and this is the cheapest possible insurance. And
+    `verify_chain` got the finding that matters: at 501k rows it is **18.7 s but
+    1.47 GiB peak RSS**, so its ceiling is **memory**, not time, at roughly 1M rows
+    (database-standards §7a).
+  - **The demo fixtures stop at the workflow, deliberately.** `fixtures.py`
+    builds spec §14's cast with server-computed money (the worked example
+    returns ₱6,500 from the engine, written nowhere in the file) but submits
+    nothing. Fabricating approval history would mean writing hash-chained audit
+    rows asserting that people made decisions they never made, in the one
+    structure whose entire value is that you can believe what it says. The
+    manual test guide (§4-M) drives the chain by hand instead.
 
 - **2026-08-06 (session 27 — Stage C R-8: insights + the return-reason learning
   loop)** — spec §11 / Objective 3, and the first feature in the module that

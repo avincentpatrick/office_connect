@@ -1,4 +1,4 @@
-"""R-2-wizard — the module surface's feature-flag→404 gate + gate ordering.
+"""R-2-wizard — the module surface's feature-flag→404 gate + gate ORDERING.
 
 The ``/api/v1/reimbursement`` router sits behind ``require_feature``: flag OFF →
 404 on every route, even authenticated (the module is indistinguishable from
@@ -7,108 +7,24 @@ before routing (a header-less POST 403s even when the flag is OFF), the flag
 gate fires before auth (OFF → 404 beats 401), and with the flag ON the ordinary
 401/403 gates take over.
 
-R-4-screens added the ONE exemption, pinned at the bottom of this file: the
-approver's ``/approve`` and ``/return`` endpoints are mounted on a separate,
-un-gated router. The flag blocks NEW work; it must never strand work already in
-the chain (workflow-standards §9 — ``execute_action`` never reads the flag).
+R-4-screens added the ONE exemption: the approver's decision endpoints are
+mounted on a separate, un-gated router. The flag blocks NEW work; it must never
+strand work already in the chain (workflow-standards §9 — ``execute_action``
+never reads the flag).
+
+**R-9 moved the COVERAGE half of this file into
+``tests/test_reimb_authz_census.py``.** What lived here was a hand-maintained
+tuple of paths to probe, and a hand-maintained list has exactly one failure
+mode: a route added tomorrow is simply absent from it, and absence never fails.
+The census enumerates ``app.routes`` instead and probes every gated route
+flag-OFF, so that guarantee now grows by itself. This file keeps what the census
+cannot express — the ORDER the gates fire in, which is about middleware and
+dependency resolution rather than about any particular route.
 """
 
 from __future__ import annotations
 
-import pytest
-from sqlalchemy import select
-
-from office_connect.core.models import FeatureFlag
 from tests.conftest import CSRF, login
-
-
-@pytest.fixture
-async def reimb_flag_off(app_session):
-    """Force ``module.reimbursement`` OFF for the test, restoring the prior
-    state after (the dev DB may have been flipped ON by a walkthrough)."""
-    row = (
-        await app_session.execute(
-            select(FeatureFlag).where(FeatureFlag.key == "module.reimbursement")
-        )
-    ).scalar_one_or_none()
-    created = row is None
-    prev = None if created else (row.enabled, row.is_active)
-    if created:
-        row = FeatureFlag(
-            key="module.reimbursement",
-            enabled=False,
-            description="Local Travel Reimbursement module",
-        )
-        app_session.add(row)
-    else:
-        row.enabled = False
-    await app_session.commit()
-    yield row
-    if not created:
-        row.enabled, row.is_active = prev
-        await app_session.commit()
-
-
-async def test_flag_off_404s_the_whole_surface_even_authenticated(
-    client, make_user, session_redis, seed_rbac, app_session, reimb_flag_off
-):
-    user, pw = await make_user(roles=("staff",))
-    await login(client, user, pw)
-
-    for method, path, kwargs in (
-        ("GET", "/api/v1/reimbursement/my-work", {}),
-        # R-7-queue: a READ strands nothing, so §9a's un-gated exemption does
-        # not reach the oversight queue. It 404s with the rest of the surface.
-        ("GET", "/api/v1/reimbursement/claims", {}),
-        # R-7-board: the pipeline board is the same read on the same rows with
-        # counts over it, so it takes the queue's answer, not the actions'
-        # exemption.
-        ("GET", "/api/v1/reimbursement/board", {}),
-        # R-8: Insights is the same read again, and PROMOTION is a config edit
-        # on a lookup catalog — neither strands an in-flight instance, so both
-        # take the queue's answer rather than the actions router's exemption.
-        ("GET", "/api/v1/reimbursement/insights/return-reasons", {}),
-        (
-            "POST",
-            "/api/v1/reimbursement/insights/return-reasons/1/promote",
-            {"headers": CSRF},
-        ),
-        (
-            "POST",
-            "/api/v1/reimbursement/insights/return-reasons/1/demote",
-            {"headers": CSRF},
-        ),
-        ("GET", "/api/v1/reimbursement/claims/1", {}),
-        ("GET", "/api/v1/reimbursement/claims/1/timeline", {}),
-        # R-7-events: the FMS status relay is gated for the same §9e reason as
-        # the queue — refusing a relay strands nothing, because the claim stays
-        # exactly where it is and the update can be recorded the moment the flag
-        # comes back on. Contrast /mark-paid below, which DRIVES a transition.
-        ("GET", "/api/v1/reimbursement/claims/1/external-events", {}),
-        (
-            "POST",
-            "/api/v1/reimbursement/claims/1/external-events",
-            {"json": {"status": "with_budget"}, "headers": CSRF},
-        ),
-        ("GET", "/api/v1/reimbursement/regions", {}),
-        ("GET", "/api/v1/reimbursement/return-reasons", {}),
-        # R-3: the documentary packet is claimant-facing work, so it is gated
-        # like the rest of the wizard — only the two decision POSTs are exempt.
-        ("GET", "/api/v1/reimbursement/claims/1/checklist", {}),
-        (
-            "DELETE",
-            "/api/v1/reimbursement/claims/1/checklist/1/attachments/1",
-            {"headers": CSRF},
-        ),
-        ("POST", "/api/v1/reimbursement/claims", {"json": {}, "headers": CSRF}),
-        # /submit stays gated on purpose: start_instance already refuses new
-        # instances flag-OFF, and its resubmit branch is claimant-editing work
-        # that is meaningless without the wizard behind it.
-        ("POST", "/api/v1/reimbursement/claims/1/submit", {"headers": CSRF}),
-    ):
-        resp = await client.request(method, path, **kwargs)
-        assert resp.status_code == 404, (method, path, resp.text)
-        assert resp.json()["error"]["code"] == "not_found"
 
 
 async def test_flag_off_beats_401_for_anonymous_probes(

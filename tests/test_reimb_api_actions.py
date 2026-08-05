@@ -222,6 +222,18 @@ async def test_stale_expected_version_409s(
 async def test_a_bystander_cannot_approve(
     client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on
 ):
+    """A stranger is refused, and refused in the SAME words as on every other
+    foreign-claim path.
+
+    R-9 changed the slug this returns, and the change is the point. This test
+    used to assert ``workflow_not_authorized`` — a true sentence, but one that
+    concedes the claim exists AND is in a workflow. Paired with
+    ``claim_not_in_workflow`` for drafts and ``reimb_claim_not_found`` for
+    unissued ids, that gave any ``staff`` login a three-way oracle over every
+    claim in the agency (api-standards §9i). The outsider here holds a GLOBAL
+    ``staff`` grant and no relation to the claim whatsoever, so what they must
+    hear is the uniform refusal.
+    """
     cast = await _submitted_over_http(client, app_session, make_user)
     cid = cast["claim_id"]
     outsider, outsider_pw = await make_user(roles=("staff",))
@@ -230,7 +242,30 @@ async def test_a_bystander_cannot_approve(
     await login(client, outsider, outsider_pw)
     resp = await client.post(f"{BASE}/claims/{cid}/approve", json={}, headers=CSRF)
     assert resp.status_code == 403, resp.text
-    assert resp.json()["error"]["code"] == "workflow_not_authorized"
+    assert resp.json()["error"]["code"] == "reimb_not_claim_owner"
+
+
+async def test_a_scoped_actor_who_is_not_the_holder_still_hears_the_engine(
+    client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on
+):
+    """The other half of the rule above, and the reason it is a *reordering*
+    rather than a blanket refusal.
+
+    Someone entitled to see the claim must still get the engine's real answer —
+    "you are not authorized for THIS step" is useful, actionable and safe to
+    tell them, because they could have read the claim anyway. Collapsing every
+    refusal into ``not_claim_owner`` would have been the easy fix and would have
+    left an Admin Officer staring at a message saying the claim is not theirs.
+    """
+    cast = await _submitted_over_http(client, app_session, make_user)
+    cid = cast["claim_id"]
+
+    # The Admin Officer oversees the office, so `may_see_claim` passes — but the
+    # claim sits at `division_approval`, which is not their step.
+    await login(client, *cast["admin"][0:2], cast["admin"][2])
+    resp = await client.post(f"{BASE}/claims/{cid}/approve", json={}, headers=CSRF)
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["error"]["code"] == "workflow_not_authorized", resp.text
 
 
 async def test_segregation_is_filtered_from_the_action_set_not_only_enforced(

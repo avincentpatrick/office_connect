@@ -151,6 +151,13 @@ def require_permission(
     request's target org unit (``org_unit_getter(request)``, else
     ``request.state.scope_org_unit_id``) is checked against the actor's scoped
     grants (uncached, fresh DB — approval decisions must never read stale org data).
+
+    The returned dependency carries ``oc_permission`` / ``oc_scope`` so a test
+    can read a route's *declared* gate out of the running app rather than out of
+    the source (R-9's authorization census —
+    ``tests/test_reimb_authz_census.py``). A closure is opaque to introspection;
+    two attributes turn the wiring into a fact the suite can assert on instead
+    of a string it has to grep for.
     """
 
     async def _dep(
@@ -187,6 +194,8 @@ def require_permission(
                 )
         return principal
 
+    _dep.oc_permission = perm
+    _dep.oc_scope = scope
     return _dep
 
 
@@ -210,6 +219,11 @@ def require_feature(flag_key: str):
         if not (row and row.enabled and row.is_active):
             raise APIError(404, "not_found", "Not found.")
 
+    # Same introspection contract as ``require_permission`` above: the R-9
+    # census reads which flag a route sits behind (or that it sits behind none)
+    # off the app, so a router mounted without its gate fails a test instead of
+    # merely looking fine in review.
+    _dep.oc_feature_flag = flag_key
     return _dep
 
 

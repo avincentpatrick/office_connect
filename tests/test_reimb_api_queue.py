@@ -22,6 +22,7 @@ tests stay about the queue instead of about TOTP replay.
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from datetime import timedelta
 
 from office_connect.core.models import Holiday
@@ -74,27 +75,42 @@ async def _signin(client, user):
     return await login(client, user, DEFAULT_TEST_PASSWORD)
 
 
-def _backdate(claim, *, days: int) -> None:
-    """Age a claim's stay with FMS. ``holder_since`` IS the hand-off instant
-    while the state does not change — that is why R-7 added no column.
+@asynccontextmanager
+async def _backdated(app_session, *specs):
+    """Age claims' stay with FMS for the body of a test, then undo it.
 
-    **Every caller must undo this in a `finally`** (`_undo_backdating`). The
-    suite shares one database and these rows are committed, so a claim left
-    aged 21 days is over the follow-up threshold forever — and each run adds
-    more, until the `external_over` page is nothing but old test fixtures and
-    the assertions below stop being about the claim they name. Same rule the
-    holiday fixture learned at session #24, one table over.
+    ``holder_since`` IS the hand-off instant while the state does not change —
+    that is why R-7 added no column — and these rows are COMMITTED into a
+    database the whole suite shares. A claim left aged 21 days is over the
+    follow-up threshold forever, and every run adds more, until the
+    ``external_over`` page is nothing but old test fixtures and the assertions
+    below have stopped being about the claims they name.
+
+    **R-9 made the undo structural rather than remembered.** The previous shape
+    was a plain ``_backdate()`` whose docstring said *"every caller must undo
+    this in a `finally`"* — and two callers did not, for three sessions, until
+    54 permanently-aged rows pushed a freshly-aged claim off page 1 and failed
+    an assertion that had been passing while testing nothing (#27). A docstring
+    is not an enforcement mechanism. A context manager is: there is no way to
+    take the aging without also taking the restore.
+
+    Usage — ``async with _backdated(app_session, (claim, 21), (other, 12)):``
     """
-    claim.holder_since = utc_now() - timedelta(days=days)
-
-
-async def _undo_backdating(app_session, *claims) -> None:
-    """Return the aged claims to the present, so they stop matching the
-    follow-up filter for every future run."""
+    originals = [(claim, claim.holder_since) for claim, _ in specs]
     now = utc_now()
-    for claim in claims:
-        claim.holder_since = now
+    for claim, days in specs:
+        claim.holder_since = now - timedelta(days=days)
     await app_session.commit()
+    try:
+        yield
+    finally:
+        # Back to the present, not to the captured value: these claims are this
+        # test's own and returning them to "just handed over" is what keeps them
+        # out of every future run's follow-up filter.
+        restore = utc_now()
+        for claim, previous in originals:
+            claim.holder_since = restore if previous is not None else None
+        await app_session.commit()
 
 
 # --- scope: the reason this endpoint is not just "My Work with filters" -----
@@ -175,17 +191,12 @@ async def test_a_global_grant_sees_every_office(
     one = await _at_fms(app_session, make_user)
     two = await _at_fms(app_session, make_user)
     boss = await _global_admin(app_session, make_user)
-    _backdate(one.claim, days=3650)
-    _backdate(two.claim, days=3649)
-    await app_session.commit()
 
-    try:
+    async with _backdated(app_session, (one.claim, 3650), (two.claim, 3649)):
         await _signin(client, boss)
         ids = [i["id"] for i in (await client.get(f"{BASE}/claims")).json()["items"]]
         assert one.claim.id in ids and two.claim.id in ids
         assert one.office.id != two.office.id
-    finally:
-        await _undo_backdating(app_session, one.claim, two.claim)
 
 
 # --- membership: what a queue is, and is not -------------------------------
@@ -281,11 +292,7 @@ async def test_the_threshold_boundary_is_exclusive(
     late = await _at_fms(app_session, make_user)
     fresh = await _at_fms(app_session, make_user)
     boss = await _global_admin(app_session, make_user)
-    _backdate(late.claim, days=21)
-    _backdate(fresh.claim, days=12)
-    await app_session.commit()
-
-    try:
+    async with _backdated(app_session, (late.claim, 21), (fresh.claim, 12)):
         await _signin(client, boss)
         # Scoped per claimant: the filter's page is shared with every other
         # externally-held claim in the database, and this assertion is about
@@ -305,8 +312,6 @@ async def test_the_threshold_boundary_is_exclusive(
             f"{BASE}/claims?external_over=true&claimant_id={fresh.staff.id}"
         )
         assert recent.json()["items"] == []
-    finally:
-        await _undo_backdating(app_session, late.claim, fresh.claim)
 
 
 async def test_holidays_inside_the_window_shorten_the_count(
@@ -321,59 +326,57 @@ async def test_holidays_inside_the_window_shorten_the_count(
     """
     cast = await _at_fms(app_session, make_user)
     boss = await _global_admin(app_session, make_user)
-    _backdate(cast.claim, days=14)
-    await app_session.commit()
 
-    await _signin(client, boss)
-    # Scoped per claimant: page 1 of the unfiltered queue is shared with every
-    # other in-flight claim in the database.
-    queue = f"{BASE}/claims?claimant_id={cast.staff.id}"
+    async with _backdated(app_session, (cast.claim, 14)):
+        await _signin(client, boss)
+        # Scoped per claimant: page 1 of the unfiltered queue is shared with
+        # every other in-flight claim in the database.
+        queue = f"{BASE}/claims?claimant_id={cast.staff.id}"
 
-    def _days(body):
-        return next(i for i in body["items"] if i["id"] == cast.claim.id)[
-            "days_with_fms"
-        ]
+        def _days(body):
+            return next(i for i in body["items"] if i["id"] == cast.claim.id)[
+                "days_with_fms"
+            ]
 
-    before = _days((await client.get(queue)).json())
-    assert before >= 2  # 14 calendar days always spans some working days
+        before = _days((await client.get(queue)).json())
+        assert before >= 2  # 14 calendar days always spans some working days
 
-    token = uuid.uuid4().hex[:8]
-    today = utc_now().date()
-    # Skip days the seeded PH calendar already counts as non-working — a
-    # duplicate holiday row would change nothing and the test would prove it.
-    already = await load_nonworking_dates(
-        app_session, today - timedelta(days=14), today
-    )
-    newly_closed = [
-        day
-        for day in (today - timedelta(days=offset) for offset in range(1, 14))
-        if day.weekday() < 5 and day not in already
-    ][:2]
-    assert len(newly_closed) == 2, "no open working days left in the window"
-    rows = [
-        Holiday(
-            calendar_date=day,
-            name=f"Queue test holiday {token} {day}",
-            holiday_type="special_non_working",
+        token = uuid.uuid4().hex[:8]
+        today = utc_now().date()
+        # Skip days the seeded PH calendar already counts as non-working — a
+        # duplicate holiday row would change nothing and the test would prove it.
+        already = await load_nonworking_dates(
+            app_session, today - timedelta(days=14), today
         )
-        for day in newly_closed
-    ]
-    app_session.add_all(rows)
-    await app_session.commit()
-
-    try:
-        after = _days((await client.get(queue)).json())
-        assert after == before - len(newly_closed)
-    finally:
-        await _undo_backdating(app_session, cast.claim)
-        # These are holidays in the RECENT PAST, and the suite shares one
-        # database: left behind, they would silently shorten every later
-        # "working days since…" count in the whole codebase — including this
-        # file's own follow-up threshold tests. Retired, not deleted (rule 6).
-        for row in rows:
-            row.is_active = False
-            row.deleted_at = utc_now()
+        newly_closed = [
+            day
+            for day in (today - timedelta(days=offset) for offset in range(1, 14))
+            if day.weekday() < 5 and day not in already
+        ][:2]
+        assert len(newly_closed) == 2, "no open working days left in the window"
+        rows = [
+            Holiday(
+                calendar_date=day,
+                name=f"Queue test holiday {token} {day}",
+                holiday_type="special_non_working",
+            )
+            for day in newly_closed
+        ]
+        app_session.add_all(rows)
         await app_session.commit()
+
+        try:
+            after = _days((await client.get(queue)).json())
+            assert after == before - len(newly_closed)
+        finally:
+            # These are holidays in the RECENT PAST, and the suite shares one
+            # database: left behind, they would silently shorten every later
+            # "working days since…" count in the whole codebase — including this
+            # file's own follow-up threshold tests. Retired, not deleted (rule 6).
+            for row in rows:
+                row.is_active = False
+                row.deleted_at = utc_now()
+            await app_session.commit()
 
 
 async def test_a_claim_still_in_the_bureau_has_no_fms_clock(
@@ -424,11 +427,8 @@ async def test_stalled_claims_sort_above_longer_waiting_ones(
         app_session, claim_id=waiting.claim.id, actor_user_id=waiting.owner.id
     )
     boss = await _global_admin(app_session, make_user)
-    _backdate(stalled.claim, days=365)
-    _backdate(waiting.claim, days=730)
-    await app_session.commit()
 
-    try:
+    async with _backdated(app_session, (stalled.claim, 365), (waiting.claim, 730)):
         await _signin(client, boss)
         items = (await client.get(f"{BASE}/claims")).json()["items"]
         ours = [i for i in items if i["id"] in (stalled.claim.id, waiting.claim.id)]
@@ -436,8 +436,6 @@ async def test_stalled_claims_sort_above_longer_waiting_ones(
         # one-element list trivially "matches" a prefix of the expected order.
         assert len(ours) == 2
         assert [i["id"] for i in ours] == [stalled.claim.id, waiting.claim.id]
-    finally:
-        await _undo_backdating(app_session, stalled.claim, waiting.claim)
 
 
 async def test_the_total_counts_beyond_the_page(

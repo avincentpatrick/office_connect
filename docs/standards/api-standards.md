@@ -626,3 +626,84 @@ the envelope as the header's context and is documented as such; a return *rate*
 needs a submissions denominator this surface does not compute (spec §13 →
 Stage H). Shipping half a rate is worse than shipping none, because a
 plausible-looking percentage is the number people quote.
+
+## §9i. A cohort is a grant list, and authorization precedes state (R-9, 2026-08-05)
+
+Two rules came out of the Stage C hardening pass. The first settles what a
+"pilot" *is*; the second is a defect class the security suite found on its first
+run, in code that had passed every test written for it.
+
+### The flag says whether; the grants say for whom
+
+Build spec §14's R-9 row asks for *"flag ON for pilot cohort only"*, and
+`core_feature_flags` holds a tenant-wide boolean. The temptation is to give the
+flag an org-unit dimension. **Don't.** Those are two different questions and the
+platform already answers both:
+
+- **The feature flag answers "is this module on."** One boolean, tenant-wide,
+  fail-safe OFF, read before auth (§9). It is a *deployment* switch — it decides
+  whether a surface exists at all, and it must stay cheap enough to evaluate on
+  every request and simple enough that `/api/v1/config` can never 500 on it.
+- **RBAC grants answer "for whom."** Nothing in this codebase auto-assigns a
+  role — there is no default-grant path anywhere, so a user can reach a module
+  only because an administrator explicitly granted them one. **The cohort is
+  therefore already exactly the grant list**, scoped per org unit, time-bounded,
+  revocable, and audited. A per-cohort flag column would be a second, weaker
+  copy of that, and the two would drift.
+
+The honest risk in this posture, stated so it is not discovered later: **a
+cohort you cannot enumerate is a cohort you cannot verify.** One global `staff`
+grant to somebody outside the pilot admits them, and nothing about that looks
+wrong. So the posture ships with its control: **`ops/bootstrap.py pilot-roster`**
+prints every live holder of any `reimb.*` permission with their role, scope
+(`AGENCY-WIDE` spelled out, because §9h's tenant-wide write rides it) and
+validity window. Run it before go-live and after any grant change. Expired
+grants are excluded — the roster must match what the app would actually
+authorize, not what the table records.
+
+Pinned by `tests/test_reimb_authz_census.py`, which drives all 32 module routes
+with an authenticated, grant-less user and requires 403 on every one.
+
+### Authorization precedes state, and the reason is an oracle
+
+**A caller must be proven entitled to a record before any message describing
+that record's condition is composed.** Not "before the response" — before the
+*error*.
+
+R-9's security suite asked, for the first time, what a **stranger** gets back
+from `POST /claims/{id}/submit`. The answer was
+`409 reimb_claim_already_submitted` — a true, useful, correctly-worded sentence
+about someone else's claim, delivered to anyone with an ordinary `staff` login.
+The endpoint checked the claim's *state* before its *ownership*, which made it
+an enumeration oracle over the whole agency: probe an id and learn
+`404` (never issued) / `403` (yours to see, not yours to submit) /
+`409` (exists, already filed). Filing volume and pipeline state, one request at
+a time, from a valid login with no privilege at all.
+
+Three things about this are worth carrying:
+
+- **Every test passed.** All of them submitted the caller's *own* claim, which
+  is the only path anyone thinks to write. The defect lives exclusively in the
+  wrong-actor path, which is precisely why R-9 tests by attacker rather than by
+  endpoint.
+- **The rule already existed in the codebase, one file over.**
+  `services/drafts.py::owned_editable_claim` orders the checks correctly and
+  says why in a comment ("the 409-vs-403 distinction would otherwise hand any
+  staff user an existence-plus-status oracle"). Two functions in
+  `services/lifecycle.py` did not follow it. A doctrine written in one module's
+  comment is not a standard — hence this section.
+- **The engine cannot cover the no-instance branch.** Everything past
+  `claim_action`'s guard is the workflow engine's to authorize, but the engine
+  needs an *instance* to authorize against. So the one branch it can never
+  reach is the one that says "there is no instance" — and that branch has to
+  authorize for itself. `lifecycle.may_see_claim` is the service-layer twin of
+  `api/deps.can_read_claim` that exists for exactly that (a separate function,
+  not an import: `api` imports `services`, so the reverse edge would be a cycle).
+
+**Corollary — same refusal, same slug.** A record the caller may not see must
+refuse identically whether it exists in one state, another state, or not at all.
+Reimbursement raises the owner-path `reimb_not_claim_owner` from every such
+path, and `test_the_write_paths_reveal_nothing_about_a_claims_state` asserts a
+draft, a submitted claim and a never-issued id are indistinguishable to a
+stranger. `404` for a genuinely absent row is fine and leaks nothing: it says an
+id was never issued, not anything about a claim somebody filed.

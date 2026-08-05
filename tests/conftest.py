@@ -71,6 +71,146 @@ def migrated_db():
     assert result.returncode == 0, result.stderr
 
 
+# --- seed guard (R-9): the fourth recurrence stops being a matter of memory ---
+
+#: Columns worth guarding that the seed no longer ASSERTS but the suite can
+#: still mutate. ``promoted_check`` is the R-8 lesson in one line: the key was
+#: deliberately removed from the seed rows (leaving it there would have made
+#: every ``seed`` run demote every promotion), which also removed it from any
+#: guard derived from the row dicts. A promotion leaked by a test is invisible
+#: except as a warning every later test's wizard silently carries.
+_GUARDED_EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
+    "reimb_return_reason_catalogs": ("promoted_check",),
+}
+
+
+def _guarded_datasets():
+    from office_connect.core.seeds.datasets import REGISTRY
+    from office_connect.modules.reimbursement.seeds import REIMBURSEMENT_DATASETS
+
+    return (*REGISTRY, *REIMBURSEMENT_DATASETS)
+
+
+async def _snapshot_seeds() -> dict[str, dict]:
+    """Every seeded row's mutable columns, keyed by dataset + natural key."""
+    from sqlalchemy import select
+
+    engine = create_async_engine(
+        get_settings().migration_database_url, poolclass=NullPool
+    )
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    snapshot: dict[str, dict] = {}
+    try:
+        async with factory() as session:
+            for dataset in _guarded_datasets():
+                table = dataset.model.__table__
+                wanted = set(dataset.natural_key)
+                for row in dataset.rows:
+                    wanted |= set(row)
+                wanted |= set(_GUARDED_EXTRA_COLUMNS.get(table.name, ()))
+                columns = [table.c[name] for name in sorted(wanted) if name in table.c]
+                if not columns:
+                    continue
+                key_cols = [table.c[name] for name in dataset.natural_key]
+                # The DECLARED rows only — the ones the dataset actually ships.
+                # Tests legitimately create their own holidays, PAP codes and
+                # activity tags in these same tables (with randomized keys), and
+                # those are not seed drift: this guard is about shape (c),
+                # "a fixture mutated SHARED SEEDED DATA", not about every row
+                # that happens to live in a table a seed also writes to. Scoping
+                # to the declared keys is what makes the failure message mean
+                # exactly one thing when it fires.
+                declared = {
+                    tuple(row[name] for name in dataset.natural_key)
+                    for row in dataset.rows
+                    if all(name in row for name in dataset.natural_key)
+                }
+                if not declared:
+                    continue
+                stmt = select(*columns)
+                # LIVE rows only. This session is the migration role with no
+                # OCSession listeners, so the global soft-delete filter does not
+                # apply and a properly RETIRED row (rule 6 — retired, never
+                # deleted) would otherwise read as drift. Retiring a genuinely
+                # seeded row still shows up, as a "row disappeared" — which is
+                # exactly the shape-(c) bug this guard is for.
+                if "deleted_at" in table.c:
+                    stmt = stmt.where(table.c.deleted_at.is_(None))
+                for record in (await session.execute(stmt)).mappings():
+                    key = tuple(record[c.name] for c in key_cols)
+                    if key not in declared:
+                        continue
+                    snapshot[f"{table.name}{key}"] = dict(record)
+    finally:
+        await engine.dispose()
+    return snapshot
+
+
+@pytest.fixture(scope="session", autouse=True)
+def seed_guard(migrated_db):
+    """Fail the RUN if the suite left seeded reference data modified.
+
+    **This is the fourth recurrence of one disease, finally made mechanical.**
+    Sessions #24–#27 each lost time to a fixture that changed shared state and
+    did not put it back, in three different costumes: a holiday row, aged
+    ``holder_since`` values, and a promoted return reason. Every time, the fix
+    was a ``finally`` and a docstring telling the next person to remember. The
+    fourth time is the one where you stop asking people to remember.
+
+    Seed rows are the shared state that matters most, because they are *config*:
+    a promoted reason changes what every claimant sees, a flipped
+    ``is_active`` changes which checklist items are required, and a changed
+    config value changes the money. None of that announces itself — the symptom
+    is a later test failing for a reason that has nothing to do with it, or
+    worse, a dev database that quietly disagrees with production.
+
+    **Scope: the rows the datasets DECLARE, and only those.** Tests create their
+    own holidays, PAP codes and activity tags in the very same tables, with
+    randomized keys — that is ordinary test data, not seed drift, and an earlier
+    version of this guard that watched whole tables reported fifteen of them and
+    said nothing useful. Narrowing it to the declared natural keys is what makes
+    a failure here mean exactly one thing.
+
+    Session-scoped and synchronous on purpose: ``asyncio.run`` at setup and
+    teardown runs outside any test's event loop, so this cannot interact with
+    ``_dispose_engine_pool``. Reads through the migration role, which is
+    read-only usage here.
+
+    A legitimate seed CHANGE (a new circular revision, an edited rate) is made
+    by editing the dataset and re-running ``load-reference``; this fixture
+    snapshots *after* migrations have run, so an intentional change is inside
+    the baseline and passes. What fails is a change made DURING the run.
+    """
+    import asyncio
+
+    before = asyncio.run(_snapshot_seeds())
+    yield
+    after = asyncio.run(_snapshot_seeds())
+
+    drifted = []
+    for key, values in before.items():
+        now = after.get(key)
+        if now is None:
+            drifted.append(f"{key}: row disappeared")
+            continue
+        for column, was in values.items():
+            if now[column] != was:
+                drifted.append(f"{key}.{column}: {was!r} -> {now[column]!r}")
+    for key in after.keys() - before.keys():
+        # A DECLARED row that did not exist at session start and does now: the
+        # suite re-seeded something it had removed, or resurrected a retired row.
+        drifted.append(f"{key}: seeded row appeared during the run")
+
+    assert not drifted, (
+        "seeded reference data was modified by the test run and not restored:\n  "
+        + "\n  ".join(sorted(drifted))
+        + "\n\nA fixture that mutates SHARED SEEDED DATA must undo itself — see "
+        "`_promoted` in tests/test_reimb_api_insights.py for the shape. Restore "
+        "it in a `finally` or a context manager, not at the end of the happy "
+        "path (a failing assertion skips that)."
+    )
+
+
 @pytest.fixture(autouse=True)
 async def _dispose_engine_pool():
     """asyncpg connections are event-loop-bound and pytest-asyncio gives each
@@ -179,6 +319,41 @@ async def reimb_flag_on(app_session):
         row.enabled = prev_enabled
         row.is_active = prev_active
     await app_session.commit()
+
+
+@pytest.fixture
+async def reimb_flag_off(app_session):
+    """Force ``module.reimbursement`` OFF for the test, restoring the prior state
+    after (the dev DB may have been flipped ON by a walkthrough).
+
+    Promoted out of ``test_reimb_api_flag_gate.py`` at R-9 when the authorization
+    census became its second consumer — the census probes all 28 gated routes
+    flag-OFF, and a second copy of a fixture that RESTORES STATE is precisely the
+    hygiene shape (c) that has now bitten this suite four times.
+    """
+    from office_connect.core.models import FeatureFlag
+
+    row = (
+        await app_session.execute(
+            select(FeatureFlag).where(FeatureFlag.key == "module.reimbursement")
+        )
+    ).scalar_one_or_none()
+    created = row is None
+    prev = None if created else (row.enabled, row.is_active)
+    if created:
+        row = FeatureFlag(
+            key="module.reimbursement",
+            enabled=False,
+            description="Local Travel Reimbursement module",
+        )
+        app_session.add(row)
+    else:
+        row.enabled = False
+    await app_session.commit()
+    yield row
+    if not created:
+        row.enabled, row.is_active = prev
+        await app_session.commit()
 
 
 @pytest.fixture

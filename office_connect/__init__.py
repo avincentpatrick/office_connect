@@ -5,6 +5,7 @@ gate per docs/standards/development-workflow.md §6.
 """
 
 # ".devN" suffix while the phase is in progress; promoted to the bare version
-# ("0.1.0" = Phase 0 complete; "0.2.0" = Phase 2 / Stage B complete) at the phase
-# QA gate (development-workflow.md §6).
-APP_VERSION = "0.2.0"
+# ("0.1.0" = Phase 0 / Stage A complete; "0.2.0" = Phase 2 / Stage B complete;
+# "0.3.0" = Stage C complete — the reimbursement vertical) at the phase QA gate
+# (development-workflow.md §6).
+APP_VERSION = "0.3.0"

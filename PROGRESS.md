@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C R-9: hardening + the pilot gate. R-9 CLOSES Stage C.**
+> **Resume Office-Connect — Stage D Increment 1: the landing shell + query bar.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,223 +10,179 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **Stage C IN PROGRESS** — **R-1 ✅ + R-2 ✅ + R-3 ✅ + R-4 ✅ +
-  R-5 ✅ (gen + packet) + R-6 ✅ (clock + liq-chain + liq-settle) + R-7 ✅
-  (queue + events + board) + R-8 ✅**. **R-8 IS CLOSED. R-9 is next, and it
-  CLOSES Stage C.**
-  R-8 built spec §11's comment-learning loop — Objective 3, and the first
-  feature in the module that makes the system get **better** as it is used.
-  Spec §14 grades it on two clauses: *"Promotion creates a working warning with
-  no deploy; aggregates only."*
-  Shipped: **`services/insights.py`** — `ranked_reasons` (ONE grouped statement
-  over BOTH windows via `count(*) FILTER`, `jsonb_array_elements_text` grouped
-  **on the text element**, bucketed in Python so an unmapped id is LOGGED — the
-  `column_totals` shape and its reason), `set_promoted` (load-and-mutate, never
-  a bulk UPDATE) and `may_promote` (**agency-wide** `reimb.claim.review`);
-  **`api/insights.py`** = `GET /insights/return-reasons` + `/promote` +
-  `/demote` on the gated router, `/insights` a **sibling segment** (§9g, pinned
-  both ways); **`promoted_check` reinterpreted** from "can be promoted" to "IS
-  promoted" + migration **`0022`** resetting the three seeded `True`s and the
-  key **removed from the seed rows**; `promoted` on `GET /return-reasons`, which
-  is the entire wire from the click to the claimant's warning; the
-  `insights.window_days` seed (90, fail-soft). FE: **`RankedBarList`**
-  (inventory row 23), `InsightsPage`, `insights-copy.ts`, the step-5 `Callout`,
-  the route, the nav entry and the UI-catalog card.
-  **Verified: pytest 907 passed (+17) with ZERO failures**, lint-imports 3/3,
-  **`0022` reversible** (down restores exactly the three seeded codes) +
-  `alembic check` clean, seeds ×2 no-op, FE gate green (tsc + eslint +
-  **260 vitest**, +30, + build), and a live smoke **28/28** whose centrepiece is
-  a RECONCILIATION — six reasons, both windows, against a raw `GROUP BY` over
-  **535 real return events**, reason for reason — plus the graded line driven
-  end to end (promote → the claimant's taxonomy carries the warning with **no
-  deploy or restart** → demote) and a 441,731-row audit chain verified intact.
+- **Phase:** **STAGE C IS COMPLETE AND PUSHED** — R-1…R-9 all ✅. The QA gate
+  passed, `[Unreleased]` was promoted to **`0.3.0`** (`APP_VERSION` matches), and
+  `master` + `stage-c-complete` are on the remote. **Stage D is next.**
+  R-9 was a GATE session, not a feature session: the deliverable was EVIDENCE
+  that eight increments hold up. Spec §14's R-9 row grades two sentences —
+  *"Scoped visibility enforced per §3.2 (owner cannot read others' claims via
+  API)"* and *"flag ON for pilot cohort only"* — and both are now discharged by
+  named tests recorded in the module doc's new **§4a discharge table**, which
+  walks §14's *"automated QA must prove"* column row by row for R-1…R-9.
+  Shipped: **`tests/test_reimb_authz_census.py`** (enumerates `app.routes`; all
+  **32** module routes must carry a declared gate class + route permission +
+  exact service rule, machine-checked against the running app via two new
+  introspection markers `oc_permission`/`oc_feature_flag` on core's dependency
+  factories — a route added with no rule now FAILS the suite instead of being
+  missed by it); **`tests/test_reimb_scope_security.py`** (every read path from
+  the WRONG actor, organised by ATTACKER not by endpoint);
+  **`ops/bootstrap.py pilot-roster`** (who can reach the module, with scope and
+  `AGENCY-WIDE` spelled out); **`modules/reimbursement/fixtures.py`** +
+  `load-pilot-fixtures` (spec §14's cast in full, server-computed money);
+  migration **`0023`**; the session-scoped **`seed_guard`** fixture; and
+  api-standards **§9i** + database-standards **§7a**.
+  **Verified: pytest 1003 passed (+96) with ZERO failures**, lint-imports 3/3,
+  **`0023` reversible** + `alembic check` clean, migrations replayed `0012`→head,
+  **seeds idempotent from an EMPTY database**, FE gate green (tsc + eslint + 260
+  vitest + build), and a live smoke **42/42** driven as FOUR actors including the
+  scoped Admin Officer #27 recorded as the one path it could not cover.
   **`module.reimbursement` is ON in dev.** Prod default stays OFF.
-  **NOT pushed** — push cadence: **once at the Stage C QA gate**.
-- **Last session:** #27 — 2026-08-06 — **Stage C R-8: insights + the
-  return-reason learning loop. R-8 CLOSED.** Built: `services/insights.py`
-  (`ReasonRank`/`Insights`, `window_days`/`window_cutoffs`, `ranked_reasons`,
-  `may_promote`/`PROMOTE_PERM`, `set_promoted`); `api/insights.py` (three
-  routes + `_rank_out`); `ReasonRankOut`/`ReturnInsightsOut` + `promoted` on
-  `ReturnReasonOut`; `errors.insights_not_permitted`/`promotion_not_permitted`/
-  `reason_not_promotable`; the `insights.window_days` seed and the
-  `promoted_check` removal from `REIMB_RETURN_REASONS`; migration `0022`.
-  FE: `RankedBarList` (+test), `InsightsPage` (+test), `insights-copy.ts`
-  (+test), `ReturnedOftenCallout` in `ReviewStepPage` (+4 tests),
-  `ReasonRank`/`ReturnInsights`/`fetchReturnInsights`/`setReasonPromoted`/
-  `reimbKeys.insights()`, `useReturnInsights`, the route, the nav entry and the
-  UI-catalog card. **api-standards gained §9h**; ui-standards §3/§8 amended.
-- **Session before:** #26 — 2026-08-05 — **Stage C R-7-board: the pipeline
-  board. R-7 CLOSED.** Built: `status.BOARD_COLUMNS`/`board_column` on `Vocabulary` +
-  the derived `BOARD_COLUMN_STATES`/`BOARD_COLUMN_LABELS`/`ALL_BOARD_STATES` +
-  `_assert_board_columns` (import-time, disjointness included) +
-  `status.board_column()`; `queue.base_query(include_terminal=)`,
-  `BOARD_CARD_LIMIT`, `DONE_WINDOW_KEY`/`done_window_days`/`done_cutoff`,
-  `_done_window_clause`, `_GRAND`, `column_totals`, `board_card_query`;
-  `lifecycle.config_int` (generalized out of `config_working_days`);
-  `BoardColumnOut`/`ClaimBoardOut`; `api/queue.py`'s `_queue_rows` +
-  `_urgency_first` extraction and the `GET /board` handler; the
-  `board.done_window_days` seed. FE: `BoardPage` (+`total`/`footer`/`loading`/
-  `emptyState`), `PipelineCard` (+`to`, stretched overlay), `ClaimBoardColumn`/
-  `ClaimBoardResponse`/`fetchClaimBoard`/`reimbKeys.board`, `useClaimBoard`,
-  `daysPhrase`+`boardMeta`, `ClaimBoardPage`, the route, the nav entry and the
-  second UI-catalog card. **api-standards gained §9g**; ui-standards §3/§4/§8
-  amended.
-- **The four R-8 kickoff decisions (all user-confirmed):** **(1) a promotion
-  flips `promoted_check`** — the column spec §5.6 already put there,
-  reinterpreted from the seed's loose "could be promoted" to "IS promoted", with
-  `0022` resetting the three rows that shipped `True`. No promotion table: the
-  row is audited, so who/when is already answerable. **(2) Insights reads under
-  oversight scope** — the queue's and the board's rule unchanged, no new
-  permission, and the aggregate spans only the actor's subtree. **(3) promotion
-  needs an AGENCY-WIDE `reimb.claim.review` grant**, because a promotion warns
-  every claimant in the tenant and a division-scoped grant must not reach a
-  tenant-wide effect. **(4) `RankedBarList` becomes an inventory row**, amending
-  ui-standards §3 first (rule 1) rather than shipping page-local markup.
-- **R-8 design notes worth remembering:** **the `auto_checks` divergence is
-  semantic, not convenient.** Spec §11 says a promotion "writes an `auto_checks`
-  row"; taken literally that is wrong in a way that looks right — our checks are
-  ITEM-scoped, their flags set an item to `auto_flagged`, and the checklist
-  engine counts `auto_flagged` as **DONE**, so promoting that way would mark a
-  document satisfied and put a statistic in the approver's flag list. What §11
-  actually asks for is "no code change", and one boolean honours it exactly.
-  **The seed defect this prevented would have undone the feature silently:**
-  `apply_dataset` writes only the keys a row lists, so leaving `promoted_check`
-  in the seed would make every `seed` run **demote every promotion** on the next
-  deployment, with no error and no trace but a warning that stopped appearing.
-  **The `reason_ids` element is grouped as TEXT, never cast in SQL** —
-  `queue._GRAND`'s `::numeric` is safe only because `compute.py` is its sole
-  writer, whereas `reason_ids` is FK-less JSONB and one junk element would 500
-  the whole surface instead of surfacing one row. **Both windows come off ONE
-  statement**: two round-trips would let a return landing between them be
-  counted in neither. **A reason at zero this window but non-zero last is KEPT
-  and sorts last** — it is what a successful promotion looks like, and dropping
-  it would delete the only evidence the loop worked. **Fail-safe runs BACKWARDS
-  on an advisory:** everywhere else the safe answer is to block or flag; here it
-  is to say nothing, so a failed taxonomy fetch renders no warning and a retired
-  reason cannot be promoted. **`total_returns` counts packets once; the ranked
-  rows count citations, so they sum higher — and neither is a RATE** (spec §13's
-  return rate needs a submissions denominator that stays in Stage H).
-- **The four R-7-board kickoff decisions (all user-confirmed):** **(1) one
-  request with the cards embedded**, not headers-plus-drill-down — a column is a
-  GROUP of statuses and `GET /claims` takes one, and Done is entirely terminal
-  which the queue excludes, so the "less code" alternative would have had to
-  teach the queue about columns *and* terminal claims anyway. **(2) `GET /board`,
-  not `/claims/board`** — `claims.router` is included first and `/claims/{id}`
-  swallows the literal segment (422 on `claim_id="board"`); making it work would
-  pin `include_router` order, which nothing declares. **(3) the ui-standards
-  inventory is AMENDED so a card can be clicked** — spec §9.6 says clicking
-  opens the tracker and the inventory said "no link affordance"; standards
-  outrank the reference spec, so the line was rewritten rather than ignored.
-  **(4) Done is bounded to a recent window (90 days, config)** — the live
-  columns stay unbounded.
-- **R-7-events kickoff decisions (both user-confirmed):** **the payout shape is
-  one reference + a date** (`payout_ref`/`paid_on`/`paid_by`, no unique index — one
-  LDDAP-ADA pays many vouchers), and **the reference is REQUIRED** because
-  `paid_closed` is read-only with no amendment route, so a blank one would
-  recreate the bare `approve` this replaced; the refusal names the honest
-  alternative (relay *Payment processing*). And **the GRDS clock starts at the
-  two MONEY terminals only** — `paid_closed` + `settled`; `cancelled`
-  deliberately does not, because a voided claim produced no disbursement, and
-  that is a recorded deferral with a test pinning it.
-- **R-7-board design notes worth remembering:** **the column sets must be
-  PAIRWISE DISJOINT** — `column_totals` groups by status across BOTH kinds in one
-  statement, so a code one kind called In Bureau and another called Done would be
-  counted twice and the board would total *more than the database holds*, which
-  is exactly the sentence spec §14 grades. Asserted at import. **The aggregate
-  deliberately does NOT pre-filter on `ALL_BOARD_STATES`**, because an unmapped
-  status must come back and be LOGGED — filtering in SQL would hide the very
-  rows the warning exists to catch, which is also why it is `GROUP BY status`
-  and not a `CASE`. **`core_workflow_instances.amount` was rejected** as the
-  money column despite being already joined and already numeric: it is the
-  engine's tier-routing guard input, not the module's money of record. **The
-  `::numeric` cast on `totals->>'grand'` is a load-bearing invariant of another
-  module** — safe only because `compute.py` is its sole writer and goes through
-  `money_str`. **Done sorts `updated_at DESC` and skips the urgency lift**,
-  because a terminal state clears `holder_since` so "longest waiting" there is
-  undefined, not merely wrong. **`days_in_state` is 0 on every Done card** — that
-  is the whole reason `boardMeta` exists, since `queueMeta` would print "0 days
-  in this step" on a claim paid three weeks ago. **Accepted and documented:** the
-  aggregate and the card queries are separate statements under READ COMMITTED, so
-  a claim transitioning mid-request can be counted in Done and carded in With FMS
-  for one render — a dashboard, the header is the authority, refresh self-heals.
-- **R-7-events design notes:** **the arrow in spec §6.1 row 6 is not a
-  sequence.** "With Budget → With Accounting → Payment Processing" carries the
-  parenthetical *"any order/skips allowed"*, and that parenthetical is the
-  operative half — FMS pays straight out of Budget, bounces packets back to
-  desks they already left, and says "still with Accounting" twice in a week. So
-  membership is enforced and order never is, repeats are legal, and **the 422
-  says so out loud** ("in any order, and skipping any of them is fine") because
-  an operator who infers a sequence from a three-item list will not relay
-  Accounting on a packet that skipped Budget. **A relay moves nothing** — that
-  is asserted, not assumed, because a relay that moved the claim would also
-  reset `holder_since` and silently restart R-7-queue's ">10 working days with
-  FMS" clock every time somebody phoned FMS, a bug that would have looked like
-  diligence. **`to_status` is NULL on an external timeline row:** a sub-status is
-  not a workflow state (delta row 38), and letting `with_accounting` travel in
-  the field every consumer reads as a claim status is how that would quietly
-  stop being true. **The return-reason pairing is positional** and is computed
-  from the history rows ALONE, before the external lane is appended — the merge
-  is a sort at the very end, so there is exactly one line where the two lanes
-  meet.
-- **⚠ THE TEST-HYGIENE DISEASE, THIRD INSTANCE — and it finally FAILED a run.**
-  `test_reimb_api_queue.py`'s `test_stalled_claims_sort_above_longer_waiting_ones`
-  and `test_a_global_grant_sees_every_office` aged claims (365/730 and 3650/3649
-  days) and **never undid it**, while `_backdate`'s own docstring in that very
-  file says *"every caller must undo this in a `finally`"*. It leaked for three
-  sessions and then broke: **54 permanently-aged rows** had accumulated, the
-  queue pages at 50 in longest-waiting-first order, so the freshly-aged claim
-  fell off page 1 while the older one stayed — and the assertion compared a
-  one-element list. **The sort was working the whole time.** Both wrapped, the 54
-  rows reset, and the sort test now asserts BOTH claims are on the page before
-  comparing order (a one-element list trivially matches a prefix).
-  **The rule now generalizes twice over: (a) any fixture writing dates relative
-  to TODAY must undo itself in a `finally`, and (b) on a COUNTED surface,
-  absolute assertions are the same trap** — every other test's committed rows sit
-  in those totals. `test_reimb_api_board.py` solves (b) by asserting through a
-  **scoped overseer** whose office the fixture created fresh, so its counts are
-  about its own claims and nothing else.
-  **⚠ R-8 adds a THIRD shape: (c) a fixture that mutates SHARED SEEDED DATA must
-  undo itself too.** A promotion is tenant-wide by design, so a test that
-  promotes and forgets to demote leaves a warning standing for every later test
-  and for the next developer's dev database. Every promoting test in
-  `test_reimb_api_insights.py` undoes itself in a `finally`, and
-  `test_reimbursement_seeds.py`'s "nothing ships promoted" assertion is the
-  canary that catches a leak. Related: `reimb_return_events` REVOKEs UPDATE, so
-  a window/trend fixture **INSERTs** a row with an explicit `created_at` — it
-  physically cannot backdate one.
-- **⚠ Two R-7-events defects worth carrying forward.** **(1) The live smoke
-  caught what no assertion did:** `record_payout` writes a `paid` external event AND calls
-  `notify_paid`, so the claimant was getting two notifications about one payment
-  — the less informative one ("your claim is now Paid", no reference, no amount)
-  arriving first. Both messages were individually correct, which is exactly why
-  every unit test passed. Now suppressed and pinned. **(2) `core/audit.py`
-  refused the first `start_retention`** because it was a bulk ORM UPDATE (rule 5)
-  — and it was right to: starting a legal retention period must appear in the
-  hash-chained log. Rewritten to load-and-mutate.
-- **Smoke accounts (dev DB only):** `board-smoke@doh.gov` (global
-  `admin_officer`) and `board-traveller@doh.gov` (plain `staff`), both
-  `BoardSmoke!2026x`, created at #26 so an aggregate surface can be reconciled
-  over real HTTP. Reuse them rather than minting more; they exist only in dev.
-  **R-8 reused them unchanged** — the global one for the ranking reconciliation
-  and both promote/demote calls, the traveller for the 403 and for reading the
-  warning appear and disappear. **What the live smoke did NOT cover, and why:**
-  there is no scoped-admin smoke account, so *"a scoped overseer sees a narrower
-  ranking"* and *"a scoped Admin Officer is refused promotion"* are pinned by
-  unit test only (`test_a_scoped_overseer_never_counts_a_sibling_office`,
-  `test_a_scoped_admin_officer_may_read_but_not_promote`). Mint a third account
-  at R-9 if the security suite wants that path over real HTTP.
+- **Last session:** #28 — 2026-08-05 — **Stage C R-9: hardening + the pilot gate.
+  R-9 CLOSED, and STAGE C CLOSED AND PUSHED.** Built: the authorization census +
+  the adversarial scope suite; `oc_permission`/`oc_scope`/`oc_feature_flag`
+  markers on `require_permission`/`require_feature`; `lifecycle.may_see_claim` +
+  `_OVERSIGHT_PERMS` and the authorization-before-state fix in three places;
+  `_pilot_roster` + the `pilot-roster` subcommand; `load_pilot_fixtures` +
+  `load-pilot-fixtures`; migration `0023` +
+  `ix_reimb_return_events_created_at` on the model; `seed_guard` and
+  `reimb_flag_off` promoted into `tests/conftest.py`; `_backdate` → the
+  `_backdated` context manager. Docs: **api-standards §9i**, **database-standards
+  §7a**, module-doc **§4-M** (manual test guide) + **§4a** (the §14 discharge
+  table) + **§4b** (perf budgets) + five delta rows + the R-9 status row,
+  development-workflow §4 (the stale "no remote" line corrected + the
+  `stage-<letter>-complete` naming rule), master-plan §1.1 (OCR re-deferral),
+  CHANGELOG `0.3.0`, `APP_VERSION` 0.3.0.
+- **⚠ THE DEFECT R-9 FOUND, and why it matters more than the fix.**
+  `submit_claim` and `cancel_draft_claim` checked the claim's **STATE** before
+  its **OWNERSHIP**. So a stranger POSTing `/claims/{id}/submit` against an id
+  they did not own got back *"This claim is already in the approval workflow"* —
+  true, well-worded, and none of their business. Paired with
+  `claim_not_in_workflow` for drafts and `reimb_claim_not_found` for unissued
+  ids, that is a three-way **enumeration oracle** over every claim in the agency,
+  from any ordinary `staff` login: filing volume and pipeline state, one probe at
+  a time. **Every existing test passed**, because every one of them submitted its
+  OWN claim — the defect lives exclusively in the wrong-actor path, which is
+  exactly why R-9 tests by attacker rather than by endpoint. And the rule was
+  ALREADY WRITTEN DOWN, one file over: `services/drafts.py::owned_editable_claim`
+  orders the checks correctly and names the hazard in a comment. Two functions in
+  `lifecycle.py` did not follow it. **A doctrine living in one module's comment
+  is not a standard** — hence api-standards §9i. Fixed in three places, the third
+  being `claim_action`'s no-instance branch: the one branch the workflow engine
+  can never authorize, because authorizing needs an instance and that branch is
+  the one that says there isn't one.
+- **The four R-9 kickoff decisions (all user-confirmed):** **(1) Grants ARE the
+  pilot cohort** — the flag stays a tenant-wide boolean. Verified before
+  deciding: there is **no default-role assignment path anywhere** in the
+  codebase, so a user reaches the module only because an administrator granted
+  them a role, and the grant list already IS the cohort. Giving the flag an org
+  dimension would be a second, weaker copy of RBAC plus a rewrite of the one
+  endpoint that must never 500. What was missing was a way to READ the cohort,
+  which is `pilot-roster`. **(2) OCR / `keyword_absent` re-deferred to Stage H** —
+  master-plan §1.1 and module delta row 70 both said "R-9" while build spec §14's
+  R-9 row never asked for it; both docs corrected so nothing claims R-9 after
+  R-9 closes. **(3) A dev-only demo seeder** discharges R-1's fixture debt.
+  **(4) `stage-c-complete` + v0.3.0**, pushed at the gate (Stage C has no old
+  phase number, so the stage letter is the honest tag name — development-workflow
+  §4 now states the rule).
+- **R-9 design notes worth remembering:** **the census reads the APP, not the
+  source.** A `require_permission(...)` closure is opaque to introspection, and
+  grepping the source would have re-created the hand-maintained-list problem the
+  census exists to remove — so core's two dependency factories now attach
+  `oc_permission` / `oc_feature_flag` to what they return. Reading the resulting
+  table also makes §9f's warning visible as *data*: **28 of 32 routes are gated
+  on a permission an ordinary traveller holds globally**, so on almost every
+  route the route-level gate provably cannot be the scope rule. **The refusal
+  slug is part of the security boundary** — a foreign claim must refuse
+  identically whether it exists in one state, another, or not at all, which is
+  why `test_the_write_paths_reveal_nothing_about_a_claims_state` probes three ids
+  and compares. **But do NOT collapse every refusal into `not_claim_owner`:** a
+  scoped actor who is merely not the current step holder must still get the
+  engine's `workflow_not_authorized`, or an Admin Officer ends up staring at a
+  message saying the claim is not theirs. Both halves are pinned. **An expired
+  grant is refused at the ROUTE gate, not the scope resolver** — it strips
+  `reimb.claim.read` itself, so two independent layers fail before an ended
+  delegation sees anything. **`verify_chain`'s budget is MEMORY, not time**:
+  501k rows → 18.7 s but **1.47 GiB peak RSS**, ~3 KiB/row, linear. The ceiling is
+  ≈1M rows and the failure mode is an OOM-killed verification, which reads as
+  "the integrity check is broken" at exactly the moment somebody is asking
+  whether the log can be trusted (database-standards §7a). **Migration `0023`'s
+  index is knowingly unused today** — the seq scan is optimal at 615 rows — and
+  was added because the table is append-only and grows forever while its read
+  window stays fixed at 90 days, so selectivity falls monotonically and the plan
+  must flip. **The demo fixtures stop at the workflow deliberately:** submitting
+  them would mean writing hash-chained audit rows asserting people made decisions
+  they never made, in the one structure whose whole value is that you can believe
+  it. The manual test guide drives the chain by hand instead. Also: the demo
+  advance goes through `services/cash_advance` rather than a bare INSERT, because
+  the first attempt's direct insert left `deadline_date` NULL — an advance with
+  no countdown, which is the single thing that fixture exists to show.
+- **⚠ THE TEST-HYGIENE DISEASE IS NOW MECHANICAL — four recurrences, one fix.**
+  #24–#27 each lost time to shared state left modified, in three costumes: a
+  holiday row, aged `holder_since`, a promoted return reason. Every fix was a
+  `finally` plus a docstring asking the next person to remember, and the fourth
+  time is where you stop asking. **`tests/conftest.py::seed_guard`** is a
+  session-scoped autouse fixture that snapshots every seeded row's mutable
+  columns (derived from the dataset row dicts, plus explicit extras like
+  `promoted_check` that the seed deliberately no longer asserts) and **FAILS THE
+  RUN** if the suite changed one without putting it back. Proven non-vacuous
+  against a deliberately leaked promotion. It guards **LIVE rows only** — a
+  properly retired test row (rule 6) is not drift, but retiring a genuinely
+  seeded row still reports. And **`_backdate` became `_backdated`**, an async
+  context manager that owns its own undo: there is no longer a way to take the
+  aging without also taking the restore. The three shapes still hold as
+  guidance — (a) dates relative to today, (b) absolute assertions on counted
+  surfaces, (c) shared seeded data — but (c) is now enforced rather than
+  remembered.
+  **⚠ The guard's FIRST version was too broad and it matters why.** It watched
+  every row in the seeded tables, so 15 legitimately test-created rows (holidays,
+  PAP codes, activity tags — all with randomized keys) reported as drift and the
+  message said nothing useful. It now tracks only the rows the datasets
+  **DECLARE**, which is what "seeded reference data" actually means. Re-verified
+  non-vacuous after narrowing: a test-created holiday is correctly ignored, a
+  flipped `promoted_check` on a seeded reason is still caught.
+- **⚠ What the R-9 live smoke did NOT cover, and why.** 42/42 passed, but the
+  scenario's claim has **no uploaded evidence**, so the packet/attachment BYTES
+  path (`/api/v1/attachments/{id}/content` from a stranger) is pinned by unit
+  test only — `test_a_traveller_cannot_download_another_travellers_evidence`,
+  which builds real attachments through `standard_cast`. Adding a multipart
+  upload to the smoke is the obvious next step if that path is ever doubted.
+  Also unit-only: the **MFA-enrolled sibling approver** (the `approver` role is
+  one of two `mfa_required_role_codes`, so a smoke actor for it needs a TOTP
+  hop); the smoke's scoped actor is an `admin_officer`, which does not.
+- **Smoke accounts (dev DB only), all `BoardSmoke!2026x`:**
+  `board-smoke@doh.gov` (GLOBAL `admin_officer`), `board-traveller@doh.gov`
+  (plain `staff`, now linked to staff `SMK-A-1` in **Smoke Office A**), and
+  **NEW at #28** `scoped-officer@doh.gov` (`admin_officer` scoped to **Smoke
+  Office B** only), `smoke-b-traveller@doh.gov` (plain `staff` in office B — the
+  stranger), `smoke-approver-a@doh.gov` (`approver` on division A1).
+  The scoped officer closes the gap #27 recorded: *"a scoped overseer sees a
+  narrower ranking"* and *"a scoped Admin Officer is refused promotion"* are now
+  proven over real HTTP, not by unit test alone. The **two-office** shape is what
+  makes every scope assertion safe to state absolutely — office B was created for
+  this and holds nothing else. Org codes `SMOKE-A` / `SMOKE-A-D1` / `SMOKE-B` /
+  `SMOKE-B-D1`. Reuse these rather than minting more; they exist only in dev.
+- **Demo data (dev DB only):** `bootstrap load-pilot-fixtures` builds six `D-`
+  travellers (one JO/COS), ten `[demo]`-tagged trips including the ₱5,500 worked
+  example, and `DV-DEMO-0001` (₱18,000) aged to ≈D-5 so the countdown ring is
+  amber. Idempotent; refused when `APP_ENV=production`.
 - **Test-hygiene note (still true):** a full-suite run leaves
   `module.reimbursement` OFF in dev — `test_reimb_api_flag_gate.py`'s
-  `reimb_flag_off` fixture restores whatever state it captured. Flip it back with
+  `reimb_flag_off` fixture (now in `conftest.py`) restores whatever state it
+  captured. Flip it back with
   `python -m office_connect.ops.bootstrap set-flag module.reimbursement --on`.
+- **⚠ FE test note:** one `DocumentsStepPage` test flaked once when the FE gate
+  was run CONCURRENTLY with the backend suite — `findByRole`'s 1 s wait was
+  exceeded under CPU contention, not a logic race (jsdom environment setup alone
+  took 100 s in that run). Clean re-run: 260/260. **Run the two gates in
+  sequence, not in parallel.**
 - **Blockers / waiting on user:** none.
-- **⚠ Open questions for the accountant / resident COA auditor:** **amount
-  tiers** for both chains still need DOH DO 2019-0225/-0225A (its own R-0 item) —
-  both stay untiered and gain tiers as an authored v2. **Wet-signature capture**
-  is narrowed to one question: whether the signed page must be BOUND to the step
-  as a frozen snapshot (core-service #3's unbuilt half) or whether filing it
-  under `CRT-C` suffices. The A/B/C **shape**, the **CTC-47** question, the
-  **payout shape** and the **retention terminals** are all CLOSED. **Worth
+- **⚠ Open questions for the accountant / resident COA auditor (unchanged by
+  R-9):** **amount tiers** for both chains still need DOH DO 2019-0225/-0225A —
+  both chains stay untiered and gain tiers as an authored v2. **Wet-signature
+  capture** is narrowed to one question: whether the signed page must be BOUND to
+  the step as a frozen snapshot (core-service #3's unbuilt half) or whether
+  filing it under `CRT-C` suffices. The A/B/C **shape**, the **CTC-47** question,
+  the **payout shape** and the **retention terminals** are all CLOSED. **Worth
   confirming when convenient (not blocking):** whether DOH BLHSD's FMS quotes a
   DV number *and* an ADA reference as two separate facts — if so, the payout
   record grows a second column as an authored v2.
@@ -234,117 +190,84 @@ expand it into the full task and confirm with you before starting.
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS - DONE: the shared core
-workflow engine (#11), R-1 (#12), R-2-engine (#13), R-2-shell (#14), R-4-app (#15),
-R-2-wizard (#16), R-4-screens (#17), R-3 (#18), R-5-gen (#19), R-5-packet (#20),
-R-6-clock (#21), R-6-liq-chain (#22), R-6-liq-settle (#23), R-7-queue (#24),
-R-7-events (#25), R-7-board (#26) and R-8 (#27). R-7 and R-8 are CLOSED.
-Suite at 907 passed, 0 failures. Head 0022. FE 260 vitest.
+Context: Stage A + Stage B + STAGE C are complete and PUSHED. Stage C shipped the whole
+Local Travel Reimbursement vertical (R-1..R-9) on the shared core workflow engine, plus
+the first React surface. Gate passed 2026-08-05: pytest 1003 / 0 failures, lint-imports
+3/3, migrations replayed 0012->head, seeds idempotent from an EMPTY database, FE gate
+green (260 vitest + build), live smoke 42/42 as four actors. Head 0023. Version 0.3.0,
+tag `stage-c-complete` on origin. `module.reimbursement` ON in dev, OFF by default.
 
-Task: Stage C R-9 - HARDENING + THE PILOT FLAG. This CLOSES Stage C, so it is a GATE
-session, not a feature session: the deliverable is EVIDENCE that eight increments of
-work hold up, plus whatever it takes to make that true. Spec 14's R-9 row grades two
-sentences: "Scoped visibility enforced per 3.2 (owner cannot read others' claims via
-API)" and "flag ON for pilot cohort only". Build (confirm scope at kickoff before
-writing code):
+Task: STAGE D INCREMENT 1 - the landing shell + the query bar. This OPENS Stage D, so
+expect a kickoff conversation before code (master-plan Stage D scope is four things and
+this is only the first two). Master plan: "Minimalist landing + deterministic intent
+matcher on NAV_GROUPS (incl. report intents)". Confirm scope at kickoff. Likely shape:
 
-(1) THE SECURITY SUITE IS THE HEADLINE - spec 14's "(scope filters!)" carries its own
-exclamation mark and it earned it. Every read path in the module gets an adversarial
-test from the WRONG actor: a traveller against another traveller's claim, timeline,
-checklist, attachments, packet PDF, cash advance and external events; a scoped approver
-against a sibling office's everything; an actor holding NO oversight against the queue,
-the board and Insights. This is the first time those are tested as a SET rather than
-one endpoint at a time, and the set is where a hole hides - api-standards 9f's rule
-(a list may not borrow a row's read rule) has now been applied four times (queue, board,
-insights, and the narrower agency-wide WRITE rule in 9h), so the real question is
-whether a FIFTH surface would get it right by default. Consider a table-driven test that
-enumerates every route on BOTH routers and asserts each one either appears in an authz
-table or is explicitly listed as public - a route added with no scope rule should FAIL
-the suite rather than merely be missed by it.
+(1) THE LANDING SURFACE. Today the SPA drops an authenticated user straight onto a
+module page. Stage D gives the platform a front door - and the master plan's word is
+MINIMALIST, which is a constraint, not a mood: it is the anti-dashboard. Decide at
+kickoff what it shows for a user who holds NO module grants at all, because after R-9's
+pilot-cohort work that is the COMMON case, not the edge one (the flag is on, but only
+granted users can reach anything). A landing page that renders an empty grid of modules
+nobody can open is worse than one that says plainly what this person can do.
 
-(2) THE PILOT FLAG - "flag ON for pilot cohort only". Today `module.reimbursement` is a
-single tenant-wide boolean (`core_feature_flags`), and a COHORT is not a boolean. Decide
-deliberately at kickoff and say why: is a cohort an org-unit scope on the flag, a role,
-an explicit user list, or is the pilot simply "the flag is ON and only the pilot office
-holds grants"? The last is cheapest and may well be right - RBAC already scopes
-everything - but it must be a STATED decision, because "we shipped the flag ON for
-everyone and relied on grants" is a different risk posture from what spec 14 asks for.
-Whatever is chosen, `/api/v1/config` must still never 500 and the flag must still fail
-safe OFF (hard prohibitions).
+(2) THE QUERY BAR - a DETERMINISTIC intent matcher over NAV_GROUPS, explicitly not an
+LLM. `ai_core` is a separate Stage D item and must not creep into this one. NAV_GROUPS
+already exists (R-2-shell) and is already gated on flags + roles, which means the
+matcher must respect BOTH or it becomes a directory of things you cannot open - the same
+class of mistake api-standards 9f names, in a new place. Worth deciding: does a
+no-match state suggest, or refuse? R-9's doctrine says a refusal must name the surface
+that DOES answer the question.
 
-(3) RESILIENCE + PERF BUDGETS. The costly surfaces are now known and two are aggregates:
-the board's `column_totals` and R-8's `ranked_reasons` (a lateral unnest over
-`reimb_return_events`, which had 535 rows in dev on day one and grows with every return
-forever). Check which indexes those two actually use, and consider whether
-`reimb_return_events` wants one on `created_at` - both R-8 windows filter on it and no
-index exists today. Also: 440k+ audit rows already make `verify_chain` a whole-table
-read. It is fine today; say at what size it is not.
+(3) UI STANDARDS FIRST, as always (rule 1). A landing page and a query bar are both new
+page shapes; ui-standards 3 (component inventory) and 4 (layout templates) get AMENDED
+before anything is built, not after. R-7-board and R-8 both did this and both records
+say it saved rework.
 
-(4) FIXTURES POLISH + the R-1 fixture debt. Spec 14's fixture list (6 synthetic
-travellers incl. 1 JO/COS, 10 trips incl. the 5,500 worked example, an open CA aged 25
-days, a >300 taxi fare, a thermal receipt) was trimmed at R-1 to config/catalog seeds
-and never fully discharged. R-9 is where a pilot demo needs it.
-
-(5) TEST HYGIENE - now THREE shapes, all learned the hard way (#24-#27):
-(a) any fixture writing dates relative to TODAY undoes itself in a `finally`;
-(b) on a COUNTED/AGGREGATED surface, absolute assertions are the same trap - assert
-through a SCOPED actor whose org unit the fixture created fresh;
-(c) NEW at R-8: a fixture that mutates SHARED SEEDED DATA (a promotion, a config row, a
-catalog flag) must undo itself too.
-R-9 is the session that should consider making these MECHANICAL rather than remembered -
-a conftest fixture that snapshots and restores the seeded catalogs, or a session-end
-assertion that the seed datasets are unchanged, would end a disease that has now
-recurred four times.
-
-(6) THE STAGE C QA GATE ITSELF. R-9 ends with the gate, and the gate is the FIRST PUSH
-of Stage C (rule 4: push + tag only at a phase/stage gate). Expect to: run the full
-suite green; run every migration down and up from 0012 to head; prove seeds idempotent
-from an EMPTY database; run the FE gate; walk spec 14's per-phase "automated QA must
-prove" column row by row for R-1..R-8 and record where each is discharged; then push and
-tag. The remote is STILL NOT PROVISIONED - a Phase-0 deferral that has run out of road.
-Raise it at kickoff, because the tag cannot land without it.
+DEFERRED within Stage D (do not start these here): the Calendar of Activities surface,
+CSS-IS reverse-proxying into the shell, and `ai_core` / the shared AI service. Each is
+its own increment.
 
 Available to build on - do NOT rebuild any of it:
 CORE - the workflow engine (#11), reference numbers (#5), checklist engine (#7),
-documents (#8) + snapshots (#3), attachments (#2) + `attachments.start_retention`,
-notifications outbox, core/workdays, `org_units.descendants_or_self`/`ancestors_or_self`,
-`core/audit.py` + `verify_chain`.
-MODULE - services/lifecycle.py (the ONLY sanctioned caller of start_instance/
-execute_action; owns `config_int`); cash_advance.py; settlement.py; external.py;
-queue.py (oversight scope + the FMS working-day clock + the board aggregate); status.py
-(kind-aware vocabularies + board columns); insights.py (the ranked aggregate +
-`may_promote`, the module's one AGENCY-WIDE grant check); api/deps.py (the shared list
-mappers + `can_read_claim` + `has_scoped_grant`); api/queue.py (`_queue_rows`/
-`_urgency_first`).
-NOTE api-standards 9f (a list may not borrow a row's read rule), 9g (a collection VIEW is
-a sibling path; an aggregate is still money) and NEW 9h (an aggregate over other people's
-work: the scope IS the privacy boundary; a tenant-wide WRITE needs an agency-wide grant).
-NOTE workflow-standards 12's instances table.
-DEFERRED past R-9: spec 13's KPI surface + the "unlinked to activity" board filter ->
-Stage H. The pagination ENVELOPE -> Stage D. The catalog/taxonomy ADMIN EDITOR -> and
-note R-3's grammar docstring promises that when it ships, WAIVERS ship with it and
-`evaluate_required_rule` flips to fail-CLOSED.
+documents (#8) + snapshots (#3), attachments (#2), notifications outbox, core/workdays,
+`org_units.descendants_or_self`/`ancestors_or_self`, `core/audit.py` + `verify_chain`,
+`core/ui/tokens.py`, RBAC + the permission cache.
+FE - the app shell, the 6 layout templates, the 23-row component inventory, the runtime
+token pipeline, NAV_GROUPS, the auth flows, `renderRoutes` + the test harness.
+OPS - `bootstrap` (init / create-admin / seed-rbac / seed-workflows / promote-admin /
+load-fixtures / load-pilot-fixtures / load-reference / ingest-directory / set-flag /
+pilot-roster / send-test-email).
+NOTE api-standards 9..9i - especially NEW 9i (a cohort is a grant list; and
+AUTHORIZATION PRECEDES STATE: prove entitlement before composing any message that
+describes a record's condition). NOTE database-standards 7a (`verify_chain`'s memory
+budget). NOTE the R-9 census: `tests/test_reimb_authz_census.py` will FAIL if a new
+reimbursement route ships without a declared rule - if Stage D adds routes to a NEW
+surface, consider whether that surface wants its own census from day one rather than
+after its fourth scope bug.
 
+TEST HYGIENE IS NOW MECHANICAL: `tests/conftest.py::seed_guard` fails the run if seeded
+reference data was modified and not restored; `_backdated` is a context manager that
+owns its undo. The three shapes still hold as guidance - (a) dates relative to today,
+(b) absolute assertions on counted surfaces, (c) shared seeded data.
 LIVE SMOKE EARNS ITS PLACE (#25 found a duplicate-notification defect every unit test
-passed; #26 reconciled the board against a raw GROUP BY; #27 reconciled Insights the
-same way and drove promote->warning->demote with no restart). For R-9 the smoke IS the
-security suite, executed by hand over real HTTP as at least two DIFFERENT users.
-Smoke accounts (dev only): board-smoke@doh.gov (global admin_officer) and
-board-traveller@doh.gov (plain staff), both BoardSmoke!2026x. R-9 will likely want a
-THIRD - a SCOPED admin officer, which #27 recorded as the one path its smoke could not
-cover.
+passed; #26 and #27 reconciled aggregates against raw GROUP BY; #28's security suite
+found a claim-enumeration oracle that every unit test passed).
+Smoke accounts (dev only): board-smoke@doh.gov (global admin_officer),
+board-traveller@doh.gov (plain staff), scoped-officer@doh.gov (scoped admin_officer),
+all BoardSmoke!2026x. Demo data: `bootstrap load-pilot-fixtures`.
 OPS: after touching documents/, seeds.py or ops/, run `docker compose restart worker
 beat` (tech-stack 5). The FE toolchain lives in the `web` container:
 `docker compose exec web sh -c "cd /app && npm run typecheck && npm run lint && npm test"`.
-pytest 907 (0 failures), lint-imports 3/3, FE gate green (260). Dev flag ON - but a full
+RUN THE BACKEND AND FE GATES IN SEQUENCE, not concurrently - one FE test flaked under
+CPU contention at #28 (a 1 s `findByRole` wait, not a logic race).
+pytest 1003 (0 failures), lint-imports 3/3, FE gate green (260). Dev flag ON - but a full
 suite run leaves it OFF; `python -m office_connect.ops.bootstrap set-flag
 module.reimbursement --on` restores it.
-Push cadence: R-9's gate IS the push. Provision the remote first.
-Read CLAUDE.md, then docs/modules/reimbursement.md (the delta register - especially the
-R-8 rows and section 3's R-0 tracker), docs/standards/workflow-standards.md (9 + 12),
-api-standards 9/9a/9b/9c/9e/9f/9g/9h, ui-standards 3+4, database-standards 6/7/8,
-master-plan 1.1 + the corrections ledger, and spec 3.2 (scoped visibility), 14's R-9 row
-and 15's remaining open items.
+Push cadence: Stage D's gate is the next push. Remote is origin (provisioned).
+Read CLAUDE.md, then docs/master-plan.md Stage D + 1.1 + the corrections ledger,
+docs/standards/ui-standards.md 3 + 4 + 7 + 8, api-standards 1-3 + 9i,
+docs/modules/landing.md, and docs/modules/reimbursement.md 4-M (the manual test guide -
+it is the best single description of what the platform now does).
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed.
 ```
 
@@ -356,8 +279,8 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet + **R-6 ✅** clock/liq-chain/liq-settle + **R-7 ✅** queue/events/board + **R-8 ✅** — **R-9 next, and it closes the stage**) | 11–27 | — | — |
-| D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | **complete (pushed)** — R-1…R-9 all ✅ | 11–28 | ✅ passed | `stage-c-complete` / 2026-08-05 |
+| D | 3 | Landing shell / query bar / Calendar surface / AI service | **next** | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
 | G | 1/8 | CSS-IS convergence (PG migration + React + ARTA v2023) | not started | — | — | — |
@@ -377,6 +300,85 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-05 (session 28 — Stage C R-9: hardening + the pilot gate. R-9 CLOSED
+  and STAGE C CLOSED + PUSHED)** — a gate session, not a feature session. Eight
+  increments had each been tested as they shipped; what had never been tested was
+  the **set**, and spec §14's R-9 row carries its own exclamation mark —
+  *"Security suite (scope filters!)"* — because that is where a hole hides.
+  - **The suite found one on its first run.** `submit_claim` and
+    `cancel_draft_claim` checked the claim's STATE before its OWNERSHIP, so a
+    stranger POSTing `/claims/{id}/submit` against an id they did not own was
+    told *"This claim is already in the approval workflow"*. Correct sentence,
+    wrong audience. Set against `claim_not_in_workflow` for drafts and
+    `reimb_claim_not_found` for ids never issued, it is a three-way
+    **enumeration oracle** over every claim in the agency — filing volume and
+    pipeline state, one probe at a time, from any ordinary `staff` login with no
+    privilege at all. Every test in the repository passed, because every one of
+    them submitted its own claim. **And the rule was already written down**, one
+    file over: `services/drafts.py::owned_editable_claim` orders the checks
+    correctly and names the hazard in a comment nobody in `lifecycle.py` read.
+    Fixed in three places — the third being `claim_action`'s no-instance branch,
+    which the workflow engine structurally cannot authorize (authorizing needs an
+    instance; that branch is the one that says there isn't one) — and promoted
+    from a comment to **api-standards §9i**: *authorization precedes state.*
+    The corollary matters as much as the rule: do NOT collapse every refusal into
+    `not_claim_owner`, because a scoped actor who is merely not the current step
+    holder must still hear the engine's real answer, or an Admin Officer ends up
+    reading that a claim they oversee is not theirs. Both halves pinned.
+  - **The census is the part that outlives the session.** api-standards §9f's
+    rule — *a list may not borrow a row's read rule* — had been applied four
+    times, each time because a person remembered to. `test_reimb_authz_census.py`
+    enumerates `app.routes` and requires every one of the **32** module routes to
+    declare a gate class, a route permission and its exact service rule; a route
+    added with no row **fails** rather than being missed. It reads the wiring off
+    the running app through two new markers (`oc_permission`, `oc_feature_flag`)
+    that core's dependency factories attach to what they return — a closure is
+    otherwise opaque, and grepping the source would have re-created the
+    hand-maintained-list problem the file exists to delete. Reading the finished
+    table makes §9f's warning visible as data: **28 of 32 routes are gated on a
+    permission an ordinary traveller holds globally**, so on almost every route
+    the route gate provably is not, and cannot be, the scope rule.
+  - **The pilot cohort is a stated posture, not a schema.** Before deciding,
+    checked the thing the decision turned on: **nothing in this codebase
+    auto-assigns a role.** There is no default-grant path, so a user reaches the
+    module only because an administrator granted them one — the grant list
+    already *is* the cohort, scoped, time-bounded and audited. Giving the flag an
+    org dimension would have been a weaker second copy of RBAC plus a rewrite of
+    the one endpoint the hard prohibitions say must never 500. What was missing
+    was a way to *read* the cohort, so `bootstrap pilot-roster` reports every
+    holder of any `reimb.*` permission with their scope and which are
+    AGENCY-WIDE. The honest risk is written into §9i rather than left to be
+    discovered: a cohort you cannot enumerate is a cohort you cannot verify.
+  - **Test hygiene stopped being a matter of memory, after four recurrences.**
+    #24–#27 each lost time to shared state left modified — a holiday row, aged
+    `holder_since`, a promoted return reason — and each fix was a `finally` and a
+    docstring asking the next person to remember. `seed_guard` now snapshots
+    every seeded row's mutable columns and **fails the run** on unrestored drift
+    (proven non-vacuous against a deliberately leaked promotion), and `_backdate`
+    became a context manager that owns its own undo.
+  - **Budgets are numbers now.** Both aggregates measured at ~5 ms. Migration
+    `0023` adds the index the Insights window filters on — knowingly unused
+    today, because the table is append-only and grows forever while its window
+    stays fixed at 90 days. And `verify_chain` got the finding worth carrying:
+    501,423 rows → 18.7 s but **1.47 GiB peak RSS**, so its ceiling is *memory*, at
+    roughly 1M rows, and the failure mode is an OOM-killed integrity check —
+    which reads as "the log cannot be verified" at exactly the moment somebody is
+    asking whether it can be trusted.
+  - **The gate.** Full suite green from an empty database, migrations replayed
+    `0012`→head, seeds idempotent, FE gate green, live smoke 32/32 as three
+    users. `[Unreleased]` promoted to `0.3.0`, `APP_VERSION` matched, tagged
+    `stage-c-complete`, pushed. Stage C is done: a traveller can file a claim,
+    have it approved, followed to FMS and paid; an advance can be liquidated and
+    settled; and the module gets better as it is used.
+  - **Docs:** api-standards **§9i**, database-standards **§7a**, module-doc
+    **§4-M** (manual test guide — the QA gate required one and none existed),
+    **§4a** (the spec §14 discharge table, clause by clause for R-1…R-9),
+    **§4b** (perf budgets), five delta rows, the R-9 status row and the decisions
+    log; development-workflow §4 (the stale "no remote exists yet" line corrected
+    — it has existed since Phase 0 — plus the `stage-<letter>-complete` naming
+    rule for stages with no old phase number); master-plan §1.1 (OCR re-deferred
+    off R-9 to Stage H, since spec §14 never asked for it).
 
 - **2026-08-06 (session 27 — Stage C R-8: insights + the return-reason learning
   loop. R-8 CLOSED)** — every return since R-4-screens has been required to

@@ -72,10 +72,15 @@ detailed brief is archived in each session-log entry.
   (`session(YYYY-MM-DD): <summary>`); additional logical commits during a
   session are encouraged (they are the rollback points).
 - **Push + tag** — **only when a phase passes its QA gate** (§6). Tag
-  `phase-<N>-complete` (reimbursement sub-phases: `reimb-R<N>-complete`),
-  then push branch + tags. Never push mid-phase.
-- **Remote** — none exists yet. Provisioning a private remote is a required
-  task **before Phase 0 closes** (first push fires at the Phase 0 gate).
+  `phase-<N>-complete` where the stage has an old phase number, else
+  `stage-<letter>-complete` (Stage C has no old number — the tracker's *Old #*
+  column is empty for it — so its gate tag is `stage-c-complete`).
+  Reimbursement sub-phases, if ever tagged individually: `reimb-R<N>-complete`.
+  Then push branch + tags. Never push mid-phase.
+- **Remote** — `origin` = `github.com/avincentpatrick/office_connect`,
+  **provisioned before the Phase 0 gate as required**. Tags on it:
+  `phase-0-complete` (2026-07-23), `phase-2-complete` (2026-07-27),
+  `stage-c-complete` (2026-08-05).
 - **Branching** — `master` only for now; revisit when frontend phases begin.
 - Commit messages: imperative mood; prefix `session(...)` for session-end
   commits, conventional prefixes (`feat:`, `fix:`, `chore:`, `docs:`) for
