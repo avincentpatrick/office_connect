@@ -11,8 +11,9 @@ materialize the documentary packet over core-service #7 and take uploads
 through core-service #2 (R-3); ``deadline`` is the pure COA 30-day clock and
 ``cash_advance`` is the SINGLE sanctioned writer of ``reimb_cash_advances``
 (R-6-clock) — ``notify`` also carries that clock's D-7/D-3/D-0/overdue ladder;
-``queue`` resolves who may see a LIST of other people's claims and counts the
-working days a claim has spent with FMS (R-7-queue).
+``queue`` resolves who may see a LIST of other people's claims, counts the
+working days a claim has spent with FMS (R-7-queue) and aggregates the pipeline
+board's per-column counts and peso totals (R-7-board).
 """
 
 from office_connect.modules.reimbursement.services.checklist import (
@@ -90,8 +91,13 @@ from office_connect.modules.reimbursement.services.settlement import (
     spawn_reimbursement,
 )
 from office_connect.modules.reimbursement.services.queue import (
+    BOARD_CARD_LIMIT,
     OVERSIGHT_PERMS,
+    board_card_query,
+    column_totals,
     days_with_fms,
+    done_cutoff,
+    done_window_days,
     followup_threshold,
     oversight_scope,
 )
@@ -107,8 +113,13 @@ from office_connect.modules.reimbursement.services.per_diem import (
 )
 
 __all__ = [
+    "BOARD_CARD_LIMIT",
     "OVERSIGHT_PERMS",
+    "board_card_query",
+    "column_totals",
     "days_with_fms",
+    "done_cutoff",
+    "done_window_days",
     "followup_threshold",
     "oversight_scope",
     "assert_packet_complete",

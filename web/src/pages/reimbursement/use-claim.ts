@@ -9,6 +9,7 @@ import {
   fetchCashAdvances,
   fetchChecklist,
   fetchClaim,
+  fetchClaimBoard,
   fetchClaimQueue,
   fetchMyWork,
   fetchRegions,
@@ -104,6 +105,19 @@ export function useClaimQueue(filters: ClaimQueueFilters = {}) {
   return useQuery({
     queryKey: reimbKeys.queue(filters),
     queryFn: () => fetchClaimQueue(filters),
+    retry: false,
+  });
+}
+
+/**
+ * The pipeline board (R-7-board). Same `retry: false` and the same reason: an
+ * actor who oversees nobody gets a 403, which is a settled answer the page
+ * renders as an explanation.
+ */
+export function useClaimBoard() {
+  return useQuery({
+    queryKey: reimbKeys.board(),
+    queryFn: fetchClaimBoard,
     retry: false,
   });
 }

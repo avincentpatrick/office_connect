@@ -75,7 +75,7 @@ first**. Required states in parentheses.
 | **Task list** (GOV.UK pattern) | the canonical checklist rendering: numbered sections, per-item status tag; drives every checklist screen. Items may carry an optional `detail` line, an in-place `action` slot (for a task completed on the checklist itself rather than on another page), and a DOM `id` for cross-page deep links; `to` and `action` are **mutually exclusive** — an item either navigates or acts. |
 | **Stepper / wizard shell** | linear steps, progress indicator, back-safe. |
 | **Timeline / tracker** | chronological events with actor + timestamp (Manila display). |
-| **Pipeline-board card** | compact card for kanban-style boards. |
+| **Pipeline-board card** | compact card for kanban-style boards. Inert by default; given a destination (`to`) the **title** becomes a link with a stretched overlay, so the whole card is clickable while its accessible name stays the title alone. |
 | **Dialog / confirm sheet** | destructive confirms state consequences in plain language; controlled mode (`open`/`onOpenChange`, optional trigger) for router-driven prompts. |
 | **Empty state** | mandatory on every list — explains what will appear and the next action. |
 | **Skeleton loader** | mandatory on every list/detail while loading. |
@@ -83,7 +83,7 @@ first**. Required states in parentheses.
 | **Error summary** (GOV.UK) | page-level `role=alert` that receives focus on mount and anchor-links to each failing field; wording **identical** to the inline validation messages. |
 | **Summary list** (GOV.UK check-your-answers) | `<dl>` of key/value rows with an optional per-row "Change" link (accessible-name context suffix, e.g. "Change purpose"); empty values render "Not provided", never blank. |
 | **Confirmation panel** | transaction-complete panel: title (focused on mount), reference label + the reference number rendered large; used once per completed transaction. |
-| **Work-item row** | linked inbox/list row: reference + title, StatusChip right, one muted meta line; the My-Work rendering (NOT the Pipeline-board card — that is a board `<article>`, no link affordance). |
+| **Work-item row** | linked inbox/list row: reference + title, StatusChip right, one muted meta line; the My-Work rendering (NOT the Pipeline-board card — that is a board `<article>`, whose link, when it has one, is on the title under a stretched overlay rather than around the row). |
 | **Chip group** | multi-select picker over a SHORT closed taxonomy: fieldset + legend, chip-styled labels over real checkboxes, selected / unselected / error states. |
 | **Form dialog** | dialog whose body is a form — a decision that needs input before it can be made. Submit does NOT close the dialog; the caller closes it on success. |
 | **File upload** | a real, label-associated `<input type="file">` with a keyboard-reachable drop zone as its `<label>`; drag-and-drop is a mouse-only enhancement over that one control (never a drop-only affordance). States: idle / dragging / busy / error / disabled. Announces completion in a polite live region; resets its value after every emit so the same file can be re-picked. `capture` is opt-in only — on mobile it FORCES the camera and removes the gallery option. |
@@ -251,7 +251,7 @@ this doc first.
 | **List page** | Filter row → table/cards → pagination; empty state + skeleton mandatory. |
 | **Wizard page** | Stepper shell + one step's form + task-list sidebar. |
 | **Detail + right rail** | Main record + right rail (status, timeline) + an optional `actions` slot: sticky to the bottom of the viewport on a phone, in the flow below the record from `lg` up. |
-| **Board page** | Pipeline columns of board cards. |
+| **Board page** | Pipeline columns of board cards, each column headed by its name plus a count and a money figure; skeleton + empty state mandatory, as on the List page. Scrolls horizontally on phones. |
 | **Admin / settings page** | Sectioned forms with per-section save. |
 
 > **Template amendment 2026-08-03 (R-4-screens):** **Detail + right rail**
@@ -284,11 +284,30 @@ this doc first.
 >    been with FMS longer than 10 working days"*, quoting the threshold the
 >    server applied rather than a number the page invented.
 
-> **Doctrine restated (R-6-clock, reaffirmed R-7-queue): an admin surface is
-> reachable by anyone and refused by the server.** The route is not role-gated;
-> the nav item is, for *discoverability only*. A 403 renders as the server's own
-> explanation in the page's empty state — never a blank page, never a paraphrase
-> the FE then has to keep true.
+> **Template amendment 2026-08-05 (R-7-board) — the Board page gains
+> `loading` + a mandatory `emptyState`, and its headers carry numbers.**
+> §3 makes a skeleton and an empty state mandatory on *every list*, and
+> api-standards §9f's own words are that a board is a list with headers — so the
+> board template was one short. Three rules:
+> 1. **Skeleton per column, one whole-board empty state.** An un-skeletoned
+>    board flashes three empty columns on every load, which reads as "there is
+>    no work" rather than "not yet". The whole-board empty state fires only when
+>    *every* column is empty; a single empty column keeps its header, because
+>    "₱0.00 is with FMS" is an answer and a vanished column reads as a failure
+>    to load.
+> 2. **The count and the money go in a `<p>` BELOW the `<h2>`, never inside
+>    it.** A screen-reader heading list has to read "With FMS", not
+>    "With FMS 24 ₱1,284,300.00".
+> 3. **A column header describes the whole column, not the cards under it**, and
+>    says so when they differ ("Showing 20 of 137"), quoting the server's cap.
+>    Nothing on the page re-derives a total from the cards it can see — that
+>    under-reports by exactly what did not fit, while looking correct.
+
+> **Doctrine restated (R-6-clock, reaffirmed R-7-queue and R-7-board): an admin
+> surface is reachable by anyone and refused by the server.** The route is not
+> role-gated; the nav item is, for *discoverability only*. A 403 renders as the
+> server's own explanation in the page's empty state — never a blank page, never
+> a paraphrase the FE then has to keep true.
 
 ## 5. Copy standard — LOCKED
 
@@ -381,7 +400,7 @@ under `web/src/components/<Name>/`.
 | Task list | numbered `<ol>` sections (`h3` "n. Title"), items in a divided `<ul>`: link (`text-link` underline) or inert muted name + hint, StatusChip right ("Cannot start yet" = `waiting` + no link). |
 | Stepper | `<nav aria-label="Progress">`; visible "Step n of m: label"; per-step bars (done `status-done` / active `brand` / upcoming `border`) + `aria-current="step"`. |
 | Timeline | `<ol>`; dot + connector rail; description then `actor · Manila datetime` muted line. |
-| Pipeline-board card | `<article>` compact: ref-no (muted xs) + StatusChip row, title, one meta line. |
+| Pipeline-board card | `<article class="relative">` compact: ref-no (muted xs) + StatusChip row, title, one meta line. With `to`: the title is a `<Link>` carrying `after:absolute after:inset-0`, and the article takes `focus-within:` ring styling — the visible focus indicator must follow the invisible overlay. |
 | Dialog | Radix Dialog (portal, focus trap, Esc); overlay `bg-text/50`; centered `max-w-md` panel: title, plain-language consequence, Cancel (secondary) + confirm (danger when destructive). |
 | Empty state | centered on `bg-surface` dashed-free panel: Lucide icon (`aria-hidden`), "what will appear" title, description, next-action slot. |
 | Skeleton | `animate-pulse bg-surface` blocks (`row`/`block` variants), `aria-hidden`; `PageSkeleton` wraps in `role="status"` + sr-only label. |

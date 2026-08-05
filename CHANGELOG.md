@@ -12,6 +12,30 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-7-board — the pipeline board: how much is where** (2026-08-05):
+  a new **Pipeline board** for approvers and the Admin Officer, alongside My
+  Work and the Claim queue. My Work answers "what is mine" and the queue answers
+  "what is stuck"; this answers the question a bureau chief asks from across the
+  room. Everything in flight is grouped into three columns — **In Bureau**,
+  **With FMS**, **Done** — and each column is headed by how many claims are in
+  it and **how much money that is**. Cards show the reference, the traveller, the
+  amount and how long it has been sitting; anything that needs chasing floats to
+  the top of its column, and clicking a card opens the claim.
+  **The numbers describe the whole column, not the cards you can see.** Each
+  column shows at most 20 cards, and when there are more it says so ("Showing 20
+  of 137") — but the count and the peso total always cover every claim in that
+  column, computed on the server. Nothing is added up in the browser.
+  Three things are deliberately left out of the totals. **Drafts** are not
+  counted: an unsubmitted claim is the traveller's own work and it is already on
+  their My Work. **Cancelled claims** are not counted either — a voided claim
+  never paid out anything, so including its amount would inflate the figures
+  with money that never moved. And the **Done column covers the last 90 days**
+  rather than all time, so it stays a useful picture of the current period
+  instead of a number that only ever grows. In Bureau and With FMS have no such
+  cut-off: a claim stuck since March is exactly what the board exists to show.
+  Liquidations appear on the same board as reimbursements — they are work in the
+  same pipeline, and a chief should not have to read two boards to answer one
+  question.
 - **Stage C R-7-events — following a claim through FMS, and closing it as paid**
   (2026-08-05): once a packet leaves the bureau it is out of everyone's hands,
   and until now the system had nothing to say about it. Two things change that.

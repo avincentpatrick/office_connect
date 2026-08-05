@@ -154,14 +154,30 @@ export function UiFoundationPage() {
       </AdminSection>
 
       <AdminSection title="9. Pipeline-board card">
-        <div className="max-w-xs">
-          <PipelineCard
-            refNo="RB-2026-0001"
-            title="Iloilo field visit"
-            status="waiting"
-            statusLabel="For certification"
-            meta={`${formatPeso("5500.00")} · J. Dela Cruz`}
-          />
+        <div className="flex max-w-2xl gap-3">
+          <div className="max-w-xs flex-1">
+            <PipelineCard
+              refNo="RB-2026-0001"
+              title="Iloilo field visit"
+              status="waiting"
+              statusLabel="For certification"
+              meta={`${formatPeso("5500.00")} · J. Dela Cruz`}
+            />
+          </div>
+          {/* R-7-board: the same card with a destination. Spec §9.6 —
+              "clicking a card opens the tracker". The link is on the TITLE and
+              a stretched overlay makes the whole card clickable, so the
+              accessible name stays the title alone. */}
+          <div className="max-w-xs flex-1">
+            <PipelineCard
+              refNo="RB-2026-0002"
+              title="Regional immunization review"
+              status="blocked"
+              statusLabel="Chase FMS"
+              meta={`M. Santos · 14 working days with FMS · ${formatPeso("6500.00")}`}
+              to="/reimbursement/board"
+            />
+          </div>
         </div>
       </AdminSection>
 

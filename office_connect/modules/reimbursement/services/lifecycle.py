@@ -208,13 +208,15 @@ async def _assert_return_reasons(
         raise errors.unknown_return_reason(unknown)
 
 
-async def config_working_days(
-    session: AsyncSession, *, key: str, default: int, today
+async def config_int(
+    session: AsyncSession, *, key: str, field: str, default: int, today
 ) -> int:
-    """A ``{"working_days": n}`` config value as-of today (latest effective
-    row). SLA cadence is a nudge, not money — a missing/malformed row falls
-    back to the spec default rather than failing the transition (documented
-    fail-soft; contrast the fail-closed money configs)."""
+    """One integer out of the latest effective config row, fail-soft.
+
+    Cadence and display windows are nudges, not money — a missing or malformed
+    row falls back to the spec default rather than failing the request
+    (documented fail-soft; contrast the fail-closed money configs, which refuse).
+    """
     rows = (
         (
             await session.execute(
@@ -232,9 +234,18 @@ async def config_working_days(
         return default
     latest = max(rows, key=lambda r: r.effective_from)
     try:
-        return int(latest.value["working_days"])
+        return int(latest.value[field])
     except (KeyError, TypeError, ValueError):
         return default
+
+
+async def config_working_days(
+    session: AsyncSession, *, key: str, default: int, today
+) -> int:
+    """A ``{"working_days": n}`` config value as-of today."""
+    return await config_int(
+        session, key=key, field="working_days", default=default, today=today
+    )
 
 
 # --------------------------------------------------------------------------

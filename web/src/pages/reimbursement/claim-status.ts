@@ -13,7 +13,7 @@ import type {
   WorkItem,
 } from "../../api/reimbursement";
 import type { SemanticStatus } from "../../components/StatusChip/StatusChip";
-import { formatPeso } from "../../lib/format";
+import { formatManilaDate, formatPeso } from "../../lib/format";
 
 export const CLAIM_STATUS_TO_SEMANTIC: Record<ClaimStatus, SemanticStatus> = {
   draft: "warn",
@@ -172,32 +172,67 @@ export function myWorkMeta(item: WorkItem): string {
 }
 
 /**
+ * How long this row has been where it is — the one phrase both oversight lists
+ * use, extracted so they cannot fork (R-7-board).
+ *
+ * The distinction it carries is load-bearing: a claim with FMS is counted in
+ * WORKING days off the Manila holiday calendar (the unit the server counted and
+ * the unit spec §7 rule 5 uses), and everything else in calendar days in this
+ * step. Two copies of that branch is how one list eventually starts saying
+ * "12 days with FMS" about a number that meant working days.
+ */
+export function daysPhrase(item: QueueItem): string {
+  if (item.days_with_fms !== null) {
+    return `${item.days_with_fms} working ${item.days_with_fms === 1 ? "day" : "days"} with FMS`;
+  }
+  return `${item.days_in_state} ${item.days_in_state === 1 ? "day" : "days"} in this step`;
+}
+
+/**
  * The oversight-queue meta line (R-7-queue). Leads with the traveller, because
  * this list mixes them and "whose is it" is the first question an Admin Officer
- * asks; then the FMS working-day count where it applies, in WORKING days
- * because that is the unit the server counted and the unit spec §7 rule 5 uses.
+ * asks.
  */
 export function queueMeta(item: QueueItem): string {
   const parts: string[] = [];
   if (item.claimant_display) parts.push(item.claimant_display);
   if (item.holder_display) parts.push(`Holder: ${item.holder_display}`);
-  if (item.days_with_fms !== null) {
-    parts.push(
-      `${item.days_with_fms} working ${item.days_with_fms === 1 ? "day" : "days"} with FMS`,
-    );
-    // What FMS last said, where they have said anything (R-7-events). How long
-    // and where are different facts, and the second is what decides whether the
-    // follow-up call is worth making: 12 days in Payment Processing is a
-    // different conversation from 12 days in Budget.
-    if (item.external_status_label) {
-      parts.push(`Last: ${item.external_status_label}`);
-    }
-  } else {
-    parts.push(
-      `${item.days_in_state} ${item.days_in_state === 1 ? "day" : "days"} in this step`,
-    );
+  parts.push(daysPhrase(item));
+  // What FMS last said, where they have said anything (R-7-events). How long
+  // and where are different facts, and the second is what decides whether the
+  // follow-up call is worth making: 12 days in Payment Processing is a
+  // different conversation from 12 days in Budget. Guarded on `days_with_fms`
+  // rather than read directly, because a PAID claim keeps its last FMS event
+  // and "Last: With Accounting" on a closed claim reads as still pending.
+  if (item.days_with_fms !== null && item.external_status_label) {
+    parts.push(`Last: ${item.external_status_label}`);
   }
   if (item.next_action) parts.push(`Next: ${item.next_action}`);
+  if (item.grand) parts.push(formatPeso(item.grand));
+  return parts.join(" · ");
+}
+
+/**
+ * The board card's meta line (R-7-board) — spec §9.2's "ref, name, ₱,
+ * days-in-state", minus the ref, which the card renders on its own row.
+ *
+ * Shorter than `queueMeta` because a card is narrower than a row, and it drops
+ * "Next:" because a board is read, not worked — the queue is where an Admin
+ * Officer acts.
+ *
+ * The reason it exists at all is the Done column. A terminal claim has no
+ * holder and no `holder_since`, so `days_in_state` is 0, and reusing the
+ * queue's wording would print "0 days in this step" on a claim paid three weeks
+ * ago. The queue never had to handle that — it has no terminal rows.
+ */
+export function boardMeta(item: QueueItem): string {
+  const parts: string[] = [];
+  if (item.claimant_display) parts.push(item.claimant_display);
+  if (item.holder_kind === null) {
+    parts.push(`Closed ${formatManilaDate(item.updated_at)}`);
+  } else {
+    parts.push(daysPhrase(item));
+  }
   if (item.grand) parts.push(formatPeso(item.grand));
   return parts.join(" · ");
 }

@@ -482,6 +482,32 @@ export interface ClaimQueueResponse {
   followup_working_days: number;
 }
 
+/**
+ * One pipeline-board column (R-7-board, spec §9.6). Named `ClaimBoardColumn`
+ * and not `BoardColumn` on purpose — the BoardPage layout owns that name, and
+ * two same-named types one import apart is a `tsc` error at best and a silently
+ * wrong structural match at worst.
+ */
+export interface ClaimBoardColumn {
+  key: "in_bureau" | "with_fms" | "done";
+  /** The header, server-owned — the browser authors no column names. */
+  label: string;
+  /** The WHOLE column, never `items.length`. */
+  count: number;
+  /** 2-dp server string; "0.00" on an empty column. NEVER summed here. */
+  total: string;
+  items: QueueItem[];
+}
+
+export interface ClaimBoardResponse {
+  columns: ClaimBoardColumn[];
+  followup_working_days: number;
+  /** Cards per column. The count above is the whole column regardless. */
+  card_limit: number;
+  /** How far back Done reaches, so the header qualifier is never a literal. */
+  done_window_days: number;
+}
+
 /** Filters the queue accepts. All optional; all narrow, none widen. */
 export interface ClaimQueueFilters {
   status?: ClaimStatus;
@@ -554,6 +580,12 @@ export const reimbKeys = {
   // only the lens the writer happened to be on would leave the other five
   // showing a claim that has moved (R-7-events).
   queues: () => [...reimbKeys.all, "queue"] as const,
+  // Deliberately UNDER the `queues()` prefix. `FmsStatusDialog` and
+  // `MarkPaidDialog` already invalidate that prefix after a write, and a
+  // `mark_paid` moves a claim from With FMS to Done — a board key outside the
+  // prefix would make this the one screen still showing the claim where it was
+  // a moment ago, immediately after the button that moved it.
+  board: () => [...reimbKeys.queues(), "board"] as const,
   // Every filter value is in the key, for the same reason `cashAdvances` puts
   // the claimant id in its own: two filters are two different lists, and one
   // cache entry for both shows the Admin Officer the last question they asked
@@ -836,6 +868,18 @@ export function fetchClaimQueue(
   return api<ClaimQueueResponse>(
     `/reimbursement/claims${query ? `?${query}` : ""}`,
   );
+}
+
+/**
+ * The pipeline board (R-7-board) — spec §9.6's Director/Admin default view.
+ *
+ * One request for all three columns: a column is a GROUP of statuses and
+ * `GET /claims` takes one, and the Done column is entirely terminal, which the
+ * queue excludes by construction. Same 403 as the queue for anyone who oversees
+ * nobody. No filters and no `?limit=` — a board that pages is a queue.
+ */
+export function fetchClaimBoard(): Promise<ClaimBoardResponse> {
+  return api<ClaimBoardResponse>("/reimbursement/board");
 }
 
 export function fetchRegions(): Promise<Region[]> {

@@ -497,6 +497,46 @@ class ClaimQueueOut(BaseModel):
     followup_working_days: int
 
 
+class BoardColumnOut(BaseModel):
+    """One pipeline-board column (spec §9.6, R-7-board).
+
+    A column is a GROUP of statuses, not a status (spec §9.2: "Columns = status
+    groups"), and the grouping is the server's — ``services/status.py`` owns it
+    per kind, so the browser never decides what counts as "In Bureau".
+
+    ``count`` and ``total`` describe the WHOLE column; ``items`` is only its
+    first ``card_limit`` rows. That split is the point of the surface: the
+    header is the product and the cards are context, so a header that counted
+    only what it could show would be the "showing 50 of 214" lie api-standards
+    §9f forbids one surface over — and worse here, because on a board the number
+    IS the answer.
+    """
+
+    key: str
+    #: The header label, server-owned like every status label. One source for
+    #: "With FMS" means the board and the queue cannot disagree about it.
+    label: str
+    count: int
+    #: A 2-dp peso string, server-computed (the standing prohibition — the UI
+    #: displays money and never adds it up). ``"0.00"`` on an empty column,
+    #: never null and never a JSON number.
+    total: str
+    items: list[QueueItemOut]
+
+
+class ClaimBoardOut(BaseModel):
+    """The pipeline board — spec §9.6's "module's public face"."""
+
+    columns: list[BoardColumnOut]
+    followup_working_days: int
+    #: The per-column card cap, so the "showing N of M" line quotes the SERVER's
+    #: number rather than a literal the browser would have to keep in step.
+    card_limit: int
+    #: How far back the Done column reaches, for the same reason: the header
+    #: qualifier ("last 90 days") is composed from this, never hard-coded.
+    done_window_days: int
+
+
 class RegionOut(BaseModel):
     region_code: str
     region_name: str | None = None

@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C R-7-board: spec §9.6's pipeline board (In Bureau / With FMS / Done), with per-column counts and peso totals.**
+> **Resume Office-Connect — Stage C R-8: insights + the return-reason learning loop (spec §13's "top return reasons" fed back into the wizard).**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -11,31 +11,49 @@ expand it into the full task and confirm with you before starting.
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
 - **Phase:** **Stage C IN PROGRESS** — **R-1 ✅ + R-2 ✅ + R-3 ✅ + R-4 ✅ +
-  R-5 ✅ (gen + packet) + R-6 ✅ (clock + liq-chain + liq-settle) + R-7-queue ✅
-  + R-7-events ✅**. **R-7 is two-thirds done: R-7-queue ✅ → R-7-events ✅ →
-  R-7-board (next).**
-  R-7-events closed three holes that were all live in the codebase at kickoff:
-  **`reimb_external_events` had never been written to** (shipped inert in
-  `0013`, zero writers and zero readers), **`paid_closed` recorded nothing**
-  (spec §6.1 row 8 says "terminal (admin records payout ref)" and it was a bare
-  `approve`), and **every claim attachment in the system was permanently
-  non-disposable** (`retention_starts_at` was parked on "R-7" since R-2 and
-  nothing ever set it).
-  Shipped: **`services/external.py`** — `record_external_event` (a PURE APPEND;
-  MEMBERSHIP of the closed set enforced, ORDER never, on BOTH claim kinds) and
-  `record_payout` (workflow-standards §12's **second instance**); migration
-  **`0021`** (`payout_ref`/`paid_on`/`paid_by`); core's
-  **`attachments.start_retention`**; two spec §12 notifications; the **merged
-  tracker**; the gated relay route + the un-gated `/mark-paid`; and the FE
-  dialogs, rail line and queue-row status.
-  **Verified: pytest 860 passed (+38) with ZERO failures**, lint-imports 3/3,
-  `0021` reversible (down→up→up) + `alembic check` clean, seeds ×2 no-op, FE
-  gate green (tsc + eslint + **214 vitest**, +21, + build), and a **28/28 live
-  smoke** through the real stack — which is what caught the one defect no
-  assertion did.
+  R-5 ✅ (gen + packet) + R-6 ✅ (clock + liq-chain + liq-settle) + R-7 ✅
+  (queue + events + board)**. **R-7 IS CLOSED. R-8 is next.**
+  R-7-board built spec §9.6's pipeline board — three columns (In Bureau / With
+  FMS / Done) that are **GROUPS of statuses**, each headed by a count and a
+  server-summed peso total, which is spec §14's one graded sentence for this
+  surface ("board totals match DB").
+  Shipped: **`board_column` on the per-kind `Vocabulary`** (mandatory per state,
+  column sets derived, an import-time invariant that also proves them **pairwise
+  disjoint** — the cross-kind `GROUP BY` would otherwise double-count);
+  **`include_terminal`** on `queue.base_query` (the trap its own docstring
+  flagged at R-7-queue); **`column_totals`** — ONE grouped aggregate,
+  `SUM((totals->>'grand')::numeric)`, never a Python sum over the page — plus
+  `board_card_query`; the **bounded Done window** (`board.done_window_days`, 90,
+  fail-soft, on `updated_at`); **`GET /board`** on the gated router (NOT
+  `/claims/board` — see below); `_queue_rows`/`_urgency_first` extracted so all
+  three columns share one batched pass; and the FE — `BoardPage` + `PipelineCard`
+  **wired rather than rebuilt**, plus `boardMeta`/`daysPhrase`, `ClaimBoardPage`,
+  the route and the nav entry.
+  **Verified: pytest 890 passed (+30) with ZERO failures**, lint-imports 3/3,
+  **no migration — head stays `0021`** + `alembic check` clean, seeds idempotent
+  (161 unchanged, 0 written), FE gate green (tsc + eslint + **230 vitest**, +16,
+  + build), and a live smoke through the real stack whose centrepiece is the
+  totals reconciliation — a raw `GROUP BY` hand-bucketed through the three
+  columns, column for column and peso for peso (**47/47**).
   **`module.reimbursement` is ON in dev.** Prod default stays OFF.
   **NOT pushed** — push cadence: **once at the Stage C QA gate**.
-- **Last session:** #25 — 2026-08-05 — **Stage C R-7-events: the FMS journey
+- **Last session:** #26 — 2026-08-05 — **Stage C R-7-board: the pipeline board.
+  R-7 CLOSED.** Built: `status.BOARD_COLUMNS`/`board_column` on `Vocabulary` +
+  the derived `BOARD_COLUMN_STATES`/`BOARD_COLUMN_LABELS`/`ALL_BOARD_STATES` +
+  `_assert_board_columns` (import-time, disjointness included) +
+  `status.board_column()`; `queue.base_query(include_terminal=)`,
+  `BOARD_CARD_LIMIT`, `DONE_WINDOW_KEY`/`done_window_days`/`done_cutoff`,
+  `_done_window_clause`, `_GRAND`, `column_totals`, `board_card_query`;
+  `lifecycle.config_int` (generalized out of `config_working_days`);
+  `BoardColumnOut`/`ClaimBoardOut`; `api/queue.py`'s `_queue_rows` +
+  `_urgency_first` extraction and the `GET /board` handler; the
+  `board.done_window_days` seed. FE: `BoardPage` (+`total`/`footer`/`loading`/
+  `emptyState`), `PipelineCard` (+`to`, stretched overlay), `ClaimBoardColumn`/
+  `ClaimBoardResponse`/`fetchClaimBoard`/`reimbKeys.board`, `useClaimBoard`,
+  `daysPhrase`+`boardMeta`, `ClaimBoardPage`, the route, the nav entry and the
+  second UI-catalog card. **api-standards gained §9g**; ui-standards §3/§4/§8
+  amended.
+- **Session before:** #25 — 2026-08-05 — **Stage C R-7-events: the FMS journey
   record**. Built: `services/external.py` (`record_external_event`,
   `record_payout`, `claim_events`/`latest_event`/`latest_events`),
   `lifecycle._assert_payout_recorded`, `actions.MARK_PAID`/`RELAY` + the
@@ -53,8 +71,21 @@ expand it into the full task and confirm with you before starting.
   the merged `ClaimTimeline`, the rail's "Latest from FMS", `queueMeta`'s
   "Last: …". **workflow-standards §12 gained its instances table** (the pattern
   held with no amendment).
-- **The two kickoff decisions (both user-confirmed):** **the payout shape is one
-  reference + a date** (`payout_ref`/`paid_on`/`paid_by`, no unique index — one
+- **The four R-7-board kickoff decisions (all user-confirmed):** **(1) one
+  request with the cards embedded**, not headers-plus-drill-down — a column is a
+  GROUP of statuses and `GET /claims` takes one, and Done is entirely terminal
+  which the queue excludes, so the "less code" alternative would have had to
+  teach the queue about columns *and* terminal claims anyway. **(2) `GET /board`,
+  not `/claims/board`** — `claims.router` is included first and `/claims/{id}`
+  swallows the literal segment (422 on `claim_id="board"`); making it work would
+  pin `include_router` order, which nothing declares. **(3) the ui-standards
+  inventory is AMENDED so a card can be clicked** — spec §9.6 says clicking
+  opens the tracker and the inventory said "no link affordance"; standards
+  outrank the reference spec, so the line was rewritten rather than ignored.
+  **(4) Done is bounded to a recent window (90 days, config)** — the live
+  columns stay unbounded.
+- **R-7-events kickoff decisions (both user-confirmed):** **the payout shape is
+  one reference + a date** (`payout_ref`/`paid_on`/`paid_by`, no unique index — one
   LDDAP-ADA pays many vouchers), and **the reference is REQUIRED** because
   `paid_closed` is read-only with no amendment route, so a blank one would
   recreate the bare `approve` this replaced; the refusal names the honest
@@ -62,7 +93,28 @@ expand it into the full task and confirm with you before starting.
   two MONEY terminals only** — `paid_closed` + `settled`; `cancelled`
   deliberately does not, because a voided claim produced no disbursement, and
   that is a recorded deferral with a test pinning it.
-- **Design notes worth remembering:** **the arrow in spec §6.1 row 6 is not a
+- **R-7-board design notes worth remembering:** **the column sets must be
+  PAIRWISE DISJOINT** — `column_totals` groups by status across BOTH kinds in one
+  statement, so a code one kind called In Bureau and another called Done would be
+  counted twice and the board would total *more than the database holds*, which
+  is exactly the sentence spec §14 grades. Asserted at import. **The aggregate
+  deliberately does NOT pre-filter on `ALL_BOARD_STATES`**, because an unmapped
+  status must come back and be LOGGED — filtering in SQL would hide the very
+  rows the warning exists to catch, which is also why it is `GROUP BY status`
+  and not a `CASE`. **`core_workflow_instances.amount` was rejected** as the
+  money column despite being already joined and already numeric: it is the
+  engine's tier-routing guard input, not the module's money of record. **The
+  `::numeric` cast on `totals->>'grand'` is a load-bearing invariant of another
+  module** — safe only because `compute.py` is its sole writer and goes through
+  `money_str`. **Done sorts `updated_at DESC` and skips the urgency lift**,
+  because a terminal state clears `holder_since` so "longest waiting" there is
+  undefined, not merely wrong. **`days_in_state` is 0 on every Done card** — that
+  is the whole reason `boardMeta` exists, since `queueMeta` would print "0 days
+  in this step" on a claim paid three weeks ago. **Accepted and documented:** the
+  aggregate and the card queries are separate statements under READ COMMITTED, so
+  a claim transitioning mid-request can be counted in Done and carded in With FMS
+  for one render — a dashboard, the header is the authority, refresh self-heals.
+- **R-7-events design notes:** **the arrow in spec §6.1 row 6 is not a
   sequence.** "With Budget → With Accounting → Payment Processing" carries the
   parenthetical *"any order/skips allowed"*, and that parenthetical is the
   operative half — FMS pays straight out of Budget, bounces packets back to
@@ -81,8 +133,25 @@ expand it into the full task and confirm with you before starting.
   from the history rows ALONE, before the external lane is appended — the merge
   is a sort at the very end, so there is exactly one line where the two lanes
   meet.
-- **⚠ Two defects worth carrying forward.** **(1) The live smoke caught what no
-  assertion did:** `record_payout` writes a `paid` external event AND calls
+- **⚠ THE TEST-HYGIENE DISEASE, THIRD INSTANCE — and it finally FAILED a run.**
+  `test_reimb_api_queue.py`'s `test_stalled_claims_sort_above_longer_waiting_ones`
+  and `test_a_global_grant_sees_every_office` aged claims (365/730 and 3650/3649
+  days) and **never undid it**, while `_backdate`'s own docstring in that very
+  file says *"every caller must undo this in a `finally`"*. It leaked for three
+  sessions and then broke: **54 permanently-aged rows** had accumulated, the
+  queue pages at 50 in longest-waiting-first order, so the freshly-aged claim
+  fell off page 1 while the older one stayed — and the assertion compared a
+  one-element list. **The sort was working the whole time.** Both wrapped, the 54
+  rows reset, and the sort test now asserts BOTH claims are on the page before
+  comparing order (a one-element list trivially matches a prefix).
+  **The rule now generalizes twice over: (a) any fixture writing dates relative
+  to TODAY must undo itself in a `finally`, and (b) on a COUNTED surface,
+  absolute assertions are the same trap** — every other test's committed rows sit
+  in those totals. `test_reimb_api_board.py` solves (b) by asserting through a
+  **scoped overseer** whose office the fixture created fresh, so its counts are
+  about its own claims and nothing else.
+- **⚠ Two R-7-events defects worth carrying forward.** **(1) The live smoke
+  caught what no assertion did:** `record_payout` writes a `paid` external event AND calls
   `notify_paid`, so the claimant was getting two notifications about one payment
   — the less informative one ("your claim is now Paid", no reference, no amount)
   arriving first. Both messages were individually correct, which is exactly why
@@ -90,14 +159,10 @@ expand it into the full task and confirm with you before starting.
   refused the first `start_retention`** because it was a bulk ORM UPDATE (rule 5)
   — and it was right to: starting a legal retention period must appear in the
   hash-chained log. Rewritten to load-and-mutate.
-- **⚠ TEST-HYGIENE DEFECT, the session-#24 disease one table over:**
-  `test_reimb_api_queue.py::_backdate` aged COMMITTED claims to 21 days with FMS
-  and never undid it. The suite shares one database, so every run left another
-  permanently-over-threshold row until `?external_over=true`'s first page was
-  nothing but old fixtures and the assertions stopped being about the claims
-  they named. Fixed with `_undo_backdating` in a `finally` + per-claimant
-  scoping. **The rule generalizes past holidays: ANY fixture that writes dates
-  relative to TODAY must undo itself.**
+- **Smoke accounts (dev DB only):** `board-smoke@doh.gov` (global
+  `admin_officer`) and `board-traveller@doh.gov` (plain `staff`), both
+  `BoardSmoke!2026x`, created at #26 so an aggregate surface can be reconciled
+  over real HTTP. Reuse them rather than minting more; they exist only in dev.
 - **Test-hygiene note (still true):** a full-suite run leaves
   `module.reimbursement` OFF in dev — `test_reimb_api_flag_gate.py`'s
   `reimb_flag_off` fixture restores whatever state it captured. Flip it back with
@@ -120,97 +185,111 @@ expand it into the full task and confirm with you before starting.
 Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS - DONE: the shared core
 workflow engine (#11), R-1 (#12), R-2-engine (#13), R-2-shell (#14), R-4-app (#15),
 R-2-wizard (#16), R-4-screens (#17), R-3 (#18), R-5-gen (#19), R-5-packet (#20),
-R-6-clock (#21), R-6-liq-chain (#22), R-6-liq-settle (#23), R-7-queue (#24) and
-R-7-events (#25). R-7 was SPLIT THREE WAYS (user-confirmed at #24 kickoff):
-R-7-queue DONE -> R-7-events DONE -> R-7-board (this session), which CLOSES R-7.
-Suite at 860 passed, 0 failures. Head 0021. FE 214 vitest.
+R-6-clock (#21), R-6-liq-chain (#22), R-6-liq-settle (#23), R-7-queue (#24),
+R-7-events (#25) and R-7-board (#26). R-7 IS CLOSED (it was split three ways at #24:
+queue -> events -> board). Suite at 890 passed, 0 failures. Head 0021. FE 230 vitest.
 
-Task: Stage C R-7-board - THE PIPELINE BOARD (spec 9.6, 13's counting rows, 14's R-7
-row). R-7-queue made stuck work findable one row at a time; R-7-events made it
-actionable; this session answers the question a bureau chief asks from across the room:
-how much is where. Build (confirm scope at kickoff before writing code):
+Task: Stage C R-8 - INSIGHTS + THE COMMENT-LEARNING LOOP (spec 11, 5.6, 9.2's
+"Insights" screen row, 14's R-8 row). This is spec Objective 3, and it is the first
+feature in the module that makes the system get BETTER as it is used: every return
+already stores its reasons (R-4-screens made >=1 mandatory and reimb_return_events has
+been filling up ever since), and nothing has ever read them back. Build (confirm scope
+at kickoff before writing code):
 
-(1) The board itself - spec 9.6's THREE columns: In Bureau / With FMS / Done. NOTE the
-columns are NOT statuses, they are GROUPS of statuses, and the grouping is the one real
-design decision: `division_approval` + `admin_review` + `returned` + `fms_returned` are
-In Bureau; `handed_to_fms` is With FMS; `paid_closed` + `settled` are Done. Drafts are
-absent for the same reason they are absent from the queue (nobody's oversight, and My
-Work has them) and `cancelled` is absent because spec 6.1 row 9 says "excluded from
-KPIs". Put the grouping in ONE place - services/queue.py already owns the scope and the
-status vocabulary lives in services/status.py, so a per-kind mapping beside
-ALL_TERMINAL_STATES is the natural home. Both KINDS ride one board: a liquidation is
-work in the same pipeline, and forking the board by kind would ask a chief to read two.
+(1) The Insights surface - spec 11: return reasons RANKED BY 90-DAY COUNT, with trend.
+Spec 9.2's row says "Ranked return-reasons bar list, trend, 'promote to pre-check'
+action | Desktop". Note the shape is a RANKED LIST, not the KPI dashboard - spec 13's
+cycle time / return rate / per-division volume and its time-filter + delta rules stay
+in Stage H where master-plan 119 puts them, exactly as R-7-board deferred them. The
+90-day window has a direct precedent to copy: R-7-board's `board.done_window_days`
+(config key, fail-soft via lifecycle.config_int, crossing on the wire so the header
+qualifier quotes the SERVER's number and never a literal).
 
-(2) Column headers carry the NUMBERS, and only those (user-confirmed at #24 kickoff):
-per-column COUNT + PESO TOTAL, nothing else. Spec 13's KPI surface (cycle time, return
-rate, top return reasons) stays in Stage H where master-plan 119 puts it - do NOT build
-it here. The peso total is server-computed and crosses as a 2-dp STRING like every other
-money value (the standing prohibition); SUM over reimb_claims.totals->>'grand' cast to
-numeric, NOT a Python sum over a fetched page, because the header counts the whole
-column and the page is 50 rows.
+(2) PRIVACY IS THE DESIGN CONSTRAINT, not a footnote. Spec 11 says "aggregates only,
+mirroring the 14.7 pattern; per-person return counts are visible only to the person
+themselves." So the ranked list is counts of REASONS, never of people, and there is no
+drill-down from a reason to a claimant. Read 14.7 before designing the query. This is
+also the FIRST module surface whose whole point is aggregation over other people's
+work, so R-7-board's api-standards 9g bullet (c)/(d) and 9f's scope rule both bite:
+decide the read rule deliberately (oversight scope like the board? or a narrower
+"insights" permission?) and say why. A leaked ranked list is less dangerous than the
+board's peso totals but it is still other people's failures.
 
-(3) Scope, and the ONE trap. The board is the same oversight surface as the queue, so it
-reuses queue.oversight_scope + queue.scope_clause verbatim - api-standards 9f: a LIST
-may not borrow a ROW's read rule, and a BOARD is a list with headers. Holding no
-oversight permission is a 403 naming My Work (errors.queue_not_permitted already says
-exactly that). THE TRAP: base_query() excludes terminal claims (it is a queue), and the
-Done column is entirely terminal - so the board needs its own query builder or a
-`include_terminal` flag on that one. Decide deliberately and write down which, because
-silently widening base_query would put paid claims back in the queue.
+(3) "Promote to pre-check" - the loop's actual payoff, and the part that must NOT need
+a deploy. Spec 11: one click creates a warning-level auto-check shown at wizard step 5
+("Claims like yours are often returned because..."), writing an auto_checks row. The
+checklist engine ALREADY has six auto-check types (core/checklist/, R-3) and
+`promoted_check bool` already exists on reimb_return_reason_catalogs (delta register /
+spec 5.6) and has never been read. Check what the engine's check grammar can already
+express BEFORE designing anything new - the R-7-board lesson is that the pre-built
+thing usually needs wiring plus one documented amendment, not rebuilding. A promotion
+must be a DATA change (rule 10 + the R-9 acceptance line "Promotion creates a working
+warning with no deploy").
 
-(4) Routing + shape. `GET /claims/board` on the GATED router beside the queue (a read
-strands nothing - 9e). Consider whether the response is {columns: [{key, label, count,
-total, items}]} with a small per-column page, or headers-only with the existing
-`GET /claims?status=` doing the drill-down. The second is less code and less to keep in
-sync; the first is one request instead of four. Pick one at kickoff and say why.
+(4) The warning is ADVISORY, never a gate. A promoted check is warning-level: it says
+"claims like yours are often returned because..." at step 5 and must never block a
+submit. R-3's hard gate is about MISSING DOCUMENTS, and conflating "often returned" with
+"incomplete" would let a statistic refuse a legitimate claim. Fail-safe direction here
+is the opposite of the usual one: when in doubt, do not warn.
 
-(5) FE: BoardPage + PipelineCard are ALREADY BUILT and unused - reachable only from the
-DEV catalog at UiFoundationPage.tsx:156-166. Wire them to real data; do not rebuild
-them. Check what props they already take BEFORE designing the response shape, because
-they were authored against an imagined one. The board is a THIRD lens on the same rows
-My Work and the queue already render, so reuse work_item/queueMeta rather than authoring
-a third row mapper (delta row 140: two mappers for one row shape is how two lists drift).
-Route + nav entry beside Claim queue, same role gating.
+(5) NO MIGRATION IS EXPECTED for the reading half - reimb_return_events and
+reimb_return_reason_catalogs both exist and `promoted_check` is already a column. If the
+promotion half wants one (an `auto_checks`-shaped row, or a promotion audit trail), say
+why in the delta register FIRST, and check whether the existing checklist catalog tables
+already hold it.
 
-(6) NO MIGRATION is expected. Everything the board needs (status, kind, totals, the
-instance org unit) already exists. If you find yourself wanting a column, stop and say
-why in the delta register first.
+(6) FE: an Insights page + the step-5 advisory. Check the component inventory BEFORE
+authoring anything - a ranked bar list may need a new inventory row (with its
+ui-standards 3/8 amendment), but Callout already exists for the wizard advisory and was
+built for exactly this shape at R-3. Route + nav entry beside Pipeline board, same
+role-gated-for-discoverability doctrine.
 
 Available to build on - do NOT rebuild any of it:
-CORE - the workflow engine (#11), reference numbers (#5), checklist engine (#7),
-documents (#8) + snapshots (#3), attachments (#2) + NEW at R-7-events
+CORE - the workflow engine (#11), reference numbers (#5), checklist engine (#7) incl.
+its six auto-check types, documents (#8) + snapshots (#3), attachments (#2) +
 `attachments.start_retention`, notifications outbox, core/workdays,
 `org_units.descendants_or_self`.
 MODULE - services/lifecycle.py is the ONLY sanctioned caller of start_instance/
-execute_action; services/cash_advance.py owns reimb_cash_advances; services/settlement.py
-owns record_settlement + spawn_reimbursement; services/external.py (NEW at R-7-events)
-owns the FMS relay + record_payout; services/queue.py owns oversight scope + the FMS
-working-day count; services/status.py is kind-aware. api/deps.py owns the shared list
-mappers (work_item, holder_names, claimant_names, external_event_out).
-NOTE api-standards 9f: a LIST may not borrow a ROW's read rule.
-NOTE workflow-standards 12 now has an INSTANCES TABLE (settle + mark_paid) - read it
-before adding any data-carrying transition.
-DEFERRED past R-7: spec 13's KPI surface -> Stage H. R-8 (insights / the return-reason
-learning loop) and R-9 (hardening + the pilot gate) follow.
+execute_action (and now owns `config_int`, the fail-soft config reader every window/
+cadence value uses); services/cash_advance.py owns reimb_cash_advances;
+services/settlement.py owns record_settlement + spawn_reimbursement; services/external.py
+owns the FMS relay + record_payout; services/queue.py owns oversight scope, the FMS
+working-day count AND the board's aggregate (`column_totals` - copy its GROUP-BY-then-
+bucket-in-Python shape rather than a SQL CASE, and its reason: an unmapped row must stay
+observable); services/status.py is kind-aware and owns the board column mapping.
+api/deps.py owns the shared list mappers; api/queue.py owns `_queue_rows`/
+`_urgency_first`, which any third list-shaped surface should reuse.
+NOTE api-standards 9f (a list may not borrow a row's read rule) + NEW 9g (a collection
+VIEW is a sibling path; an aggregate is still money; state what the page hides).
+NOTE workflow-standards 12's INSTANCES TABLE - read it before adding any data-carrying
+transition.
+DEFERRED past R-8: spec 13's KPI surface + its "unlinked to activity" board filter ->
+Stage H. R-9 (hardening + the pilot gate) follows and CLOSES Stage C.
 
-TEST HYGIENE (learned twice now, sessions #24 and #25): ANY fixture that writes dates
-relative to TODAY must undo itself in a `finally` - the suite shares one database.
-#24 was holidays in the recent past; #25 was claims backdated to 21 days with FMS, which
-silently filled the `external_over` page with old fixtures. Scope list assertions by
-claimant_id rather than trusting page 1.
-LIVE SMOKE EARNS ITS PLACE: #25's 28-check smoke found a duplicate-notification defect
-every unit test passed - both messages were individually correct. Budget time for it.
+TEST HYGIENE (learned THREE times now - #24, #25, #26):
+(a) ANY fixture that writes dates relative to TODAY must undo itself in a `finally`.
+#26's full suite FAILED on this: two queue tests had leaked aged claims for three
+sessions until 54 permanently-aged rows pushed a fresh fixture off page 1.
+(b) On a COUNTED or AGGREGATED surface, absolute assertions are the same trap wearing a
+new coat - every other test's committed rows are in your totals. Assert through a SCOPED
+actor whose org unit the fixture created fresh (see tests/test_reimb_api_board.py), or
+capture-and-delta. R-8's ranked counts are exactly this shape, so plan for it from the
+first test rather than after the first mysterious failure.
+LIVE SMOKE EARNS ITS PLACE: #25's found a duplicate-notification defect every unit test
+passed; #26's reconciled the board's three columns against a hand-bucketed raw GROUP BY,
+which is what actually discharged spec 14's "board totals match DB". Budget time for it,
+and for an aggregate surface make the smoke a RECONCILIATION, not a shape check.
 OPS: after touching documents/, seeds.py or ops/, run `docker compose restart worker
 beat` (tech-stack 5). The FE toolchain lives in the `web` container:
 `docker compose exec web sh -c "cd /app && npm run typecheck && npm run lint && npm test"`.
-pytest 860 (0 failures), lint-imports 3/3, FE gate green (214). Dev flag ON - but a full
+pytest 890 (0 failures), lint-imports 3/3, FE gate green (230). Dev flag ON - but a full
 suite run leaves it OFF; `python -m office_connect.ops.bootstrap set-flag
 module.reimbursement --on` restores it.
 Push cadence: once at the Stage C QA gate.
-Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - the R-7-events rows
+Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - the R-7-board rows
 and section 3's R-0 tracker), docs/standards/workflow-standards.md (9 + 12),
-api-standards 9/9a/9b/9c/9e/9f, ui-standards 3+4, master-plan 1.1 #2/#3/#5/#8, and spec
-9.6, 6.1, 13, 14's R-7 row.
+api-standards 9/9a/9b/9c/9e/9f/9g, ui-standards 3+4, master-plan 1.1 #2/#3/#5/#7/#8, and
+spec 11, 5.6, 9.2's Insights row, 14.7 (the privacy pattern) and 14's R-8 row.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed.
 ```
 
@@ -222,7 +301,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet + **R-6 ✅** clock/liq-chain/liq-settle + **R-7** queue ✅ / events ✅ / board) | 11–25 | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet + **R-6 ✅** clock/liq-chain/liq-settle + **R-7 ✅** queue/events/board — **R-8 next**) | 11–26 | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
@@ -243,6 +322,150 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-05 (session 26 — Stage C R-7-board: the pipeline board. R-7 CLOSED)**
+  — R-7-queue made stuck work **findable** one row at a time, R-7-events made it
+  **actionable**; this session answers the question a bureau chief asks from
+  across the room, which is **how much is where**. Spec §9.6 calls the board
+  "the module's public face" and spec §14 grades it on exactly one sentence —
+  *"board totals match DB"* — so the counts and the peso totals are the product
+  and the cards are context.
+  - **The grouping lives ON the `Vocabulary`, per kind, and that is the one real
+    design decision.** The columns are GROUPS of statuses (spec §9.2 says so out
+    loud), so `board_column` sits beside `labels` where a state cannot be
+    authored without one. The stakes differ from a label's, and that is the
+    argument: an unlabelled state renders as a raw code at a user **who can see
+    it is wrong**, whereas a state with no column disappears from a peso total
+    with nothing on screen to say so. `None` is therefore an authored
+    declaration — `draft` (nobody's oversight; My Work has it) and `cancelled`
+    (spec §6.1 row 9, "excluded from KPIs" — 38 claims and ₱247,000 that never
+    disbursed). `_assert_board_columns` runs at import and a test builds a
+    deliberately broken vocabulary to prove it bites, because an assertion
+    nothing exercises is a comment with a runtime cost.
+  - **The trap nobody would find twice: the column sets must be PAIRWISE
+    DISJOINT.** `column_totals` groups by status ACROSS both kinds in one
+    statement and buckets the rows through the derived sets, so a code that one
+    kind called In Bureau and another called Done would be counted in BOTH — and
+    the board would total *more than the database holds*, which is precisely the
+    sentence §14 grades. Asserted at import and pinned by its own test.
+  - **`include_terminal=False`, not a second query builder.** Done is entirely
+    terminal and `queue.base_query` excludes exactly that — its own R-7-queue
+    docstring has said since session 24 that "R-7-board's columns are where Done
+    gets counted". The flag won because `base_query` is the ONE definition of
+    *which claims may this actor see*, and a second builder is a second copy of
+    a **security predicate**: a drifted scope clause leaks, where a drifted
+    display mapper merely renders wrong. The widening risk is a *default*
+    problem, not a parameter problem. Explicitly rejected as too clever:
+    "drop the terminal rule whenever `statuses` is given", which would silently
+    turn `GET /claims?status=paid_closed` on the QUEUE into a list of paid
+    claims. One test asserts both ends — in Done, absent from the queue.
+  - **One grouped aggregate, `GROUP BY status`, not a SQL `CASE`.** The mapping
+    then lives in one place instead of two, a dozen rows come back — and the
+    real reason: **an unmapped status becomes observable.** A code left over
+    from a retired definition version lands in no column and is LOGGED, where a
+    `CASE` would silently `ELSE NULL` it. Which is also why the aggregate does
+    not pre-filter on `ALL_BOARD_STATES`: that would hide the very rows the
+    warning exists to catch. **Rejected: `core_workflow_instances.amount`** —
+    already joined, already `numeric(12,2)`, no cast needed — because it is the
+    engine's tier-routing guard input, not the module's money of record, and a
+    board totalling the routing input would drift from the claim the day those
+    two diverge. The `::numeric` cast on JSONB text is safe only because
+    `compute.py` is the sole writer of `totals["grand"]` and goes through
+    `money_str`; that is now a load-bearing invariant of another module and is
+    named in the docstring.
+  - **Done is bounded, the live columns are not** (user-confirmed at kickoff).
+    `paid_closed` and `settled` accumulate forever, and an all-time figure stops
+    saying anything about how the bureau is doing this quarter. 90 calendar days
+    via `board.done_window_days`, fail-soft. In Bureau and With FMS stay
+    unbounded on purpose — a claim stuck since March is exactly what spec §7
+    rule 5 calls non-negotiable to show. The window's field is **`updated_at`**,
+    because a terminal claim is read-only with no amendment route, so its
+    `updated_at` IS the closing instant and it is the one field that means that
+    on both kinds; `paid_on` is reimbursement-only and records when the *money*
+    moved, which can precede the recording.
+  - **`GET /board`, and the reason is a real trap** (user-confirmed at kickoff).
+    `GET /claims/board` is the obvious URL and does not work: `claims.router` is
+    included first, declares `GET /claims/{claim_id}`, FastAPI matches in
+    registration order, and the path param has no convertor — so the request is
+    read as a claim whose id is `"board"` and **422s**. Making it work means
+    pinning `include_router` order, a dependency nothing declares and a future
+    alphabetization silently breaks. A sibling segment is correct by
+    construction. A test asserts BOTH halves so the reason outlives the
+    decision. Now **api-standards §9g**.
+  - **Done sorts differently, and it has to.** A terminal state CLEARS the
+    holder, so `holder_since` is null on every Done row: "longest waiting" is
+    not merely wrong there, it is *undefined* — every row would tie on NULL and
+    fall through to `id`. Done sorts `updated_at DESC` (the same field the
+    window filters on) and skips the urgency lift, because floating a finished
+    claim over a more recently finished one answers a question nobody asked.
+  - **The FE components were WIRED, not rebuilt** — and both needed a
+    documented amendment first. `BoardColumn` had a `count` and no money slot
+    and `BoardPage` had no skeleton or empty state, which ui-standards makes
+    mandatory on every list and api-standards §9f calls a board. `PipelineCard`
+    was explicitly "a board `<article>`, **no link affordance**" while spec §9.6
+    says "clicking a card opens the tracker" — and standards outrank the
+    reference spec, so the inventory was **amended rather than quietly
+    contradicted**. The link goes on the TITLE under a stretched overlay: the
+    whole card is clickable, and the accessible name stays "Regional
+    immunization review" instead of ref + chip + title + meta read aloud in
+    full, forty times down a column.
+  - **`boardMeta` is a third meta composer, and the Done column is why.** Delta
+    row 140's rule is one *row mapper* per row shape and it held — the board
+    sends `QueueItemOut` unchanged, and `_queue_rows`/`_urgency_first` were
+    extracted so three columns share ONE batched pass (one holiday window, one
+    `DISTINCT ON`, one due-date query, not nine round-trips). What could not be
+    reused was `queueMeta`: `days_in_state` is 0 on a terminal claim, so it
+    would print **"0 days in this step" on a claim paid three weeks ago** — a
+    false statement the queue never had to make, because a queue has no terminal
+    rows. The shared `daysPhrase` was extracted so the working-days-with-FMS vs
+    calendar-days-in-state distinction cannot fork.
+  - **⚠ The full suite caught a THIRD instance of the session-#24 disease — in
+    the file that documents it.** `test_reimb_api_queue.py`'s
+    `test_stalled_claims_sort_above_longer_waiting_ones` and
+    `test_a_global_grant_sees_every_office` both aged claims (365/730 and
+    3650/3649 days) and never undid it, while `_backdate`'s own docstring says
+    *"every caller must undo this in a `finally`"*. It leaked for three sessions
+    and then failed: **54 permanently-aged rows had piled up**, the queue pages
+    at 50 in longest-waiting-first order, so the freshly-aged claim fell off
+    page 1 while the older one stayed — and the assertion was about a
+    one-element list. The lift was working the whole time. Both are now wrapped,
+    the 54 rows were reset, and the sort test additionally asserts **both**
+    claims are on the page before comparing the order, because a one-element
+    list trivially matches a prefix.
+  - **The new hygiene rule this surface introduces:** on a COUNTED surface,
+    absolute assertions are the same trap wearing a new coat — every other
+    test's committed claims sit in these three columns, so `count == 3` is a
+    claim about the whole suite. `test_reimb_api_board.py` asserts through a
+    **scoped overseer** whose office `standard_cast` created fresh for that
+    test, which makes every count and total about that test's claims and nothing
+    else; the two tests that genuinely need a global grant assert membership
+    only, never a number.
+  - **The live smoke is what earns §14's line — 47/47 through the real stack on
+    :8001.** Its centrepiece is a **reconciliation, not a shape check**: a raw
+    `GROUP BY` over `reimb_claims` hand-bucketed through the three columns and
+    compared to the endpoint, column for column and peso for peso
+    (**In Bureau 1507 / ₱9,606,500 · With FMS 387 / ₱2,511,000 · Done 171 /
+    ₱1,098,000**, with 39 cancelled claims and ₱253,500 shown sitting on no
+    column). The behavioural half then drove a real `/mark-paid`: the claim left
+    With FMS and led Done, both counts moved by one, both totals moved by the
+    SAME ₱6,500, In Bureau was untouched, and **the board's grand total did not
+    change** — which is the assertion that a move is a move and not a double
+    count. Routing was pinned live too: `/board` 200, `/claims/board` **422**,
+    and a plain traveller **403** whose message names My Work.
+  - **Two things the smoke found that no unit test would have.** (1) Reconciling
+    while the suite was still committing produced a one-claim divergence — not a
+    defect but the READ COMMITTED skew, *observed* rather than merely reasoned
+    about, and now recorded as accepted. **An aggregate surface must be
+    reconciled against a QUIET database**, which is worth carrying into R-8.
+    (2) The first claim the smoke picked off With FMS was a **liquidation**, and
+    `/mark-paid` correctly refused it with R-7-events' chokepoint (*"a
+    liquidation is settled against its cash advance rather than paid out"*) — an
+    incidental confirmation that both kinds really do ride one board, arriving
+    from the top of a live column rather than from a fixture.
+  - **No migration** — everything the board needs already existed; head stays
+    `0021`. Verified: pytest **890, 0 failures**, lint-imports 3/3, `alembic
+    check` clean, seeds idempotent (161 unchanged, 0 written), FE gate green
+    (tsc + eslint + **230 vitest** + build), live smoke **47/47**.
 
 - **2026-08-05 (session 25 — Stage C R-7-events: the FMS journey record)** —
   R-7-queue made FMS-held claims **findable**; this session made them

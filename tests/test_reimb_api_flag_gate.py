@@ -60,6 +60,10 @@ async def test_flag_off_404s_the_whole_surface_even_authenticated(
         # R-7-queue: a READ strands nothing, so §9a's un-gated exemption does
         # not reach the oversight queue. It 404s with the rest of the surface.
         ("GET", "/api/v1/reimbursement/claims", {}),
+        # R-7-board: the pipeline board is the same read on the same rows with
+        # counts over it, so it takes the queue's answer, not the actions'
+        # exemption.
+        ("GET", "/api/v1/reimbursement/board", {}),
         ("GET", "/api/v1/reimbursement/claims/1", {}),
         ("GET", "/api/v1/reimbursement/claims/1/timeline", {}),
         # R-7-events: the FMS status relay is gated for the same §9e reason as

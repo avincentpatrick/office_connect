@@ -6,6 +6,8 @@ import {
   CLAIM_STATUS_TO_SEMANTIC,
   actionLabel,
   approveConsequence,
+  boardMeta,
+  daysPhrase,
   queueMeta,
 } from "./claim-status";
 
@@ -135,5 +137,61 @@ describe("claim-status — the FMS leg", () => {
     );
     expect(meta).toContain("3 days in this step");
     expect(meta).not.toContain("with FMS");
+  });
+});
+
+describe("boardMeta (R-7-board)", () => {
+  it("leads with the traveller and ends with the peso figure", () => {
+    // Spec §9.2: cards show ref, name, ₱ and days-in-state. The ref is the
+    // card's own row, so the meta line carries the other three.
+    const meta = boardMeta(makeQueueItem({ days_with_fms: 4 }));
+    expect(meta).toBe("Maria Santos · 4 working days with FMS · ₱6,750.00");
+  });
+
+  it("dates a closed claim instead of claiming it has sat 0 days", () => {
+    // THE reason the board composes its own line. A terminal claim has no
+    // holder and no `holder_since`, so `days_in_state` is 0 — and the queue's
+    // wording would print "0 days in this step" on a claim paid weeks ago. The
+    // queue never had to handle it, because a queue has no terminal rows.
+    const meta = boardMeta(
+      makeQueueItem({
+        status: "paid_closed",
+        status_label: "Paid / Closed",
+        holder_kind: null,
+        holder_display: null,
+        holder_since: null,
+        next_action: null,
+        days_in_state: 0,
+        days_with_fms: null,
+        updated_at: "2026-07-15T02:00:00Z",
+      }),
+    );
+    expect(meta).toContain("Closed Jul 15, 2026");
+    expect(meta).not.toContain("0 days in this step");
+  });
+
+  it("drops the next action — a board is read, not worked", () => {
+    const meta = boardMeta(makeQueueItem({ days_with_fms: null, days_in_state: 3 }));
+    expect(meta).not.toContain("Next:");
+    expect(meta).toContain("3 days in this step");
+  });
+});
+
+describe("daysPhrase is shared, so the two lists cannot drift", () => {
+  it("gives the queue and the board the same words for the same row", () => {
+    // The distinction it carries is load-bearing: with FMS is counted in Manila
+    // WORKING days off the holiday calendar, everything else in calendar days.
+    // Two copies of that branch is how one list eventually starts saying
+    // "12 days with FMS" about a number that meant working days.
+    for (const item of [
+      makeQueueItem({ days_with_fms: 12 }),
+      makeQueueItem({ days_with_fms: 1 }),
+      makeQueueItem({ days_with_fms: null, days_in_state: 1 }),
+      makeQueueItem({ days_with_fms: null, days_in_state: 9 }),
+    ]) {
+      const phrase = daysPhrase(item);
+      expect(queueMeta(item)).toContain(phrase);
+      expect(boardMeta(item)).toContain(phrase);
+    }
   });
 });

@@ -518,3 +518,57 @@ rule, not a style note.
 **Deferred, deliberately:** the pagination *envelope* is still a Stage-D item;
 until then lists are `?limit=&offset=` with a server-side ceiling, following
 `core/api/directory.py`.
+
+## §9g. A collection VIEW is a sibling path, and an aggregate is still money (R-7-board, 2026-08-05)
+
+`GET /reimbursement/board` is the first endpoint that is neither a row nor a
+list, but a **view over a set** — three columns, each with a count, a peso total
+and a short page of rows. Four things came out of building it, and the first is
+the one that would have cost an afternoon.
+
+- **A literal segment under a sibling router's `{id}` route is decided by
+  include order, which is not a contract.** `GET /claims/board` looks obviously
+  right and does not work: `claims.router` is included before `queue.router` and
+  declares `GET /claims/{claim_id}`, FastAPI matches routes in registration
+  order, and the path parameter carries no convertor — so the request is read as
+  a claim whose id is `"board"` and 422s on validation. Making it work means
+  either reordering `include_router` calls or typing every `{claim_id:int}` in
+  six files; the first makes correctness depend on a line order nothing declares
+  and a future alphabetization would silently break, and the second changes the
+  declared path strings that feed OpenAPI. **Give the view its own segment.**
+  `GET /board` is order-independent by construction, and it is honest: the board
+  is its own read resource (§9e), not a claim. Pin BOTH halves in a test — the
+  new path answers, and the tempting one 422s — so the reason outlives the
+  decision.
+
+- **A board is a LIST with headers, so §9f applies unchanged.** It is scoped on
+  the OVERSIGHT permission set, never on the route's globally-granted
+  `reimb.claim.read`, and an actor who oversees nobody is refused with the same
+  403 and the same sentence rather than a second one. The rule matters *more*
+  here than on a list: a leaked list gives up rows one page at a time, a leaked
+  board gives up a division's whole budget in a single integer. So the scope
+  clause must be asserted on the **aggregate**, not merely on the rows — cards
+  filtered correctly under a header that counted the whole agency is a defect
+  that looks exactly like working software.
+
+- **A server-computed aggregate is money and crosses like money.** Same 2-dp
+  string as every row-level value (§2), `"0.00"` on an empty set — never null,
+  never a JSON number. And it is computed in SQL over the whole set, never in
+  Python over the page that was fetched: a total summed from the visible rows
+  under-reports by exactly what did not fit on screen, while looking entirely
+  correct. The corollary binds the client too — a page given both `total` and
+  `items` must render the server's `total` and never re-derive it, and that is
+  worth a test whose fixture deliberately disagrees with itself.
+
+- **§9f's "state what the page is hiding", second instance — and the bound rides
+  the envelope.** `count` describes the whole column; `items` is capped; the cap
+  itself (`card_limit`) is in the response so the "showing 20 of 137" line quotes
+  the server's number rather than a literal the browser has to keep in step. The
+  same applies to any window a view applies on its own initiative: this board's
+  Done column covers a recent period, so `done_window_days` crosses too and the
+  header qualifier is composed from it. A bound the client cannot see is a bound
+  the client will eventually contradict.
+
+**Not a filter surface.** The board takes no query parameters at all — no
+`?limit=`, no status, no kind. A client-tunable cap on a board is a request to
+page a board, and paging is what the list endpoint next door is for.

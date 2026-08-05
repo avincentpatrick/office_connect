@@ -7,6 +7,7 @@ import { NotFoundPage } from "../pages/NotFoundPage";
 import { PasswordChangePage } from "../pages/PasswordChangePage";
 import { ClaimConfirmationPage } from "../pages/reimbursement/ClaimConfirmationPage";
 import { CashAdvancesPage } from "../pages/reimbursement/CashAdvancesPage";
+import { ClaimBoardPage } from "../pages/reimbursement/ClaimBoardPage";
 import { ClaimPage } from "../pages/reimbursement/ClaimPage";
 import { ClaimQueuePage } from "../pages/reimbursement/ClaimQueuePage";
 import { ItineraryStepPage } from "../pages/reimbursement/ItineraryStepPage";
@@ -46,6 +47,9 @@ export const router = createBrowserRouter([
           // R-7-queue. Same doctrine: reachable by anyone, refused by the
           // server for anyone who oversees nobody.
           { path: "queue", element: <ClaimQueuePage /> },
+          // R-7-board. Same doctrine again: the board is reachable by anyone
+          // and refused by the server for anyone who oversees nobody.
+          { path: "board", element: <ClaimBoardPage /> },
           { path: "claims/:claimId", element: <ClaimPage /> },
           { path: "claims/:claimId/trip", element: <TripStepPage /> },
           { path: "claims/:claimId/itinerary", element: <ItineraryStepPage /> },

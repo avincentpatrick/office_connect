@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Banknote, Home, Inbox, Palette, ReceiptText } from "lucide-react";
+import { Banknote, Home, Inbox, LayoutGrid, Palette, ReceiptText } from "lucide-react";
 import { isFeatureOn } from "../lib/flags";
 
 /**
@@ -60,7 +60,21 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Inbox,
         requiredModule: "module.reimbursement",
         requiredRoles: ["admin_officer", "approver", "system_admin"],
-        intentKeywords: ["queue", "FMS", "follow up", "stuck", "overdue", "pipeline"],
+        intentKeywords: ["queue", "FMS", "follow up", "stuck", "overdue"],
+      },
+      {
+        // R-7-board. Spec §9.6 calls this the Director/Admin DEFAULT view, so
+        // it sits beside the queue with the same role gating — which is
+        // discoverability, not authorization: the server refuses anyone who
+        // oversees nobody, and hiding a link is not a boundary.
+        label: "Pipeline board",
+        to: "/reimbursement/board",
+        icon: LayoutGrid,
+        requiredModule: "module.reimbursement",
+        requiredRoles: ["admin_officer", "approver", "system_admin"],
+        intentKeywords: [
+          "board", "pipeline", "overview", "totals", "how much", "where",
+        ],
       },
       { label: "UI foundation", to: "/ui-foundation", icon: Palette, devOnly: true },
     ],

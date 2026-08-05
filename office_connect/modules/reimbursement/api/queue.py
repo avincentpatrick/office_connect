@@ -1,4 +1,9 @@
-"""The oversight queue — ``GET /claims``, the module's first LIST endpoint.
+"""The oversight surfaces — ``GET /claims`` (the queue) and ``GET /board``.
+
+Two lenses on one set of rows, sharing one scope rule and one row mapper.
+``GET /claims`` was the module's first LIST endpoint (R-7-queue); ``GET /board``
+is spec §9.6's pipeline board (R-7-board), which is the same list with counts
+and peso totals over it.
 
 Spec §7 rule 5: *"Stalls are visible, not silent … The Admin Officer's queue
 includes an 'External > 10 working days' filter for FMS follow-ups."* This is
@@ -24,6 +29,7 @@ like the rest of the module's surface.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -32,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from office_connect.core.auth.dependencies import require_permission
 from office_connect.core.auth.principal import Principal
 from office_connect.core.db import get_session
+from office_connect.core.money import money_str
 from office_connect.core.time import utc_now
 from office_connect.modules.reimbursement.api.deps import (
     claimant_names,
@@ -39,6 +46,8 @@ from office_connect.modules.reimbursement.api.deps import (
     work_item,
 )
 from office_connect.modules.reimbursement.api.schemas import (
+    BoardColumnOut,
+    ClaimBoardOut,
     ClaimQueueOut,
     QueueItemOut,
 )
@@ -49,6 +58,7 @@ from office_connect.modules.reimbursement.services import (
     external,
     queue,
 )
+from office_connect.modules.reimbursement.services import status as st
 
 logger = logging.getLogger(__name__)
 
@@ -157,15 +167,50 @@ async def list_claims(
         )
         fms_days = await queue.days_with_fms(session, page, now=now)
 
-    holders = await holder_names(session, page)
-    claimants = await claimant_names(session, page)
-    # One DISTINCT ON for the whole page (R-7-events). "12 working days with FMS"
+    items = await _queue_rows(
+        session, page, principal=principal, now=now, threshold=threshold,
+        fms_days=fms_days,
+    )
+    return ClaimQueueOut(
+        items=_urgency_first(items), total=total, followup_working_days=threshold
+    )
+
+
+async def _queue_rows(
+    session: AsyncSession,
+    claims: list[ReimbClaim],
+    *,
+    principal: Principal,
+    now: datetime,
+    threshold: int,
+    fms_days: dict[int, int] | None = None,
+) -> list[QueueItemOut]:
+    """A set of claims as oversight rows, with every lookup batched ONCE.
+
+    Extracted at R-7-board so the board is a third lens on the same row rather
+    than a second copy of this block. Delta row 140's rule ("two mappers for one
+    row shape is how two lists drift") applies to the batching too: three
+    columns each doing their own holiday load, ``DISTINCT ON`` and due-date
+    query would be nine round-trips for one screen, and the first one to be
+    optimized would start answering a different question from the others.
+
+    ``fms_days`` is passed in when the caller has already computed it for a
+    different set (the queue's ``external_over`` branch filters on it before
+    paging); otherwise it is loaded here, once, for everything given.
+    """
+    if not claims:
+        return []
+    if fms_days is None:
+        fms_days = await queue.days_with_fms(session, claims, now=now)
+    holders = await holder_names(session, claims)
+    claimants = await claimant_names(session, claims)
+    # One DISTINCT ON for the whole set (R-7-events). "12 working days with FMS"
     # and "…and the last we heard it was With Accounting" are different facts,
     # and the second is what decides whether the follow-up call is worth making.
-    fms_latest = await external.latest_events(session, [c.id for c in page])
+    fms_latest = await external.latest_events(session, [c.id for c in claims])
     due = await actions.active_step_due_dates(
         session,
-        [c.workflow_instance_id for c in page if c.workflow_instance_id is not None],
+        [c.workflow_instance_id for c in claims if c.workflow_instance_id is not None],
     )
 
     def _holder_display(claim: ReimbClaim) -> str | None:
@@ -178,7 +223,7 @@ async def list_claims(
         return None
 
     items: list[QueueItemOut] = []
-    for claim in page:
+    for claim in claims:
         base = work_item(
             claim,
             holder_display=_holder_display(claim),
@@ -202,16 +247,120 @@ async def list_claims(
                 ),
             )
         )
+    return items
 
-    # Spec §7 rule 5: "anything Overdue sorts to top". The SQL already ordered
-    # longest-waiting-first; this lifts the two urgency classes above it without
-    # disturbing that order within each class (Python sort is stable).
-    items.sort(
-        key=lambda i: (
-            not i.external_followup and i.sla_state != actions.OVERDUE,
-        )
+
+def _urgency_first(items: list[QueueItemOut]) -> list[QueueItemOut]:
+    """Spec §7 rule 5 / §9.6: "anything Overdue sorts to top".
+
+    The SQL already ordered the set; this lifts the two urgency classes above it
+    without disturbing that order within each class (Python sort is stable), so
+    a column stays longest-waiting-first underneath the claims that need
+    chasing.
+    """
+    return sorted(
+        items,
+        key=lambda i: (not i.external_followup and i.sla_state != actions.OVERDUE,),
     )
 
-    return ClaimQueueOut(
-        items=items, total=total, followup_working_days=threshold
+
+@router.get("/board", response_model=ClaimBoardOut)
+async def claim_board(
+    principal: Principal = Depends(require_permission("reimb.claim.read")),
+    session: AsyncSession = Depends(get_session),
+):
+    """The pipeline board — spec §9.6, the module's public face.
+
+    Three columns of status GROUPS with a count and a peso total on each header.
+    My Work answers "what is mine" and the queue answers "what is stuck"; this
+    answers the question a bureau chief asks from across the room, which is
+    **how much is where**.
+
+    Same read rule as the queue, deliberately: api-standards §9f says a list may
+    not borrow a row's read rule, and a board is a list with headers. Anyone who
+    oversees nobody is refused with the queue's own sentence rather than a
+    second one — and the refusal matters more here than there, because this is
+    the first surface whose HEADLINE is aggregated peso data.
+
+    **Why ``/board`` and not ``/claims/board``:** ``claims.router`` is included
+    before this one and declares ``GET /claims/{claim_id}``, which FastAPI
+    matches first — a literal segment under ``/claims/`` would be swallowed and
+    422 on ``claim_id="board"``. Making it work would mean pinning router
+    include order, which is not a contract anyone can see. A sibling segment is
+    correct by construction (api-standards §9g).
+    """
+    now = utc_now()
+    is_global, unit_ids = await queue.oversight_scope(
+        session, principal.user_id, now=now
+    )
+    if not is_global and not unit_ids:
+        raise errors.queue_not_permitted()
+
+    threshold = await queue.followup_threshold(session)
+    window = await queue.done_window_days(session)
+    cutoff = queue.done_cutoff(now, window)
+
+    totals, unmapped = await queue.column_totals(
+        session, is_global=is_global, unit_ids=unit_ids, cutoff=cutoff
+    )
+    for status, count in unmapped.items():
+        # Cannot happen while every state declares a column
+        # (`status._assert_board_columns` refuses otherwise) — but a status code
+        # left over from a retired definition version would land here, and the
+        # failure mode is money missing from a total with nothing on screen to
+        # say so. Spec §14 grades this surface on "board totals match DB".
+        logger.warning(
+            "reimb.board.unmapped_status status=%s count=%s actor=%s — these "
+            "claims are in no column and are missing from the board totals.",
+            status,
+            count,
+            principal.user_id,
+        )
+
+    cards: dict[str, list[ReimbClaim]] = {}
+    for column, _label in st.BOARD_COLUMNS:
+        cards[column] = list(
+            (
+                await session.execute(
+                    queue.board_card_query(
+                        is_global=is_global,
+                        unit_ids=unit_ids,
+                        column=column,
+                        cutoff=cutoff,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    # ONE pass over every card on the board — one holiday window, one DISTINCT
+    # ON, one due-date query for all three columns rather than three of each.
+    flat = [claim for column, _ in st.BOARD_COLUMNS for claim in cards[column]]
+    rows = {
+        row.id: row
+        for row in await _queue_rows(
+            session, flat, principal=principal, now=now, threshold=threshold
+        )
+    }
+
+    def _column(column: str, label: str) -> BoardColumnOut:
+        ordered = [rows[c.id] for c in cards[column] if c.id in rows]
+        return BoardColumnOut(
+            key=column,
+            label=label,
+            count=totals[column][0],
+            total=money_str(totals[column][1]),
+            # Done keeps the SQL's most-recently-finished order. The urgency
+            # lift is for work that still needs chasing, and lifting a finished
+            # claim over a more recently finished one would answer a question
+            # nobody asked of a Done column.
+            items=ordered if column == st.BOARD_DONE else _urgency_first(ordered),
+        )
+
+    return ClaimBoardOut(
+        columns=[_column(column, label) for column, label in st.BOARD_COLUMNS],
+        followup_working_days=threshold,
+        card_limit=queue.BOARD_CARD_LIMIT,
+        done_window_days=window,
     )

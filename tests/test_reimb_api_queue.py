@@ -179,10 +179,13 @@ async def test_a_global_grant_sees_every_office(
     _backdate(two.claim, days=3649)
     await app_session.commit()
 
-    await _signin(client, boss)
-    ids = [i["id"] for i in (await client.get(f"{BASE}/claims")).json()["items"]]
-    assert one.claim.id in ids and two.claim.id in ids
-    assert one.office.id != two.office.id
+    try:
+        await _signin(client, boss)
+        ids = [i["id"] for i in (await client.get(f"{BASE}/claims")).json()["items"]]
+        assert one.claim.id in ids and two.claim.id in ids
+        assert one.office.id != two.office.id
+    finally:
+        await _undo_backdating(app_session, one.claim, two.claim)
 
 
 # --- membership: what a queue is, and is not -------------------------------
@@ -406,6 +409,14 @@ async def test_stalled_claims_sort_above_longer_waiting_ones(
     A year with FMS, not three weeks: the threshold is working days off a shared
     holiday calendar, and this test is about the ORDER, so it must not be able
     to fail because of how the calendar happened to fall.
+
+    **Both claims are undone in a `finally`, and this test is why the rule
+    exists.** It leaked for three sessions and then failed, from its own
+    fixtures: every run left a 365-day and a 730-day claim behind, the queue
+    pages at 50 in longest-waiting-first order, and once 54 permanently-aged
+    rows had piled up the freshly-aged `stalled` fell off page 1 while the
+    older `waiting` stayed — so `ours` came back with one id and the assertion
+    was about the wrong set. The lift was working the whole time.
     """
     stalled = await _at_fms(app_session, make_user)
     waiting = await standard_cast(app_session, make_user)
@@ -414,13 +425,19 @@ async def test_stalled_claims_sort_above_longer_waiting_ones(
     )
     boss = await _global_admin(app_session, make_user)
     _backdate(stalled.claim, days=365)
-    waiting.claim.holder_since = utc_now() - timedelta(days=730)
+    _backdate(waiting.claim, days=730)
     await app_session.commit()
 
-    await _signin(client, boss)
-    items = (await client.get(f"{BASE}/claims")).json()["items"]
-    ours = [i for i in items if i["id"] in (stalled.claim.id, waiting.claim.id)]
-    assert [i["id"] for i in ours] == [stalled.claim.id, waiting.claim.id]
+    try:
+        await _signin(client, boss)
+        items = (await client.get(f"{BASE}/claims")).json()["items"]
+        ours = [i for i in items if i["id"] in (stalled.claim.id, waiting.claim.id)]
+        # Both must be ON the page before the order means anything — otherwise a
+        # one-element list trivially "matches" a prefix of the expected order.
+        assert len(ours) == 2
+        assert [i["id"] for i in ours] == [stalled.claim.id, waiting.claim.id]
+    finally:
+        await _undo_backdating(app_session, stalled.claim, waiting.claim)
 
 
 async def test_the_total_counts_beyond_the_page(

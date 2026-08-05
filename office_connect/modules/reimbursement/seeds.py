@@ -101,6 +101,14 @@ REIMB_CONFIGS = SeedDataset(
         _cfg("sla.external_followup_working_days", {"working_days": 10},
              "Flag a claim for FMS follow-up after 10 working days",
              "build spec §7 rule 5 (work-management)"),
+        # R-7-board. CALENDAR days, not working days: this bounds a display
+        # window, not a deadline — nobody is late because of it, and "the last
+        # 90 days" is what a bureau chief means. In Bureau and With FMS are
+        # unbounded; only Done needs a horizon, because paid and settled claims
+        # accumulate forever and an all-time peso figure stops being readable.
+        _cfg("board.done_window_days", {"days": 90},
+             "The pipeline board's Done column covers the last 90 days",
+             "build spec §9.6 (pipeline board)"),
     ),
 )
 

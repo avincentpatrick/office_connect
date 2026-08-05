@@ -6,6 +6,8 @@ import type {
   ChecklistItem,
   ChecklistResponse,
   ChecklistSummary,
+  ClaimBoardColumn,
+  ClaimBoardResponse,
   ClaimDetail,
   ClaimQueueResponse,
   ClaimTotals,
@@ -248,6 +250,64 @@ export function makeClaimQueue(
     items: [makeQueueItem()],
     total: 1,
     followup_working_days: 10,
+    ...overrides,
+  };
+}
+
+/**
+ * One pipeline-board column (R-7-board). `count` defaults to `items.length` —
+ * the uneventful case — so a test about the "showing N of M" line has to say so
+ * by passing a bigger count, rather than getting it by accident.
+ */
+export function makeBoardColumn(
+  overrides: Partial<ClaimBoardColumn> = {},
+): ClaimBoardColumn {
+  const items = overrides.items ?? [makeQueueItem()];
+  return {
+    key: "with_fms",
+    label: "With FMS",
+    count: items.length,
+    // Agrees with the default card's `grand`, so a test that does not care
+    // about the header/cards gap does not accidentally exercise it.
+    total: "6750.00",
+    ...overrides,
+    items,
+  };
+}
+
+/**
+ * One live claim In Bureau, one With FMS, an empty Done.
+ *
+ * The two live cards are deliberately DISTINCT — different ref, purpose, holder
+ * and peso figure — because a board renders three columns at once and identical
+ * fixtures make every `getByText`/`getByRole` ambiguous. That ambiguity is not a
+ * finding about the page; it is a fixture that cannot be queried.
+ */
+export function makeClaimBoard(
+  overrides: Partial<ClaimBoardResponse> = {},
+): ClaimBoardResponse {
+  return {
+    columns: [
+      makeBoardColumn({
+        key: "in_bureau",
+        label: "In Bureau",
+        total: "4200.00",
+        items: [
+          makeQueueItem({
+            id: 11, ref_no: "RB-2026-0011", purpose: "Municipal TB case finding",
+            status: "admin_review", status_label: "Admin Review",
+            next_action: "Final check & print packet",
+            holder_kind: "user", holder_display: "A. Reyes",
+            days_with_fms: null, days_in_state: 2, grand: "4200.00",
+          }),
+        ],
+      }),
+      makeBoardColumn(),
+      makeBoardColumn({ key: "done", label: "Done", items: [], total: "0.00" }),
+    ],
+    followup_working_days: 10,
+    card_limit: 20,
+    done_window_days: 90,
     ...overrides,
   };
 }
