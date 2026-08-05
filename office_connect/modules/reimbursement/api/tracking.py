@@ -3,7 +3,8 @@
 ``GET /claims/{id}/timeline`` is the spec §9.2 claim-tracker source: every
 transition from the append-only ``reimb_status_histories``, with the return
 reasons attached to the rows a return produced (spec §12 — the claimant sees
-the reasons verbatim, not a paraphrase).
+the reasons verbatim, not a paraphrase), merged since R-7-events with the FMS
+journey from ``reimb_external_events``.
 
 Pairing note: history rows and ``reimb_return_events`` have no FK between them,
 but they are written 1:1 in the same transaction by ``claim_action`` — and a
@@ -12,6 +13,13 @@ row landing in ``returned``/``fms_returned`` is *only* ever reachable by the
 So the k-th return-status row is the k-th return event. The zip is defensive: a
 count mismatch drops the reasons rather than attaching them to the wrong
 return, because a misattributed reason is worse than a missing one.
+
+**That pairing is positional, which is the one thing the R-7-events merge could
+have broken.** It is computed from the HISTORY rows alone, before the external
+lane is appended, and it must stay that way: an FMS event drifting into that
+count would shift every subsequent return's reasons onto the wrong bounce. The
+merge is a sort at the end, deliberately, so there is exactly one line where the
+two lanes meet and it is after every positional decision has been made.
 
 ``GET /return-reasons`` mirrors ``reference.py::list_regions`` — a bounded,
 seeded lookup behind the module's read permission.
@@ -40,13 +48,17 @@ from office_connect.modules.reimbursement.models import (
     ReimbReturnReasonCatalog,
     ReimbStatusHistory,
 )
-from office_connect.modules.reimbursement.services import errors
+from office_connect.modules.reimbursement.services import errors, external
 from office_connect.modules.reimbursement.services import status as st
 
 router = APIRouter()
 
 # The statuses only a `return` action can produce (module workflow v1).
 _RETURN_STATUSES = (st.RETURNED, st.FMS_RETURNED)
+
+# The two lanes of the merged feed (R-7-events).
+_STATUS = "status"
+_EXTERNAL = "external"
 
 
 def _reason_out(row: ReimbReturnReasonCatalog) -> ReturnReasonOut:
@@ -133,8 +145,16 @@ async def claim_timeline(
         )
         catalog = {row.id: _reason_out(row) for row in rows}
 
+    # The FMS lane (R-7-events). Merged into the SAME feed rather than offered
+    # as a second list: a claimant asking "where is my money" is asking one
+    # question, and answering it with two chronologies to interleave by hand is
+    # the tracker failing at the only job it has.
+    fms_events = await external.claim_events(session, claim.id)
+
     names = await _actor_names(
-        session, {h.actor_id for h in history if h.actor_id is not None}
+        session,
+        {h.actor_id for h in history if h.actor_id is not None}
+        | {e.created_by for e in fms_events if e.created_by is not None},
     )
 
     out: list[TimelineEventOut] = []
@@ -151,6 +171,7 @@ async def claim_timeline(
         )
         out.append(
             TimelineEventOut(
+                kind=_STATUS,
                 id=row.id,
                 from_status=row.from_status,
                 from_status_label=(
@@ -168,6 +189,41 @@ async def claim_timeline(
                 created_at=row.created_at,
             )
         )
+    for event in fms_events:
+        out.append(
+            TimelineEventOut(
+                kind=_EXTERNAL,
+                id=event.id,
+                # `to_status` stays NULL: an FMS sub-status is not a workflow
+                # state (delta row 38), and putting one in the field every
+                # consumer reads as a claim status is how that stops being true.
+                to_status=None,
+                to_status_label=external.label(event.status),
+                # Whoever at FMS said it, when we know their name — they are the
+                # source, and the Admin Officer who typed it in is the scribe.
+                # Falls back to the scribe, because "System" would be a lie
+                # about a fact a person supplied.
+                actor_display=(
+                    event.noted_by
+                    or (
+                        names.get(event.created_by)
+                        if event.created_by is not None
+                        else None
+                    )
+                ),
+                note=event.note,
+                event_date=event.event_date,
+                created_at=event.created_at,
+            )
+        )
+
+    # One chronology. `kind` and `id` break ties so the order is total and
+    # deterministic — the two lanes have independent id spaces and a
+    # `record_payout` writes its `paid` event and its status row inside one
+    # transaction, so identical `created_at` values are the norm here, not an
+    # edge case. The FMS event sorts first within a tie: it is the news the
+    # transition is a response to.
+    out.sort(key=lambda e: (e.created_at, e.kind != _EXTERNAL, e.id))
     return out
 
 

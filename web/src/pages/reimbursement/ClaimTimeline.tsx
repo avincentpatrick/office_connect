@@ -3,6 +3,7 @@ import { Card } from "../../components/Card/Card";
 import { Skeleton } from "../../components/Skeleton/Skeleton";
 import { StatusChip } from "../../components/StatusChip/StatusChip";
 import { Timeline } from "../../components/Timeline/Timeline";
+import { formatManilaDate } from "../../lib/format";
 import { useTimeline } from "./use-claim";
 
 /**
@@ -33,7 +34,7 @@ export function ClaimTimeline({ claimId }: { claimId: number }) {
             .filter((event) => event.reasons.length > 0)
             .map((event) => (
               <section
-                key={`reasons-${event.id}`}
+                key={`reasons-${event.kind}-${event.id}`}
                 aria-label={`Reasons for the return on ${event.to_status_label}`}
                 className="flex flex-col gap-2 border-t border-border pt-3"
               >
@@ -57,11 +58,35 @@ export function ClaimTimeline({ claimId }: { claimId: number }) {
 
 function toTimelineEvent(event: TimelineEvent) {
   return {
-    id: event.id,
+    // The two lanes have independent id spaces (`reimb_status_histories` and
+    // `reimb_external_events`), so the kind has to be in the React key or a
+    // transition and an FMS update can collide (R-7-events).
+    id: `${event.kind}-${event.id}`,
+    // "System" is the honest fallback for an automatic transition. An FMS row
+    // always has a person behind it — whoever at FMS said it, or the Admin
+    // Officer who wrote it down — and the server already picked between them.
     actor: event.actor_display ?? "System",
     timestamp: event.created_at,
-    description: event.note
-      ? `${event.to_status_label} — ${event.note}`
-      : event.to_status_label,
+    description: describe(event),
   };
+}
+
+/**
+ * One line of the story. An FMS row is prefixed rather than shown bare: the
+ * feed mixes "this claim moved to Admin Review" with "FMS says it is With
+ * Accounting", and without the attribution the second reads as a claim status
+ * the platform controls — which is exactly what a sub-status is not.
+ */
+function describe(event: TimelineEvent): string {
+  const headline =
+    event.kind === "external"
+      ? `FMS: ${event.to_status_label}`
+      : event.to_status_label;
+  // What FMS says the date was, when it differs from when it was relayed —
+  // a packet moved on Friday and phoned through on Monday is two facts.
+  const dated =
+    event.kind === "external" && event.event_date
+      ? `${headline} (${formatManilaDate(event.event_date)})`
+      : headline;
+  return event.note ? `${dated} — ${event.note}` : dated;
 }

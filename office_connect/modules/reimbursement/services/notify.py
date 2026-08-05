@@ -530,6 +530,139 @@ async def notify_settlement(
     return 1
 
 
+# --------------------------------------------------------------------------
+# R-7-events — the FMS journey, told to the claimant (spec §12)
+# --------------------------------------------------------------------------
+
+EXTERNAL_DEDUP_PREFIX = "reimb.claim.external"
+PAID_DEDUP_PREFIX = "reimb.claim.paid"
+
+
+async def notify_external_status(
+    session: AsyncSession, *, claim: ReimbClaim, event
+) -> int:
+    """Spec §12: *"External status updated → Claimant: 'Your claim is now With
+    Accounting'"*.
+
+    This is the whole answer to the question the claim tracker exists for — "my
+    packet left the bureau three weeks ago, where is it?" — and it is the one
+    stretch of the journey where nothing in the platform moves, so silence here
+    reads as nothing happening.
+
+    Deliberately NOT in the ``transactional`` bypass class the liquidation
+    D-ladder uses: that class exists so a traveller cannot mute COA warning them
+    that their salary is about to be deducted. This is progress reporting, and
+    progress reporting is mutable.
+
+    Keyed on the EVENT id, so the relay's own idempotency decides how often a
+    claimant hears from us; ``record_external_event`` is what declines to write
+    an event's notification when the status has not changed. Returns rows
+    written. Flushes; the caller commits.
+    """
+    owner = await owner_user(session, claim.claimant_id)
+    if owner is None:
+        return 0
+    # Imported here rather than at module scope: ``services/external.py`` imports
+    # this module for exactly these two functions, and a top-level import back
+    # would be a cycle.
+    from office_connect.modules.reimbursement.services.external import label
+
+    ref = claim.ref_no or f"#{claim.id}"
+    what = label(event.status)
+    noun = "liquidation" if claim.kind == st.LIQUIDATION_KIND else "claim"
+    when = (
+        f" as of {event.event_date.isoformat()}"
+        if event.event_date is not None
+        else ""
+    )
+    subject = f"Your {noun} {ref} is now {what}"
+    body = (
+        f"FMS moved {ref} to {what}{when}. Nothing is needed from you — this "
+        "is where your packet has got to."
+    )
+    if event.note:
+        body = f"{body} Note from FMS: {event.note}"
+
+    dedup_key = f"{EXTERNAL_DEDUP_PREFIX}:{event.id}:in_app"
+    if await _already_sent(session, dedup_key):
+        return 0
+    notification_id = await persist_notification(
+        session,
+        Notification(
+            channel="in_app",
+            meta={
+                "dedup_key": dedup_key,
+                "recipient_user_id": owner.id,
+                "module": "reimbursement",
+                "kind": "external_status",
+                "claim_id": claim.id,
+                "external_status": event.status,
+                "subject": subject,
+                "body_text": body,
+            },
+        ),
+    )
+    dispatch_on_commit(session, notification_id)
+    return 1
+
+
+async def notify_paid(session: AsyncSession, *, claim: ReimbClaim) -> int:
+    """Spec §12's *"Paid / Settled → Claimant, terminal, celebratory tone"*.
+
+    Only the *Settled* half of that row was ever built (``notify_settlement``,
+    R-6-liq-settle) because until R-7-events nothing recorded a payment. This is
+    the other half, and it is the single message the whole module exists to be
+    able to send.
+
+    Carries the payment reference, which is not decoration: it is what a
+    traveller quotes to FMS or to their bank when the credit is not visible, and
+    it is the one fact they cannot look up anywhere else. Same mutable class as
+    the status relay — good news is not a legal warning.
+    """
+    owner = await owner_user(session, claim.claimant_id)
+    if owner is None:
+        return 0
+
+    ref = claim.ref_no or f"#{claim.id}"
+    amount = None
+    if claim.totals:
+        grand = claim.totals.get("grand")
+        amount = f"₱{Decimal(grand):,.2f}" if grand else None
+    when = f" on {claim.paid_on.isoformat()}" if claim.paid_on else ""
+    which = f" under reference {claim.payout_ref}" if claim.payout_ref else ""
+
+    subject = (
+        f"{amount} paid on claim {ref}" if amount else f"Claim {ref} is paid"
+    )
+    body = (
+        f"FMS paid your travel claim {ref}{when}{which}"
+        f"{f' — {amount}' if amount else ''}. The claim is closed and nothing "
+        "further is needed from you."
+    )
+
+    dedup_key = f"{PAID_DEDUP_PREFIX}:{claim.id}:in_app"
+    if await _already_sent(session, dedup_key):
+        return 0
+    notification_id = await persist_notification(
+        session,
+        Notification(
+            channel="in_app",
+            meta={
+                "dedup_key": dedup_key,
+                "recipient_user_id": owner.id,
+                "module": "reimbursement",
+                "kind": "claim_paid",
+                "claim_id": claim.id,
+                "payout_ref": claim.payout_ref,
+                "subject": subject,
+                "body_text": body,
+            },
+        ),
+    )
+    dispatch_on_commit(session, notification_id)
+    return 1
+
+
 async def sweep_liquidation_reminders(
     session: AsyncSession,
     *,

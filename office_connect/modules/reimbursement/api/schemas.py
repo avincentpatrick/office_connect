@@ -432,6 +432,14 @@ class ClaimDetail(BaseModel):
     # its DV can find the Liquidation Report the figure came from.
     spawned_claim: SpawnedClaimOut | None = None
     spawned_from: SpawnedClaimOut | None = None
+    # --- R-7-events: what FMS last said, and what FMS finally did. The latest
+    # sub-status rides the claim for the same one-response reason as everything
+    # above it — "With Accounting" arriving separately from the status chip that
+    # says "Handed to FMS" is two half-answers to one question. The payout fields
+    # are null until the claim closes, and read-only forever after.
+    latest_external: ExternalEventOut | None = None
+    payout_ref: str | None = None
+    paid_on: date | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -473,6 +481,11 @@ class QueueItemOut(WorkItemOut):
     claimant_display: str | None = None
     days_with_fms: int | None = None
     external_followup: bool = False
+    #: The latest FMS sub-status, as a label (R-7-events). "12 working days with
+    #: FMS" and "…and the last we heard it was With Accounting" are different
+    #: facts, and the second is what decides whether a follow-up call is worth
+    #: making. Null when FMS has said nothing yet.
+    external_status_label: str | None = None
 
 
 class ClaimQueueOut(BaseModel):
@@ -500,16 +513,75 @@ class ReturnReasonOut(BaseModel):
 
 
 class TimelineEventOut(BaseModel):
-    """One tracker row (spec §9.2 claim tracker), from
-    ``reimb_status_histories``. ``reasons`` is populated on the rows a return
-    produced — spec §12 says the claimant sees the reasons verbatim."""
+    """One tracker row (spec §9.2 claim tracker) — from ``reimb_status_histories``
+    OR, since R-7-events, from ``reimb_external_events``.
 
+    ``reasons`` is populated on the rows a return produced — spec §12 says the
+    claimant sees the reasons verbatim.
+
+    ``kind`` discriminates the two lanes, and ``to_status`` is **null on an
+    external row**. That is not a shortcut: an FMS sub-status is deliberately NOT
+    a workflow state (delta row 38 — they ride the event table over the single
+    ``handed_to_fms`` state), so letting ``with_accounting`` travel in the field
+    every consumer reads as a claim status is how that distinction would quietly
+    stop being true. The display string rides ``to_status_label``, which is what
+    the tracker renders anyway.
+    """
+
+    kind: str = "status"
     id: int
     from_status: str | None = None
     from_status_label: str | None = None
-    to_status: str
+    to_status: str | None = None
     to_status_label: str
     actor_display: str | None = None
     note: str | None = None
     reasons: list[ReturnReasonOut] = []
+    #: What FMS says the date was, when it differs from when it was relayed.
+    event_date: date | None = None
     created_at: datetime
+
+
+class ExternalEventOut(BaseModel):
+    """The latest FMS word on a claim, for the rail and the queue row."""
+
+    id: int
+    status: str
+    status_label: str
+    noted_by: str | None = None
+    note: str | None = None
+    event_date: date | None = None
+    created_at: datetime
+
+
+class ExternalEventIn(BaseModel):
+    """Relay one FMS journey update (spec §6.1 row 6).
+
+    ``status`` is validated against the closed set in the service, not here: the
+    refusal has to explain that ORDER is not enforced ("in any order, and
+    skipping any of them is fine"), and a pydantic ``Literal`` would produce a
+    generic enum error that says the opposite by omission.
+
+    ``noted_by`` is free text because the person at FMS has no login here — it is
+    a name an Admin Officer writes down, not an actor this system can resolve.
+    """
+
+    status: str
+    noted_by: str | None = Field(default=None, max_length=200)
+    note: str | None = None
+    event_date: date | None = None
+
+
+class MarkPaidIn(BaseModel):
+    """Close a claim, recording what FMS paid (spec §6.1 row 8).
+
+    Note what is deliberately ABSENT: the amount. What was owed is the claim's
+    own server-computed ``totals``, and a client that could post "paid ₱6,750"
+    could close a claim on a figure the claim never said. The reference and the
+    date are facts only FMS can supply, which is exactly why they are inputs.
+    """
+
+    payout_ref: str | None = Field(default=None, max_length=100)
+    paid_on: date | None = None
+    comment: str | None = None
+    expected_version: int | None = None

@@ -36,14 +36,21 @@ from office_connect.modules.reimbursement.api.deps import (
     can_manage_cash_advances,
     claim_detail,
     get_claim,
+    has_scoped_grant,
 )
 from office_connect.modules.reimbursement.api.schemas import (
     ApproveIn,
     ClaimDetail,
+    MarkPaidIn,
     ReturnIn,
     SettleIn,
 )
-from office_connect.modules.reimbursement.services import errors, lifecycle, settlement
+from office_connect.modules.reimbursement.services import (
+    errors,
+    external,
+    lifecycle,
+    settlement,
+)
 
 router = APIRouter(prefix="/api/v1/reimbursement", tags=["reimbursement"])
 
@@ -94,6 +101,50 @@ async def return_claim(
         expected_version=body.expected_version,
     )
     detail = await claim_detail(session, claim, actor_user_id=principal.user_id)
+    await session.commit()
+    return detail
+
+
+@router.post("/claims/{claim_id}/mark-paid", response_model=ClaimDetail)
+async def mark_claim_paid(
+    claim_id: int,
+    body: MarkPaidIn,
+    principal: Principal = Depends(require_permission("reimb.claim.read")),
+    session: AsyncSession = Depends(get_session),
+):
+    """Close a reimbursement, recording what FMS paid (spec §6.1 row 8).
+
+    **On this router, not the gated one** — the ``/settle`` argument, one chain
+    over. Marking paid is a decision on an instance already in the chain, the
+    exact case the flag must never gate; behind ``require_feature`` a flag-OFF
+    would 404 this route and strand every claim at ``handed_to_fms`` with FMS
+    having already paid it and no way to say so.
+
+    Coarse ``reimb.claim.read`` at the route like its siblings, with the real
+    rule below: spec §3.2 gives "Record settlement (refund OR / payout)" to the
+    Admin Officer and the System Admin, and ``reimb.claim.fms_update`` is the
+    grant the FMS leg is authorized on throughout — the same permission the
+    ``handed_to_fms`` gate itself requires, so this check and the engine's
+    ``resolve_authority`` agree by construction rather than by coincidence.
+    """
+    claim = await get_claim(session, claim_id)
+    if not await has_scoped_grant(
+        session,
+        actor_user_id=principal.user_id,
+        claim=claim,
+        permissions=("reimb.claim.fms_update",),
+    ):
+        raise errors.external_update_not_permitted()
+    paid = await external.record_payout(
+        session,
+        claim_id=claim_id,
+        actor_user_id=principal.user_id,
+        payout_ref=body.payout_ref,
+        paid_on=body.paid_on,
+        comment=body.comment,
+        expected_version=body.expected_version,
+    )
+    detail = await claim_detail(session, paid, actor_user_id=principal.user_id)
     await session.commit()
     return detail
 

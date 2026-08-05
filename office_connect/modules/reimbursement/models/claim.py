@@ -125,6 +125,18 @@ class ReimbClaim(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
     other_total: Mapped[Decimal] = mapped_column(
         Numeric(12, 2), server_default=text("0")
     )
+    # Spec §6.1 row 8's "admin records payout ref" (R-7-events, migration 0021).
+    # `payout_ref` is what FMS hands back (ADA/LDDAP reference, check number) and
+    # is deliberately NOT unique — one LDDAP-ADA pays many vouchers at once.
+    # `paid_on` is the date the money moved, not the moment somebody typed it in
+    # (that is `updated_at` + the status-history row). `paid_by` is a real column
+    # for the same reason `settled_by` is: who closed a financial record is a
+    # fact OF the record (rule 5).
+    payout_ref: Mapped[str | None]
+    paid_on: Mapped[date | None] = mapped_column(Date)
+    paid_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("core_users.id")
+    )
     # Denormalized read-model of the workflow current state (synced at R-4-app).
     status: Mapped[str | None]
     holder_kind: Mapped[str | None] = mapped_column(HolderKind)

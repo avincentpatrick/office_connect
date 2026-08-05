@@ -178,6 +178,18 @@ The client-facing verb is then **rewritten, not dropped**: the actor is authoriz
 clear that gate, so `available_actions` offers the verb that WORKS (`settle` in place
 of `approve`) rather than leaving a hole where the button belongs.
 
-First instance: `modules/reimbursement/services/settlement.py` (R-6-liq-settle).
+Instances so far, both in reimbursement:
+
+| Chain | Terminal state | Data it must record | Service | Client verb |
+|---|---|---|---|---|
+| `reimbursement.liquidation` | `settled` | refund OR / settlement mode, on the advance | `services/settlement.py::record_settlement` (R-6-liq-settle) | `settle` |
+| `reimbursement.claim` | `paid_closed` | the payment reference + date FMS gave back | `services/external.py::record_payout` (R-7-events) | `mark_paid` |
+
+The second one is the useful evidence: the pattern held with **no amendment to this
+section**, and the only new advice it produced is about the *rewrite table*. When a
+module has two chains, keep the state→verb mapping in ONE kind-keyed structure rather
+than two `if` branches — two chains answering the same question in two places is how
+they drift on the day a third arrives.
+
 Widening `execute_action` instead would have put one module's money on every future
 module's transition.

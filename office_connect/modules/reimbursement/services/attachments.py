@@ -22,6 +22,7 @@ nothing to do with who may see it.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -73,9 +74,10 @@ async def upload_claim_evidence(
     disallowed type or an oversized file — the router maps it.
 
     ``retention_starts_at`` is deliberately left NULL: the GRDS clock runs from
-    *final settlement*, which is ``paid_closed`` (R-7). Until then
-    ``evaluate_candidate`` reports "retention clock not started" and the file is
-    never disposal-eligible, which is the correct fail-safe.
+    *final settlement*, which is ``paid_closed`` (or a liquidation's
+    ``settled``). Until then ``evaluate_candidate`` reports "retention clock not
+    started" and the file is never disposal-eligible, which is the correct
+    fail-safe. :func:`start_retention_clock` is what finally starts it (R-7-events).
     """
     result = await core_attachments.upload_attachment(
         session,
@@ -155,6 +157,39 @@ async def store_generated_document(
     session.add(join)
     await session.flush()
     return join, result.attachment_id
+
+
+async def start_retention_clock(
+    session: AsyncSession, *, claim_id: int, now: datetime | None = None
+) -> int:
+    """Start the GRDS clock on a claim's whole file — the promise
+    ``upload_claim_evidence`` has been making since R-2 (R-7-events).
+
+    Every upload is stored ``retention_starts_at=None`` because the GRDS-2023
+    class is *"disbursement-voucher supporting records, 10 years from final
+    settlement"* and nothing on a live claim is finally settled. Nothing had
+    ever started it, so ``retain_until()`` returned None for every claim
+    attachment in the system and the disposal report reported "retention clock
+    not started" forever. This is the one call that ends that, and the two
+    callers are the two MONEY terminals: ``paid_closed`` (``record_payout``) and
+    ``settled`` (``record_settlement``).
+
+    ``cancelled`` deliberately does NOT call it (user-confirmed at the
+    R-7-events kickoff, recorded in the delta register). A voided claim produced
+    no disbursement, so dating a disbursement-record retention period from its
+    void would assert a disposal deadline for a payment that never happened. Its
+    files stay non-disposable — the fail-safe — and stay visible in the disposal
+    report as an unanswered question rather than a silently-scheduled one.
+
+    Generated packet PDFs share the holder and are stamped too, which is right:
+    the packet IS a DV supporting record, and the copy filed with the voucher is
+    the one an auditor asks for.
+
+    Returns the number of attachments stamped. Flushes; the caller commits.
+    """
+    return await core_attachments.start_retention(
+        session, holder_kind=HOLDER_KIND, holder_id=claim_id, at=now
+    )
 
 
 async def evidence_counts(

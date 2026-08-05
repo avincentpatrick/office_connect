@@ -17,6 +17,7 @@ import { NotFoundPage } from "../NotFoundPage";
 import { ClaimActions } from "./ClaimActions";
 import { ClaimTimeline } from "./ClaimTimeline";
 import { CashAdvanceCard } from "./CashAdvanceCard";
+import { PaidOutcome } from "./MarkPaidDialog";
 import { PacketPreview } from "./PacketPreview";
 import { SettlementOutcome } from "./SettlementDialog";
 import { toast } from "../../components/Toast/toast-bus";
@@ -164,6 +165,28 @@ export function ClaimDetailView({ claim }: { claim: ClaimDetail }) {
                   <dd>{claim.next_action}</dd>
                 </div>
               ) : null}
+              {/* What FMS last said (R-7-events). Directly under "With", because
+                  "With: FMS" is only half an answer — the other half is which
+                  desk inside FMS, and that is the half a claimant is asking
+                  about. Absent until FMS has said anything, which is honest:
+                  a packet handed over this morning has no news yet. */}
+              {claim.latest_external ? (
+                <div>
+                  <dt className="text-sm text-text-muted">Latest from FMS</dt>
+                  <dd>
+                    {claim.latest_external.status_label}
+                    {claim.latest_external.noted_by
+                      ? ` — ${claim.latest_external.noted_by}`
+                      : ""}
+                    <span className="block text-sm text-text-muted">
+                      {formatManilaDate(
+                        claim.latest_external.event_date ??
+                          claim.latest_external.created_at,
+                      )}
+                    </span>
+                  </dd>
+                </div>
+              ) : null}
               {claim.sla_state && claim.sla_due_at ? (
                 <div>
                   <dt className="text-sm text-text-muted">Due with this step</dt>
@@ -256,6 +279,11 @@ export function ClaimDetailView({ claim }: { claim: ClaimDetail }) {
             doctrine one level up: a settlement is a fact about the RECORD, not
             a status, so it renders beside the advance rather than as a chip. */}
         <SettlementOutcomePanel claim={claim} />
+        {/* How a reimbursement's money came out (R-7-events) — the same
+            derived-badge doctrine as the settlement panel above it: a payment
+            is a fact about the RECORD, not a status, so it renders beside the
+            claim rather than as a chip. */}
+        <PaidOutcome claim={claim} />
         <PacketPreview claim={claim} canPrepare={canPreparePacket(claim)} />
       </div>
     </DetailPage>

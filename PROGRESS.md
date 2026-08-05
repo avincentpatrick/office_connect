@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage C R-7-events: the FMS status relay, `mark_paid` + the payout reference, and the timeline merge.**
+> **Resume Office-Connect — Stage C R-7-board: spec §9.6's pipeline board (In Bureau / With FMS / Done), with per-column counts and peso totals.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -11,70 +11,93 @@ expand it into the full task and confirm with you before starting.
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
 - **Phase:** **Stage C IN PROGRESS** — **R-1 ✅ + R-2 ✅ + R-3 ✅ + R-4 ✅ +
-  R-5 ✅ (gen + packet) + R-6 ✅ (clock + liq-chain + liq-settle) + R-7-queue ✅**.
-  **R-7 IS UNDERWAY, split three ways at kickoff (user-confirmed):
-  R-7-queue ✅ → R-7-events → R-7-board.** Spec §14's R-7 row is four
-  deliverables ("FMS statuses, external events, board, admin queue") and the
-  queue went FIRST because it is a prerequisite, not an afterthought:
-  `resolve_holder` sets `holder_kind='external_fms'`/`holder_id=NULL` at
-  `handed_to_fms` and `/my-work` filters `holder_kind='user'`, so **a claim with
-  FMS was in NOBODY's inbox** and the Admin Officer who handed it over had no
-  screen that ever showed it again. Every other R-7 button hangs off a claim
-  that could not be reached.
-  Shipped: **`GET /claims`**, the module's first LIST endpoint —
-  `status`/`kind`/`claimant_id`/`external_over` + `limit`/`offset`, an honest
-  `total`, and the spec §7-rule-5 **">10 working days with FMS"** filter counted
-  in Manila WORKING days off the real holiday calendar. Plus core's
-  **`descendants_or_self`**, the FE **Claim queue** page (the List page's first
-  real `filters` row), and the role-gated nav entry.
-  **NO MIGRATION — head stays `0020`.** The clock derives from `holder_since`,
-  which for a claim at `handed_to_fms` IS the hand-off instant.
-  **Verified: pytest 822 passed (+15) with ZERO failures**, lint-imports 3/3,
-  `alembic check` clean, seeds ×2 no-op, FE gate green (tsc + eslint +
-  **193 vitest**, +7, + build), and a **23/23 live smoke** through the real
-  stack — including the hand-counted working-day figure and the traveller's 403.
+  R-5 ✅ (gen + packet) + R-6 ✅ (clock + liq-chain + liq-settle) + R-7-queue ✅
+  + R-7-events ✅**. **R-7 is two-thirds done: R-7-queue ✅ → R-7-events ✅ →
+  R-7-board (next).**
+  R-7-events closed three holes that were all live in the codebase at kickoff:
+  **`reimb_external_events` had never been written to** (shipped inert in
+  `0013`, zero writers and zero readers), **`paid_closed` recorded nothing**
+  (spec §6.1 row 8 says "terminal (admin records payout ref)" and it was a bare
+  `approve`), and **every claim attachment in the system was permanently
+  non-disposable** (`retention_starts_at` was parked on "R-7" since R-2 and
+  nothing ever set it).
+  Shipped: **`services/external.py`** — `record_external_event` (a PURE APPEND;
+  MEMBERSHIP of the closed set enforced, ORDER never, on BOTH claim kinds) and
+  `record_payout` (workflow-standards §12's **second instance**); migration
+  **`0021`** (`payout_ref`/`paid_on`/`paid_by`); core's
+  **`attachments.start_retention`**; two spec §12 notifications; the **merged
+  tracker**; the gated relay route + the un-gated `/mark-paid`; and the FE
+  dialogs, rail line and queue-row status.
+  **Verified: pytest 860 passed (+38) with ZERO failures**, lint-imports 3/3,
+  `0021` reversible (down→up→up) + `alembic check` clean, seeds ×2 no-op, FE
+  gate green (tsc + eslint + **214 vitest**, +21, + build), and a **28/28 live
+  smoke** through the real stack — which is what caught the one defect no
+  assertion did.
   **`module.reimbursement` is ON in dev.** Prod default stays OFF.
   **NOT pushed** — push cadence: **once at the Stage C QA gate**.
-- **Last session:** #24 — 2026-08-04 — **Stage C R-7-queue: the oversight
-  queue**. Built: `core/org_units.py::descendants_or_self` (the missing inverse
-  of `ancestors_or_self`), `services/queue.py` (`oversight_scope`,
-  `days_with_fms`, `followup_threshold`, `base_query`), `api/queue.py`
-  (`GET /claims` on the GATED router), `QueueItemOut`/`ClaimQueueOut`,
-  `errors.queue_not_permitted`, the `sla.external_followup_working_days` seed,
-  and the promotion of `work_item`/`holder_names`/`claimant_names` out of
-  `api/my_work.py` into `api/deps.py`. FE: `ClaimQueuePage`, `useClaimQueue`,
-  `queueChip`/`queueMeta`, `fetchClaimQueue` + `reimbKeys.queue`, the route and
-  the nav item. New standards: **api-standards §9f** + the **ui-standards §4**
-  filter-row / admin-surface note.
-- **The three kickoff decisions (all user-confirmed):** **three increments**,
-  queue first; **`mark_paid` IS in R-7 scope** (spec §6.1 row 8 says
-  `paid_closed` is "terminal (admin records payout ref)" and today it is a bare
-  `approve` recording nothing — it lands in R-7-events as the `settle` shape
-  from workflow-standards §12); and **board headers only** for numbers — §9.6's
-  per-column count + peso total, with spec §13's KPI surface staying in Stage H
-  where master-plan puts it.
-- **Design notes worth remembering:** **a LIST may not borrow a ROW's read
-  rule** — `reimb.claim.read` is granted GLOBALLY to `staff` (so a traveller can
-  read their own claim anywhere in the tree), so a list keyed on it returns
-  every claim in the agency to every employee. The queue is scoped on the
-  OVERSIGHT permissions (`review`/`fms_update`/`approve`) and the subtree those
-  grants cover; **holding none is a 403, not an empty 200** — "there is no work"
-  is a claim about the world and it would be false. This is R-9's "scope
-  filters!" QA line arriving early, and it is now **api-standards §9f**.
-  **No column was added:** the >10-WD clock counts from `holder_since`, and
-  deliberately NOT from the last external event — §7 rule 5 asks how long FMS
-  has HAD it, and a relay saying "still with Budget" is news, not progress.
-  **`days_with_fms` is null, not 0, when FMS does not hold the claim** — 0 is a
-  false answer to a question that does not apply.
-- **⚠ TEST-HYGIENE DEFECT found and fixed this session (the kind no assertion
-  catches):** the new holiday test seeds non-working days in the **recent past**,
-  and the suite shares one database — so those rows silently shortened **every**
-  later "working days since…" count in the whole codebase. It was caught only
-  because it made this file's own threshold test flaky, and **8 leftover rows (a
-  whole poisoned week, Jul 27–31 + Aug 3) were found and retired**. The test now
-  cleans up in a `finally`, retiring rather than deleting (rule 6). **Rule for
-  every future fixture: a test that writes dates relative to TODAY must undo
-  itself.**
+- **Last session:** #25 — 2026-08-05 — **Stage C R-7-events: the FMS journey
+  record**. Built: `services/external.py` (`record_external_event`,
+  `record_payout`, `claim_events`/`latest_event`/`latest_events`),
+  `lifecycle._assert_payout_recorded`, `actions.MARK_PAID`/`RELAY` + the
+  kind-keyed `_TERMINAL_VERB` rewrite table + `_can_relay`,
+  `core/attachments/service.py::start_retention` +
+  `services/attachments.py::start_retention_clock` (wired into BOTH money
+  terminals), `notify.notify_external_status` + `notify.notify_paid`,
+  `api/external.py` (gated `POST`/`GET /claims/{id}/external-events`),
+  `/mark-paid` on the un-gated actions router, the `ExternalEventIn`/
+  `ExternalEventOut`/`MarkPaidIn` schemas + `latest_external`/`payout_ref`/
+  `paid_on` on `ClaimDetail` + `external_status_label` on `QueueItemOut`, and
+  the timeline merge in `api/tracking.py`. FE: `fms-forms.ts`,
+  `FmsStatusDialog`, `MarkPaidDialog` + `PaidOutcome`, `recordExternalEvent`/
+  `markPaid`/`reimbKeys.queues`, the `mark_paid`/`relay_fms` verbs and labels,
+  the merged `ClaimTimeline`, the rail's "Latest from FMS", `queueMeta`'s
+  "Last: …". **workflow-standards §12 gained its instances table** (the pattern
+  held with no amendment).
+- **The two kickoff decisions (both user-confirmed):** **the payout shape is one
+  reference + a date** (`payout_ref`/`paid_on`/`paid_by`, no unique index — one
+  LDDAP-ADA pays many vouchers), and **the reference is REQUIRED** because
+  `paid_closed` is read-only with no amendment route, so a blank one would
+  recreate the bare `approve` this replaced; the refusal names the honest
+  alternative (relay *Payment processing*). And **the GRDS clock starts at the
+  two MONEY terminals only** — `paid_closed` + `settled`; `cancelled`
+  deliberately does not, because a voided claim produced no disbursement, and
+  that is a recorded deferral with a test pinning it.
+- **Design notes worth remembering:** **the arrow in spec §6.1 row 6 is not a
+  sequence.** "With Budget → With Accounting → Payment Processing" carries the
+  parenthetical *"any order/skips allowed"*, and that parenthetical is the
+  operative half — FMS pays straight out of Budget, bounces packets back to
+  desks they already left, and says "still with Accounting" twice in a week. So
+  membership is enforced and order never is, repeats are legal, and **the 422
+  says so out loud** ("in any order, and skipping any of them is fine") because
+  an operator who infers a sequence from a three-item list will not relay
+  Accounting on a packet that skipped Budget. **A relay moves nothing** — that
+  is asserted, not assumed, because a relay that moved the claim would also
+  reset `holder_since` and silently restart R-7-queue's ">10 working days with
+  FMS" clock every time somebody phoned FMS, a bug that would have looked like
+  diligence. **`to_status` is NULL on an external timeline row:** a sub-status is
+  not a workflow state (delta row 38), and letting `with_accounting` travel in
+  the field every consumer reads as a claim status is how that would quietly
+  stop being true. **The return-reason pairing is positional** and is computed
+  from the history rows ALONE, before the external lane is appended — the merge
+  is a sort at the very end, so there is exactly one line where the two lanes
+  meet.
+- **⚠ Two defects worth carrying forward.** **(1) The live smoke caught what no
+  assertion did:** `record_payout` writes a `paid` external event AND calls
+  `notify_paid`, so the claimant was getting two notifications about one payment
+  — the less informative one ("your claim is now Paid", no reference, no amount)
+  arriving first. Both messages were individually correct, which is exactly why
+  every unit test passed. Now suppressed and pinned. **(2) `core/audit.py`
+  refused the first `start_retention`** because it was a bulk ORM UPDATE (rule 5)
+  — and it was right to: starting a legal retention period must appear in the
+  hash-chained log. Rewritten to load-and-mutate.
+- **⚠ TEST-HYGIENE DEFECT, the session-#24 disease one table over:**
+  `test_reimb_api_queue.py::_backdate` aged COMMITTED claims to 21 days with FMS
+  and never undid it. The suite shares one database, so every run left another
+  permanently-over-threshold row until `?external_over=true`'s first page was
+  nothing but old fixtures and the assertions stopped being about the claims
+  they named. Fixed with `_undo_backdating` in a `finally` + per-claimant
+  scoping. **The rule generalizes past holidays: ANY fixture that writes dates
+  relative to TODAY must undo itself.**
 - **Test-hygiene note (still true):** a full-suite run leaves
   `module.reimbursement` OFF in dev — `test_reimb_api_flag_gate.py`'s
   `reimb_flag_off` fixture restores whatever state it captured. Flip it back with
@@ -85,11 +108,11 @@ expand it into the full task and confirm with you before starting.
   both stay untiered and gain tiers as an authored v2. **Wet-signature capture**
   is narrowed to one question: whether the signed page must be BOUND to the step
   as a frozen snapshot (core-service #3's unbuilt half) or whether filing it
-  under `CRT-C` suffices. The A/B/C **shape** and the **CTC-47** question are
-  both CLOSED. **NEW, for R-7-events:** what the Admin Officer actually types
-  when FMS pays — is there a single payout/ADA reference number FMS hands back,
-  and does it come with a date? Spec §6.1 row 8 says "admin records payout ref"
-  and names no field.
+  under `CRT-C` suffices. The A/B/C **shape**, the **CTC-47** question, the
+  **payout shape** and the **retention terminals** are all CLOSED. **Worth
+  confirming when convenient (not blocking):** whether DOH BLHSD's FMS quotes a
+  DV number *and* an ADA reference as two separate facts — if so, the payout
+  record grows a second column as an authored v2.
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
@@ -97,101 +120,97 @@ expand it into the full task and confirm with you before starting.
 Context: Stage A + Stage B complete/pushed. Stage C IN PROGRESS - DONE: the shared core
 workflow engine (#11), R-1 (#12), R-2-engine (#13), R-2-shell (#14), R-4-app (#15),
 R-2-wizard (#16), R-4-screens (#17), R-3 (#18), R-5-gen (#19), R-5-packet (#20),
-R-6-clock (#21), R-6-liq-chain (#22), R-6-liq-settle (#23) and R-7-queue (#24).
-R-7 is SPLIT THREE WAYS (user-confirmed at #24 kickoff): R-7-queue DONE -> R-7-events
-(this session) -> R-7-board. Suite at 822 passed, 0 failures. Head 0020. FE 193 vitest.
+R-6-clock (#21), R-6-liq-chain (#22), R-6-liq-settle (#23), R-7-queue (#24) and
+R-7-events (#25). R-7 was SPLIT THREE WAYS (user-confirmed at #24 kickoff):
+R-7-queue DONE -> R-7-events DONE -> R-7-board (this session), which CLOSES R-7.
+Suite at 860 passed, 0 failures. Head 0021. FE 214 vitest.
 
-Task: Stage C R-7-events - THE FMS JOURNEY RECORD (spec 5.7, 6.1 rows 6/7/8, 12, 14's
-R-7 row). R-7-queue made FMS-held claims findable; this session makes them ACTIONABLE.
-Build (confirm scope at kickoff before writing code):
+Task: Stage C R-7-board - THE PIPELINE BOARD (spec 9.6, 13's counting rows, 14's R-7
+row). R-7-queue made stuck work findable one row at a time; R-7-events made it
+actionable; this session answers the question a bureau chief asks from across the room:
+how much is where. Build (confirm scope at kickoff before writing code):
 
-(1) `services/external.py` - the FIRST EVER WRITER of `reimb_external_events`. The table
-ships in migration 0013 (claim_id / status / noted_by / note / event_date, append-only,
-REVOKE UPDATE, index on claim_id) and grep still finds ZERO writers and ZERO readers -
-only two source comments promising "they ride reimb_external_events at R-7".
-`record_external_event` is a PURE APPEND: the sub-status does NOT move the claim. That is
-delta row 38's decision - FMS sub-statuses are NOT states, they ride the event table over
-the single `handed_to_fms` state. Closed set: with_budget / with_accounting /
-payment_processing. Spec 6.1 row 6 says "any order/skips allowed", so enforce MEMBERSHIP
-ONLY, never order - the QA line is literally "Statuses skip/reorder legally".
-NOTE `noted_by` is free-text varchar, not an FK: the person at FMS has no login here.
-NOTE the table has NO updated_* and tests/test_migrations.py:68 asserts that shape, and
-tests/test_append_only.py:51 asserts UPDATE/DELETE are denied - so INSERT only, never
-session.merge.
+(1) The board itself - spec 9.6's THREE columns: In Bureau / With FMS / Done. NOTE the
+columns are NOT statuses, they are GROUPS of statuses, and the grouping is the one real
+design decision: `division_approval` + `admin_review` + `returned` + `fms_returned` are
+In Bureau; `handed_to_fms` is With FMS; `paid_closed` + `settled` are Done. Drafts are
+absent for the same reason they are absent from the queue (nobody's oversight, and My
+Work has them) and `cancelled` is absent because spec 6.1 row 9 says "excluded from
+KPIs". Put the grouping in ONE place - services/queue.py already owns the scope and the
+status vocabulary lives in services/status.py, so a per-kind mapping beside
+ALL_TERMINAL_STATES is the natural home. Both KINDS ride one board: a liquidation is
+work in the same pipeline, and forking the board by kind would ask a chief to read two.
 
-(2) `mark_paid` + the payout reference. Spec 6.1 row 8: "terminal (admin records payout
-ref)" - and TODAY `handed_to_fms --approve--> paid_closed` is a bare verb recording
-NOTHING. This is the reimbursement chain's exact analogue of R-6-liq-settle, so build it
-as the SAME shape (workflow-standards 12, which that session wrote): `record_payout`
-writes the ref + a `paid` external event FIRST, then drives the unchanged `approve`, all
-in ONE transaction; the data write must NOT touch instance.row_version (settlement.py:269
-records why); add an `_assert_payout_recorded` chokepoint in `claim_action` mirroring
-`_assert_advance_settled`; and REWRITE the client verb `approve` -> `mark_paid` at
-handed_to_fms on the REIMBURSEMENT kind in `claim_actions`, exactly as `settle` is
-rewritten on the liquidation kind. Migration 0021 adds the payout columns on reimb_claims
-(there is no `payout_ref` / `dv_no` / `paid_at` anywhere today).
-ASK THE USER AT KICKOFF what FMS actually hands back - one reference number? a date? The
-spec names no field, and this is now an open R-0-style question in Current Status.
+(2) Column headers carry the NUMBERS, and only those (user-confirmed at #24 kickoff):
+per-column COUNT + PESO TOTAL, nothing else. Spec 13's KPI surface (cycle time, return
+rate, top return reasons) stays in Stage H where master-plan 119 puts it - do NOT build
+it here. The peso total is server-computed and crosses as a 2-dp STRING like every other
+money value (the standing prohibition); SUM over reimb_claims.totals->>'grand' cast to
+numeric, NOT a Python sum over a fetched page, because the header counts the whole
+column and the page is 50 rows.
 
-(3) GRDS retention. `services/attachments.py:73-77` parks retention_starts_at on "final
-settlement, which is paid_closed (R-7)" - so paid_closed must now stamp it, or every
-claim attachment stays permanently non-disposable. Decide the liquidation chain's
-equivalent (`settled`) at the same time.
+(3) Scope, and the ONE trap. The board is the same oversight surface as the queue, so it
+reuses queue.oversight_scope + queue.scope_clause verbatim - api-standards 9f: a LIST
+may not borrow a ROW's read rule, and a BOARD is a list with headers. Holding no
+oversight permission is a 403 naming My Work (errors.queue_not_permitted already says
+exactly that). THE TRAP: base_query() excludes terminal claims (it is a queue), and the
+Done column is entirely terminal - so the board needs its own query builder or a
+`include_terminal` flag on that one. Decide deliberately and write down which, because
+silently widening base_query would put paid claims back in the queue.
 
-(4) The timeline merge + the notification. `GET /claims/{id}/timeline` (api/tracking.py)
-today reads ONLY reimb_status_histories + reimb_return_events; the external events belong
-in that same feed. Spec 12's matrix row "External status updated -> Claimant: 'Your claim
-is now With Accounting'" is this increment's notification - model it on
-`notify.notify_settlement` (NOT in the transactional bypass class; that class exists so a
-traveller cannot mute a COA salary-deduction warning, and this is not that).
+(4) Routing + shape. `GET /claims/board` on the GATED router beside the queue (a read
+strands nothing - 9e). Consider whether the response is {columns: [{key, label, count,
+total, items}]} with a small per-column page, or headers-only with the existing
+`GET /claims?status=` doing the drill-down. The second is less code and less to keep in
+sync; the first is one request instead of four. Pick one at kickoff and say why.
 
-(5) Routing. The sub-status relay goes on the GATED router: 9e's test is "would refusing
-it strand in-flight work?" and a relay strands nothing. `/mark-paid` goes on the UN-GATED
-actions.py beside `/settle` - it drives a transition. Both are decided; confirm anyway.
+(5) FE: BoardPage + PipelineCard are ALREADY BUILT and unused - reachable only from the
+DEV catalog at UiFoundationPage.tsx:156-166. Wire them to real data; do not rebuild
+them. Check what props they already take BEFORE designing the response shape, because
+they were authored against an imagined one. The board is a THIRD lens on the same rows
+My Work and the queue already render, so reuse work_item/queueMeta rather than authoring
+a third row mapper (delta row 140: two mappers for one row shape is how two lists drift).
+Route + nav entry beside Claim queue, same role gating.
 
-(6) FE: an FmsStatusDialog + a MarkPaidDialog on the claim page, modelled on
-SettlementDialog (react-hook-form + zod + FormDialog, 409 -> Callout, seed the claim cache
-from the response); render external events in ClaimTimeline; surface the latest FMS
-sub-status on the queue row and the claim rail. `fms_returned` needs NO new screen - the
-state is authored, `actionLabel` already reads "Return to claimant" at it, and
-ClaimActions already renders it; R-7-queue is what finally makes it reachable.
+(6) NO MIGRATION is expected. Everything the board needs (status, kind, totals, the
+instance org unit) already exists. If you find yourself wanting a column, stop and say
+why in the delta register first.
 
 Available to build on - do NOT rebuild any of it:
 CORE - the workflow engine (#11), reference numbers (#5), checklist engine (#7),
-documents (#8) + snapshots (#3), attachments (#2), notifications outbox, core/workdays,
-and NEW at R-7-queue: `core/org_units.py::descendants_or_self`.
+documents (#8) + snapshots (#3), attachments (#2) + NEW at R-7-events
+`attachments.start_retention`, notifications outbox, core/workdays,
+`org_units.descendants_or_self`.
 MODULE - services/lifecycle.py is the ONLY sanctioned caller of start_instance/
-execute_action; services/cash_advance.py is the ONLY writer of reimb_cash_advances;
-services/settlement.py owns record_settlement + spawn_reimbursement; services/queue.py
-owns oversight scope + the FMS working-day count; services/status.py is kind-aware (add
-no state without adding it to that kind's Vocabulary - _assert_graph_invariants refuses
-to publish otherwise). api/deps.py now owns the shared list mappers (work_item,
-holder_names, claimant_names).
-NOTE api-standards 9f, NEW at R-7-queue: a LIST may not borrow a ROW's read rule.
-NOTE workflow-standards 12: the engine's `approve` carries NO payload, so a decision that
-must RECORD DATA is a separate, prior service call in the same transaction, and the
-client verb is REWRITTEN not dropped. Item (2) is exactly that shape.
-NOTE the liquidation chain deliberately has NO `fms_returned` (delta row 116) - if FMS
-bounces liquidations too, that is definition v2, not a new state on v1.
-DEFERRED to R-7-board: spec 9.6's pipeline board (In Bureau / With FMS / Done, counts +
-peso totals per column header). BoardPage + PipelineCard are ALREADY BUILT and unused,
-reachable only from the DEV catalog UiFoundationPage.tsx:156-166. Spec 13's KPI surface
-stays in Stage H per master-plan 119.
+execute_action; services/cash_advance.py owns reimb_cash_advances; services/settlement.py
+owns record_settlement + spawn_reimbursement; services/external.py (NEW at R-7-events)
+owns the FMS relay + record_payout; services/queue.py owns oversight scope + the FMS
+working-day count; services/status.py is kind-aware. api/deps.py owns the shared list
+mappers (work_item, holder_names, claimant_names, external_event_out).
+NOTE api-standards 9f: a LIST may not borrow a ROW's read rule.
+NOTE workflow-standards 12 now has an INSTANCES TABLE (settle + mark_paid) - read it
+before adding any data-carrying transition.
+DEFERRED past R-7: spec 13's KPI surface -> Stage H. R-8 (insights / the return-reason
+learning loop) and R-9 (hardening + the pilot gate) follow.
 
-TEST HYGIENE (learned the hard way at #24): a fixture that seeds dates relative to TODAY
-must undo itself in a `finally` - the suite shares one database, and holiday rows in the
-recent past silently shorten every "working days since..." count in the codebase.
+TEST HYGIENE (learned twice now, sessions #24 and #25): ANY fixture that writes dates
+relative to TODAY must undo itself in a `finally` - the suite shares one database.
+#24 was holidays in the recent past; #25 was claims backdated to 21 days with FMS, which
+silently filled the `external_over` page with old fixtures. Scope list assertions by
+claimant_id rather than trusting page 1.
+LIVE SMOKE EARNS ITS PLACE: #25's 28-check smoke found a duplicate-notification defect
+every unit test passed - both messages were individually correct. Budget time for it.
 OPS: after touching documents/, seeds.py or ops/, run `docker compose restart worker
-beat` - the worker holds stale Python while reading templates fresh from the bind-mount,
-and the failure is a silent outcome="failed" no test can catch (tech-stack 5).
-pytest 822 (0 failures), lint-imports 3/3, FE gate green (193). Dev flag ON - but a full
+beat` (tech-stack 5). The FE toolchain lives in the `web` container:
+`docker compose exec web sh -c "cd /app && npm run typecheck && npm run lint && npm test"`.
+pytest 860 (0 failures), lint-imports 3/3, FE gate green (214). Dev flag ON - but a full
 suite run leaves it OFF; `python -m office_connect.ops.bootstrap set-flag
 module.reimbursement --on` restores it.
 Push cadence: once at the Stage C QA gate.
-Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - the R-7-queue rows
+Read CLAUDE.md, then docs/modules/reimbursement.md (delta register - the R-7-events rows
 and section 3's R-0 tracker), docs/standards/workflow-standards.md (9 + 12),
 api-standards 9/9a/9b/9c/9e/9f, ui-standards 3+4, master-plan 1.1 #2/#3/#5/#8, and spec
-5.7, 6.1 rows 6-8, 12, 14's R-7 row.
+9.6, 6.1, 13, 14's R-7 row.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed.
 ```
 
@@ -203,7 +222,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
-| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet + **R-6 ✅** clock/liq-chain/liq-settle + **R-7** queue ✅ / events / board) | 11–24 | — | — |
+| C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | in progress (R-1 ✅ + R-2 ✅ engine/shell/wizard + **R-3 ✅** + **R-4 ✅** engine core/app/screens + **R-5 ✅** gen/packet + **R-6 ✅** clock/liq-chain/liq-settle + **R-7** queue ✅ / events ✅ / board) | 11–25 | — | — |
 | D | 3 | Landing shell / query bar / Calendar surface / AI service | not started | — | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
@@ -224,6 +243,114 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-05 (session 25 — Stage C R-7-events: the FMS journey record)** —
+  R-7-queue made FMS-held claims **findable**; this session made them
+  **actionable**, and closed three holes that were all live in the codebase at
+  kickoff. `reimb_external_events` had shipped in migration `0013` with its
+  index and its `REVOKE UPDATE` and had **never been written to** — grep found
+  zero writers and zero readers, only two source comments promising "they ride
+  `reimb_external_events` at R-7". `paid_closed` **recorded nothing**: spec §6.1
+  row 8 calls it "terminal (admin records payout ref)" and it was a bare
+  `approve`, so a claim closed holding no reference, no date and no way to add
+  either. And every claim attachment in the system was **permanently
+  non-disposable**, because `services/attachments.py` has parked
+  `retention_starts_at=None` since R-2 waiting for a "R-7" that never came.
+  - **The arrow in spec §6.1 row 6 is not a sequence, and that is the design.**
+    The row reads *With Budget → With Accounting → Payment Processing (admin,
+    **any order/skips allowed**)*, and the parenthetical is the operative half.
+    FMS pays straight out of Budget, sends packets back to desks they already
+    left, and answers "still with Accounting" twice in one week — every one of
+    those is a legal relay. So `record_external_event` enforces MEMBERSHIP of
+    the closed set and never ORDER; repeats are legal; and the 422 says *"in any
+    order, and skipping any of them is fine"* **out loud**, because an operator
+    who infers a sequence from a three-item list will not relay Accounting on a
+    packet that skipped Budget. The FE mirrors it — no option is ever disabled
+    by what came before. This is delta row 38 finally built: the sub-statuses
+    are **not states**, they ride an append-only table over the single
+    `handed_to_fms` state.
+  - **"A relay moves nothing" is asserted, not assumed.** If a relay ever moved
+    the claim it would also reset `holder_since`, and R-7-queue's ">10 working
+    days with FMS" filter — the one surface that makes a stalled packet visible
+    — would silently restart its clock every time somebody phoned FMS. The bug
+    would have looked like diligence. A test pins status, holder, `holder_since`
+    and the history row count across three relays.
+  - **The relay works on BOTH claim kinds.** A liquidation sits at
+    `handed_to_fms` too and is exactly as invisible while it does. Delta row
+    116's liquidation exclusion is about `fms_returned` — a STATE, which would
+    need a screen and a transition — not about a relay that adds no state and
+    reuses one dialog. FMS runs both packets past the same three desks.
+  - **`mark_paid` is workflow-standards §12's second instance, and the standard
+    held without amendment.** `record_payout` writes the reference and the
+    `paid` event, then drives the unchanged `approve`, all in one transaction;
+    `_assert_payout_recorded` refuses the bare verb and NAMES `/mark-paid`;
+    `claim_actions` rewrites the client verb rather than dropping it. Both
+    chains now end in a rewritten verb, and the rewrite is **one kind-keyed
+    table** rather than two `if` branches — two chains answering the same
+    question in two places is how they drift on the day a third arrives. That is
+    the only new advice the second instance produced, and it is now in §12.
+  - **What FMS hands back was an open R-0-style question; the answer is
+    deliberately small** (user-confirmed at kickoff): one reference plus a date.
+    `payout_ref` / `paid_on` / `paid_by` in migration `0021`, **no unique
+    index** — one LDDAP-ADA legitimately pays many disbursement vouchers — and
+    `paid_on` a DATE rather than a timestamp, because when the money moved is
+    the auditable fact and when somebody typed it in is already `updated_at`
+    plus the history row. **The reference is REQUIRED**: `paid_closed` is
+    read-only with no amendment route, so a blank one would recreate the very
+    hole this closed, and the refusal names the honest alternative — relay
+    *Payment processing* until the reference exists.
+  - **The retention bug nobody could see, and rule 5 catching the first fix.**
+    `retain_until()` had been returning `None` for every claim attachment ever
+    stored, and the disposal report said "retention clock not started" — forever,
+    and *correctly*, because it genuinely had not. `start_retention` went in
+    CORE beside `retain_until` (rule 10, the `descendants_or_self` precedent):
+    the module names the moment, core does the stamping, and both money
+    terminals call it. The first cut was a bulk ORM `UPDATE` and
+    `core/audit.py` **refused it at test time** — rightly, because starting a
+    legal retention period is exactly the kind of change that must appear in the
+    hash-chained log. Rewritten to load-and-mutate. `cancelled` deliberately
+    does not stamp (user-confirmed): a voided claim produced no disbursement, so
+    dating a disbursement-record retention period from its void would assert a
+    disposal deadline for a payment that never happened. Recorded as a deferral,
+    with a test pinning it so a later change is deliberate.
+  - **One chronology, and the invariant the merge could have broken.** The
+    tracker now merges `reimb_status_histories` with `reimb_external_events` —
+    a claimant asking "where is my money" is asking ONE question, and answering
+    it with two lists to interleave by hand is the tracker failing at its only
+    job. `to_status` is **NULL on an external row**: a sub-status is not a
+    workflow state, and letting `with_accounting` travel in the field every
+    consumer reads as a claim status is how that distinction would quietly stop
+    being true. The risk was the positional return-reason pairing (there is no
+    FK; the k-th return row is the k-th return event) — so it is computed from
+    the history rows ALONE, before the external lane is appended, and the merge
+    is a sort at the very end. A regression test drives two returns with an FMS
+    relay in the feed and checks the reasons landed on the right bounces.
+  - **The live smoke earned its place again.** Every unit test passed and the
+    28-check smoke still found a defect: `record_payout` writes a `paid`
+    external event AND calls `notify_paid`, so a traveller got **two
+    notifications about one payment** — the less informative one ("your claim is
+    now Paid", no reference, no amount) arriving first. Both messages were
+    individually correct, which is precisely why no assertion caught it. Now
+    suppressed at the source and pinned by a test that asserts the whole outbox
+    for the claim, not just the message it expects.
+  - **A test-hygiene defect of exactly the session-#24 kind, one table over.**
+    `test_reimb_api_queue.py::_backdate` aged COMMITTED claims to 21 days with
+    FMS and never undid it. The suite shares one database, so every run left
+    another permanently-over-threshold row until `?external_over=true`'s first
+    page was nothing but old fixtures and the assertions stopped being about the
+    claims they named. Fixed with `_undo_backdating` in a `finally` plus
+    per-claimant scoping on the assertions. **The rule generalizes past
+    holidays: any fixture that writes dates relative to TODAY must undo itself.**
+  - **Six existing tests were updated, not worked around.** They closed claims
+    with the bare `approve` this increment deliberately removes; each now drives
+    `record_payout` and asserts the new contract, including that the bare verb
+    409s and names the route.
+  - **Verified:** pytest **860 (+38), 0 failures**; lint-imports 3/3; `0021`
+    reversible (down→up→up) and `alembic check` clean; seeds ×2 no-op; FE gate
+    green (tsc + eslint + **214 vitest**, +21, + build); **28/28 live smoke**
+    through the real stack, plus a direct check that the GRDS clock really is
+    stamped on the stored files and the outbox holds exactly one message per
+    fact. Local commit only — push stays at the Stage C QA gate.
 
 - **2026-08-04 (session 24 — Stage C R-7-queue: the oversight queue)** — R-7 is
   about the part of the journey that **isn't ours**: everything up to

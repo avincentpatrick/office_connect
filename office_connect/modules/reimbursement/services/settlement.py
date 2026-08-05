@@ -285,6 +285,11 @@ async def record_settlement(
     # check means an exact-match settlement that changed no printed fact
     # re-renders nothing.
     generate_on_commit(session, evidence.HOLDER_KIND, claim.id)
+    # The GRDS clock (R-7-events). ``settled`` is the liquidation chain's final
+    # settlement in the literal GRDS-2023 sense, so it starts the same 10-year
+    # period ``paid_closed`` does on a reimbursement. AFTER the approve: until
+    # the transition lands, the record is not final.
+    await evidence.start_retention_clock(session, claim_id=claim.id, now=now)
     # Recording the settlement is the Admin Officer's act; claiming an
     # over-advance is the traveller's. Without this the two never meet.
     await notify.notify_settlement(session, claim=claim, advance=advance)

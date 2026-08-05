@@ -6,10 +6,14 @@ import { renderRoutes, stubFetch } from "../../test/harness";
 import {
   RETURN_REASONS,
   awaitingApproval,
+  awaitingPayment,
   completeClaim,
   makeChecklistSummary,
+  makeExternalEvent,
+  makeExternalTimelineEvent,
   makePacket,
   makeTimeline,
+  paidClaim,
 } from "../../test/reimb-fixtures";
 import { ClaimPage } from "./ClaimPage";
 
@@ -409,5 +413,227 @@ describe("ClaimPage — the approver's auto-check callouts (spec §9.4)", () => 
     });
     expect(callout).not.toHaveFocus();
     await expectNoA11yViolations(document.body);
+  });
+});
+
+/**
+ * R-7-events — the FMS leg, from the Admin Officer's side.
+ *
+ * Everything on this screen exists because the packet has LEFT the building.
+ * The two things that can honestly be done to a claim FMS is holding are: say
+ * where it got to, and close it when they pay. The tests below are mostly about
+ * the difference between those two, because conflating them is how a claim gets
+ * closed on a phone call.
+ */
+describe("ClaimPage — the FMS leg", () => {
+  const RELAY = "POST /api/v1/reimbursement/claims/7/external-events";
+  const MARK_PAID = "POST /api/v1/reimbursement/claims/7/mark-paid";
+
+  it("offers the relay and the close, and never an Approve", async () => {
+    stubFetch(reads(awaitingPayment()));
+    const { container } = renderRoutes(ROUTES, PATH);
+
+    // The server REWROTE `approve` here: the Admin Officer may still clear this
+    // gate, they just have to record the payment while doing it.
+    expect(
+      await screen.findByRole("button", { name: "Mark paid & close" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Update FMS status" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    // Spec section 6.1 row 7's hand-back, finally reachable.
+    expect(screen.getByRole("button", { name: "Return" })).toBeInTheDocument();
+    await expectNoA11yViolations(container);
+  });
+
+  it("relays a status without pretending anything moved", async () => {
+    const relayed = awaitingPayment({
+      latest_external: makeExternalEvent({
+        status: "with_accounting",
+        status_label: "With Accounting",
+      }),
+    });
+    const calls: Record<string, unknown>[] = [];
+    stubFetch({
+      ...reads(awaitingPayment()),
+      [RELAY]: (init?: RequestInit) => {
+        calls.push(JSON.parse(String(init?.body)));
+        return { body: relayed };
+      },
+    });
+    renderRoutes(ROUTES, PATH);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Update FMS status" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    // The dialog says out loud that this is not progress — an update that
+    // looked like movement would be worse than no update at all.
+    expect(
+      within(dialog).getByText(/does not move the claim/i),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(dialog).getByRole("radio", { name: /With Accounting/ }),
+    );
+    await userEvent.type(
+      within(dialog).getByLabelText(/Who at FMS told you/),
+      "Ms. Reyes, Accounting",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Record update" }),
+    );
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({
+      status: "with_accounting",
+      noted_by: "Ms. Reyes, Accounting",
+    });
+  });
+
+  it("offers all three statuses whatever was relayed last", async () => {
+    // Spec section 6.1 row 6: "any order/skips allowed". A claim last reported
+    // as Payment processing can still legitimately go back to Budget, so
+    // nothing here is disabled by what came before — the arrow in the spec is a
+    // typical journey, not a sequence to enforce.
+    stubFetch(
+      reads(
+        awaitingPayment({
+          latest_external: makeExternalEvent({
+            status: "payment_processing",
+            status_label: "Payment processing",
+          }),
+        }),
+      ),
+    );
+    renderRoutes(ROUTES, PATH);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Update FMS status" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    for (const label of [
+      /With Budget/,
+      /With Accounting/,
+      /Payment processing/,
+    ]) {
+      expect(within(dialog).getByRole("radio", { name: label })).toBeEnabled();
+    }
+  });
+
+  it("will not close a claim without a payment reference", async () => {
+    // `paid_closed` is read-only afterwards and nothing can add the reference
+    // later, so the empty box is caught before the request — a corrected field
+    // instead of a permanent gap in a financial record.
+    const calls: unknown[] = [];
+    stubFetch({
+      ...reads(awaitingPayment()),
+      [MARK_PAID]: (init?: RequestInit) => {
+        calls.push(JSON.parse(String(init?.body)));
+        return { body: paidClaim() };
+      },
+    });
+    renderRoutes(ROUTES, PATH);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Mark paid & close" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Record payment & close" }),
+    );
+
+    expect(
+      await within(dialog).findByText(/Enter the payment reference/i),
+    ).toBeInTheDocument();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("closes the claim with the reference, the date and the CAS token", async () => {
+    const calls: Record<string, unknown>[] = [];
+    stubFetch({
+      ...reads(awaitingPayment()),
+      [MARK_PAID]: (init?: RequestInit) => {
+        calls.push(JSON.parse(String(init?.body)));
+        return { body: paidClaim() };
+      },
+    });
+    renderRoutes(ROUTES, PATH);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Mark paid & close" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    // Naming the consequence (ui-standards section 3.10): this one is final.
+    expect(within(dialog).getByText(/closes it for good/i)).toBeInTheDocument();
+
+    await userEvent.type(
+      within(dialog).getByLabelText(/Payment reference/),
+      "ADA-2026-00417",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Record payment & close" }),
+    );
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toMatchObject({
+      payout_ref: "ADA-2026-00417",
+      expected_version: 5,
+    });
+    expect(calls[0].paid_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it("shows the payment reference on the closed claim, and no buttons", async () => {
+    stubFetch(reads(paidClaim()));
+    const { container } = renderRoutes(ROUTES, PATH);
+
+    // The reference is the point of the panel: it is what a traveller quotes to
+    // FMS or their bank when the credit has not appeared.
+    expect(await screen.findByText(/ADA-2026-00417/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Mark paid/ })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /Update FMS status/ }),
+    ).toBeNull();
+    await expectNoA11yViolations(container);
+  });
+
+  it("puts the latest FMS word in the rail beside 'With: FMS'", async () => {
+    // "With: FMS" is only half an answer — the other half is which desk inside
+    // FMS, and that is the half a claimant is actually asking about.
+    stubFetch(
+      reads(
+        awaitingPayment({
+          latest_external: makeExternalEvent({ noted_by: "Ms. Reyes" }),
+        }),
+      ),
+    );
+    renderRoutes(ROUTES, PATH);
+
+    expect(await screen.findByText("Latest from FMS")).toBeInTheDocument();
+    expect(screen.getByText(/With Accounting — Ms. Reyes/)).toBeInTheDocument();
+  });
+
+  it("renders FMS updates in the tracker, attributed to FMS", async () => {
+    // The feed mixes "this claim moved to Admin Review" with "FMS says it is
+    // With Accounting". Without the attribution the second reads as a status
+    // the platform controls — which is exactly what a sub-status is not.
+    stubFetch(
+      reads(awaitingPayment(), [
+        ...makeTimeline(),
+        makeExternalTimelineEvent({
+          id: 9,
+          to_status_label: "With Accounting",
+          note: "Endorsed to the cashier.",
+        }),
+      ]),
+    );
+    renderRoutes(ROUTES, PATH);
+
+    expect(
+      await screen.findByText(
+        /FMS: With Accounting — Endorsed to the cashier\./,
+      ),
+    ).toBeInTheDocument();
   });
 });

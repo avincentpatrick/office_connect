@@ -140,8 +140,16 @@ async def test_a_draft_offers_submit_and_cancel_to_its_owner(
 async def test_approve_walks_the_chain_to_paid_closed(
     client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on
 ):
-    """Every forward move is the SAME ``approve`` action — this is why one
-    endpoint covers Approve, "hand to FMS" and "mark paid & close"."""
+    """Every forward move up to FMS is the SAME ``approve`` action — this is why
+    one endpoint covers Approve and "hand to FMS".
+
+    The LAST rung is the exception, and R-7-events made it one: closing a claim
+    as paid records a payment reference (spec §6.1 row 8), the engine's
+    ``approve`` carries no payload, so the terminal verb is
+    ``POST /mark-paid`` driving the same transition (workflow-standards §12).
+    The bare approve is refused here, and it names that route — the assertion
+    below is the whole point of the chokepoint.
+    """
     cast = await _submitted_over_http(client, app_session, make_user)
     cid = cast["claim_id"]
 
@@ -159,9 +167,21 @@ async def test_approve_walks_the_chain_to_paid_closed(
     handed = await client.post(f"{BASE}/claims/{cid}/approve", json={}, headers=CSRF)
     assert handed.json()["status"] == "handed_to_fms"
     assert handed.json()["holder_kind"] == "external_fms"
+    # REWRITTEN, not dropped: the Admin Officer may still clear this gate.
+    assert "mark_paid" in handed.json()["available_actions"]
+    assert "approve" not in handed.json()["available_actions"]
 
-    paid = await client.post(f"{BASE}/claims/{cid}/approve", json={}, headers=CSRF)
+    bare = await client.post(f"{BASE}/claims/{cid}/approve", json={}, headers=CSRF)
+    assert bare.status_code == 409
+    assert bare.json()["error"]["code"] == "reimb_payout_required"
+
+    paid = await client.post(
+        f"{BASE}/claims/{cid}/mark-paid",
+        json={"payout_ref": "ADA-2026-00417", "paid_on": "2026-07-03"},
+        headers=CSRF,
+    )
     assert paid.json()["status"] == "paid_closed"
+    assert paid.json()["payout_ref"] == "ADA-2026-00417"
     assert paid.json()["available_actions"] == []  # terminal
     assert paid.json()["holder_kind"] is None
     assert paid.json()["next_action"] is None

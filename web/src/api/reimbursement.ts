@@ -291,9 +291,48 @@ export interface ClaimDetail {
    */
   spawned_claim?: SpawnedClaim | null;
   spawned_from?: SpawnedClaim | null;
+  /**
+   * What FMS last said about this packet (R-7-events), or null until they have
+   * said anything. Embedded for the reason everything above it is: "Handed to
+   * FMS" and "…and it is now With Accounting" are one answer to one question,
+   * and delivering them in two responses lets the chip and the rail disagree.
+   */
+  latest_external?: ExternalEvent | null;
+  /** What FMS paid against, and when. Null until the claim closes; read-only after. */
+  payout_ref?: string | null;
+  paid_on?: string | null;
   created_at: string;
   updated_at: string;
 }
+
+/**
+ * One FMS journey update (spec §6.1 row 6). `status_label` comes from the
+ * SERVER's vocabulary — the browser never authors a status string, so the
+ * tracker, the rail, the queue row and the claimant's notification cannot
+ * disagree about what "With Accounting" is called.
+ */
+export interface ExternalEvent {
+  id: number;
+  status: ExternalStatus;
+  status_label: string;
+  /** Whoever at FMS said it — free text, because they have no login here. */
+  noted_by: string | null;
+  note: string | null;
+  /** What FMS says the date was, when it differs from when it was relayed. */
+  event_date: string | null;
+  created_at: string;
+}
+
+/**
+ * The closed set an Admin Officer may relay. **Order is not a rule** — spec
+ * §6.1 row 6 says "any order/skips allowed", so this is a set of options, never
+ * a sequence to walk. `paid` is absent on purpose: it closes the claim and goes
+ * through `markPaid`, which carries the payment reference.
+ */
+export type ExternalStatus =
+  | "with_budget"
+  | "with_accounting"
+  | "payment_processing";
 
 /** A thin pointer between the two halves of an over-advance. */
 export interface SpawnedClaim {
@@ -338,6 +377,21 @@ export type ClaimAction =
    */
   | "settle"
   /**
+   * The reimbursement chain's terminal verb (R-7-events) — the same rewrite as
+   * `settle`, one chain over. `POST /claims/{id}/mark-paid` clears
+   * `handed_to_fms` while recording the payment reference spec §6.1 row 8 asks
+   * for, because the engine's `approve` carries no payload.
+   */
+  | "mark_paid"
+  /**
+   * Relay what FMS says (spec §6.1 row 6). Not a transition at all — it appends
+   * to the FMS journey and moves nothing — but it rides the action set for the
+   * same reason `spawn` does: that set is the client's ONLY sanctioned answer
+   * to "what may I do here" (workflow-standards §3), and the alternative is the
+   * browser inferring a permission from a role name.
+   */
+  | "relay_fms"
+  /**
    * Spec §6.2's "one tap": claim the difference an over-advance left owing.
    * Also not an engine action — it happens after the chain is terminal and it
    * creates a NEW claim. It rides the action set anyway, because that set is
@@ -357,17 +411,30 @@ export interface ReturnReason {
   category: string;
 }
 
-/** One row of the claim tracker (spec §9.2), from reimb_status_histories. */
+/**
+ * One row of the claim tracker (spec §9.2) — a workflow transition from
+ * `reimb_status_histories`, or since R-7-events an FMS update from
+ * `reimb_external_events`, merged into ONE chronology.
+ *
+ * `to_status` is **null on an external row**, and that is load-bearing rather
+ * than lazy: an FMS sub-status is deliberately not a workflow state (they ride
+ * the event table over the single `handed_to_fms` state), so letting
+ * `with_accounting` into the `ClaimStatus` union is exactly how that
+ * distinction would quietly stop being true. Render `to_status_label`.
+ */
 export interface TimelineEvent {
+  kind: "status" | "external";
   id: number;
   from_status: ClaimStatus | null;
   from_status_label: string | null;
-  to_status: ClaimStatus;
+  to_status: ClaimStatus | null;
   to_status_label: string;
   actor_display: string | null;
   note: string | null;
   /** Populated on the rows a return produced — shown to the claimant verbatim. */
   reasons: ReturnReason[];
+  /** What FMS says the date was, on an external row. */
+  event_date?: string | null;
   created_at: string;
 }
 
@@ -399,6 +466,13 @@ export interface QueueItem extends WorkItem {
   claimant_display: string | null;
   days_with_fms: number | null;
   external_followup: boolean;
+  /**
+   * The last thing FMS said (R-7-events), or null if they have said nothing.
+   * "12 working days with FMS" and "…and it was last With Accounting" are
+   * different facts, and the second is what decides whether the follow-up call
+   * is worth making.
+   */
+  external_status_label: string | null;
 }
 
 export interface ClaimQueueResponse {
@@ -474,6 +548,12 @@ export const reimbKeys = {
     [...reimbKeys.all, "cash-advances", claimantId ?? "mine"] as const,
   cashAdvance: (id: number) =>
     [...reimbKeys.all, "cash-advance", id] as const,
+  // The prefix over every filter combination. React Query matches keys by
+  // prefix, so this is what an invalidate-after-write uses: relaying an FMS
+  // status or closing a claim changes which lens it belongs to, and refreshing
+  // only the lens the writer happened to be on would leave the other five
+  // showing a claim that has moved (R-7-events).
+  queues: () => [...reimbKeys.all, "queue"] as const,
   // Every filter value is in the key, for the same reason `cashAdvances` puts
   // the claimant id in its own: two filters are two different lists, and one
   // cache entry for both shows the Admin Officer the last question they asked
@@ -624,6 +704,60 @@ export function settleClaim(
   body: SettlementInput = {},
 ): Promise<ClaimDetail> {
   return api<ClaimDetail>(`/reimbursement/claims/${id}/settle`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Relay one FMS journey update (spec §6.1 row 6) — R-7-events.
+ *
+ * Appends and moves nothing: the sub-statuses are not workflow states, they
+ * ride an append-only event table over the single `handed_to_fms` state. The
+ * response is the whole claim, because the relay changes what the rail says and
+ * what the tracker shows.
+ */
+export interface ExternalEventInput {
+  status: ExternalStatus;
+  noted_by?: string | null;
+  note?: string | null;
+  event_date?: string | null;
+}
+
+export function recordExternalEvent(
+  id: number,
+  body: ExternalEventInput,
+): Promise<ClaimDetail> {
+  return api<ClaimDetail>(`/reimbursement/claims/${id}/external-events`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchExternalEvents(id: number): Promise<ExternalEvent[]> {
+  return api<ExternalEvent[]>(`/reimbursement/claims/${id}/external-events`);
+}
+
+/**
+ * Close a claim, recording what FMS paid (spec §6.1 row 8) — R-7-events.
+ *
+ * Note what this body does NOT carry: the amount. What was owed is the claim's
+ * own server-computed `totals`, and a client that could post "paid ₱6,750"
+ * could close a claim on a figure the claim never said. The reference and the
+ * date are facts only FMS can supply, which is why they are the inputs.
+ */
+export interface MarkPaidInput {
+  payout_ref: string;
+  paid_on: string;
+  comment?: string | null;
+  expected_version?: number | null;
+}
+
+export function markPaid(
+  id: number,
+  body: MarkPaidInput,
+): Promise<ClaimDetail> {
+  return api<ClaimDetail>(`/reimbursement/claims/${id}/mark-paid`, {
     method: "POST",
     body: JSON.stringify(body),
   });

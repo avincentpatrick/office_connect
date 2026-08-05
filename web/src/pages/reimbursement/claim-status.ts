@@ -86,6 +86,13 @@ export function actionLabel(action: ClaimAction, status: ClaimStatus): string {
   // server rewrites `approve` into it at handed_to_fms, because the same
   // transition now also has to record the money.
   if (action === "settle") return "Record settlement";
+  // The reimbursement chain's, rewritten the same way at the same state
+  // (R-7-events). Deliberately the SAME words the `approve` label used to
+  // carry there — the act has not changed, only what it now has to record.
+  if (action === "mark_paid") return "Mark paid & close";
+  // Not a decision and not a transition: it appends to the FMS journey. The
+  // verb says "update", never "approve", because nothing moves.
+  if (action === "relay_fms") return "Update FMS status";
   // Rendered by SettlementOutcome with the peso figure in it, not by the
   // decision bar — this label is the fallback wording.
   if (action === "spawn") return "Claim the difference";
@@ -178,6 +185,13 @@ export function queueMeta(item: QueueItem): string {
     parts.push(
       `${item.days_with_fms} working ${item.days_with_fms === 1 ? "day" : "days"} with FMS`,
     );
+    // What FMS last said, where they have said anything (R-7-events). How long
+    // and where are different facts, and the second is what decides whether the
+    // follow-up call is worth making: 12 days in Payment Processing is a
+    // different conversation from 12 days in Budget.
+    if (item.external_status_label) {
+      parts.push(`Last: ${item.external_status_label}`);
+    }
   } else {
     parts.push(
       `${item.days_in_state} ${item.days_in_state === 1 ? "day" : "days"} in this step`,

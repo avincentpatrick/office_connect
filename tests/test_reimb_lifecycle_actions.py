@@ -10,11 +10,13 @@ import pytest
 from sqlalchemy import select
 
 from office_connect.core.api.errors import APIError
+from office_connect.core.time import to_manila, utc_now
 from office_connect.modules.reimbursement.models import (
     ReimbReturnEvent,
     ReimbStatusHistory,
 )
 from office_connect.modules.reimbursement.services import status as st
+from office_connect.modules.reimbursement.services.external import record_payout
 from office_connect.modules.reimbursement.services.lifecycle import (
     cancel_draft_claim,
     claim_action,
@@ -64,11 +66,26 @@ async def test_happy_walk_no_null_holders(app_session, seed_rbac, make_user, rei
     assert claim.next_action == "Waiting on FMS — update status"
     assert_holder_invariant(claim)
 
-    await claim_action(
-        app_session, claim_id=claim.id, action="approve",
+    # The last rung is not a bare approve any more (R-7-events): closing a claim
+    # records what FMS paid, so the transition is driven by `record_payout`
+    # inside one transaction (workflow-standards §12). The chokepoint below is
+    # what stops the generic verb from reaching a state it cannot evidence.
+    with pytest.raises(APIError) as ei:
+        await claim_action(
+            app_session, claim_id=claim.id, action="approve",
+            actor_user_id=cast.admin.id,
+        )
+    assert ei.value.code == "reimb_payout_required"
+
+    await record_payout(
+        app_session,
+        claim_id=claim.id,
         actor_user_id=cast.admin.id,
+        payout_ref="ADA-2026-00417",
+        paid_on=to_manila(utc_now()).date(),
     )
     assert claim.status == st.PAID_CLOSED
+    assert claim.payout_ref == "ADA-2026-00417"
     assert_holder_invariant(claim)  # terminal: holder + next_action cleared
 
     history = (
@@ -341,11 +358,18 @@ async def test_terminal_claims_refuse_further_actions(
     app_session, seed_rbac, make_user, reimb_flag_on
 ):
     cast = await _submitted(app_session, make_user)
-    for actor in (cast.approver, cast.admin, cast.admin):
+    for actor in (cast.approver, cast.admin):
         await claim_action(
             app_session, claim_id=cast.claim.id, action="approve",
             actor_user_id=actor.id,
         )
+    await record_payout(
+        app_session,
+        claim_id=cast.claim.id,
+        actor_user_id=cast.admin.id,
+        payout_ref="ADA-2026-00417",
+        paid_on=to_manila(utc_now()).date(),
+    )
     assert cast.claim.status == st.PAID_CLOSED
 
     with pytest.raises(APIError) as ei:

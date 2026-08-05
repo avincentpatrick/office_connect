@@ -25,9 +25,10 @@ import uuid
 from datetime import timedelta
 
 from office_connect.core.models import Holiday
-from office_connect.core.time import utc_now
+from office_connect.core.time import to_manila, utc_now
 from office_connect.core.workdays import load_nonworking_dates
 from office_connect.modules.reimbursement.services import status as st
+from office_connect.modules.reimbursement.services.external import record_payout
 from office_connect.modules.reimbursement.services.lifecycle import (
     claim_action,
     submit_claim,
@@ -75,8 +76,25 @@ async def _signin(client, user):
 
 def _backdate(claim, *, days: int) -> None:
     """Age a claim's stay with FMS. ``holder_since`` IS the hand-off instant
-    while the state does not change — that is why R-7 added no column."""
+    while the state does not change — that is why R-7 added no column.
+
+    **Every caller must undo this in a `finally`** (`_undo_backdating`). The
+    suite shares one database and these rows are committed, so a claim left
+    aged 21 days is over the follow-up threshold forever — and each run adds
+    more, until the `external_over` page is nothing but old test fixtures and
+    the assertions below stop being about the claim they name. Same rule the
+    holiday fixture learned at session #24, one table over.
+    """
     claim.holder_since = utc_now() - timedelta(days=days)
+
+
+async def _undo_backdating(app_session, *claims) -> None:
+    """Return the aged claims to the present, so they stop matching the
+    follow-up filter for every future run."""
+    now = utc_now()
+    for claim in claims:
+        claim.holder_since = now
+    await app_session.commit()
 
 
 # --- scope: the reason this endpoint is not just "My Work with filters" -----
@@ -180,9 +198,14 @@ async def test_drafts_and_terminal_claims_are_absent(
     draft = await trip_claim(
         app_session, staff=cast.staff, owner_user_id=cast.owner.id
     )
-    await claim_action(
-        app_session, claim_id=cast.claim.id, action="approve",
+    # R-7-events: the terminal rung records a payment reference, so a bare
+    # `approve` no longer reaches it (workflow-standards §12).
+    await record_payout(
+        app_session,
+        claim_id=cast.claim.id,
         actor_user_id=cast.admin.id,
+        payout_ref="ADA-2026-00417",
+        paid_on=to_manila(utc_now()).date(),
     )
     assert cast.claim.status == st.PAID_CLOSED
     await app_session.commit()
@@ -259,16 +282,28 @@ async def test_the_threshold_boundary_is_exclusive(
     _backdate(fresh.claim, days=12)
     await app_session.commit()
 
-    await _signin(client, boss)
-    body = (await client.get(f"{BASE}/claims?external_over=true")).json()
-    ids = [i["id"] for i in body["items"]]
-    assert late.claim.id in ids
-    assert fresh.claim.id not in ids
-    assert body["followup_working_days"] == 10
+    try:
+        await _signin(client, boss)
+        # Scoped per claimant: the filter's page is shared with every other
+        # externally-held claim in the database, and this assertion is about
+        # these two.
+        stale = await client.get(
+            f"{BASE}/claims?external_over=true&claimant_id={late.staff.id}"
+        )
+        body = stale.json()
+        assert [i["id"] for i in body["items"]] == [late.claim.id]
+        assert body["followup_working_days"] == 10
 
-    row = next(i for i in body["items"] if i["id"] == late.claim.id)
-    assert row["days_with_fms"] > 10
-    assert row["external_followup"] is True
+        row = body["items"][0]
+        assert row["days_with_fms"] > 10
+        assert row["external_followup"] is True
+
+        recent = await client.get(
+            f"{BASE}/claims?external_over=true&claimant_id={fresh.staff.id}"
+        )
+        assert recent.json()["items"] == []
+    finally:
+        await _undo_backdating(app_session, late.claim, fresh.claim)
 
 
 async def test_holidays_inside_the_window_shorten_the_count(
@@ -287,13 +322,16 @@ async def test_holidays_inside_the_window_shorten_the_count(
     await app_session.commit()
 
     await _signin(client, boss)
+    # Scoped per claimant: page 1 of the unfiltered queue is shared with every
+    # other in-flight claim in the database.
+    queue = f"{BASE}/claims?claimant_id={cast.staff.id}"
 
     def _days(body):
         return next(i for i in body["items"] if i["id"] == cast.claim.id)[
             "days_with_fms"
         ]
 
-    before = _days((await client.get(f"{BASE}/claims")).json())
+    before = _days((await client.get(queue)).json())
     assert before >= 2  # 14 calendar days always spans some working days
 
     token = uuid.uuid4().hex[:8]
@@ -321,9 +359,10 @@ async def test_holidays_inside_the_window_shorten_the_count(
     await app_session.commit()
 
     try:
-        after = _days((await client.get(f"{BASE}/claims")).json())
+        after = _days((await client.get(queue)).json())
         assert after == before - len(newly_closed)
     finally:
+        await _undo_backdating(app_session, cast.claim)
         # These are holidays in the RECENT PAST, and the suite shares one
         # database: left behind, they would silently shorten every later
         # "working days since…" count in the whole codebase — including this

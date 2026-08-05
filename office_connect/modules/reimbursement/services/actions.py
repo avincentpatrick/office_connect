@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from office_connect.core import workflow as wf
 from office_connect.core.models import WorkflowInstance, WorkflowStep
+from office_connect.core.org_units import authorize_scoped
 from office_connect.core.time import utc_now
 from office_connect.modules.reimbursement.models import ReimbCashAdvance, ReimbClaim
 from office_connect.modules.reimbursement.services import cash_advance as ca
@@ -49,6 +50,35 @@ OVERDUE = "overdue"
 #: the money while you do", which is a different ROUTE
 #: (``POST /claims/{id}/settle``) driving the same transition.
 SETTLE = "settle"
+
+#: The reimbursement chain's terminal verb (R-7-events) — the same rewrite, one
+#: chain over: ``POST /claims/{id}/mark-paid`` clears ``handed_to_fms`` while
+#: recording the payment reference spec §6.1 row 8 asks for.
+MARK_PAID = "mark_paid"
+
+#: The FMS status relay (R-7-events). Not a transition at all — it appends to
+#: ``reimb_external_events`` and moves nothing — but it rides the action set for
+#: the ``SPAWN`` reason: that set is the client's ONLY sanctioned answer to "what
+#: may I do here" (workflow-standards §3), and the alternative is a browser
+#: inferring a permission from a role name.
+RELAY = "relay_fms"
+
+#: Spec §3.2's "Set external FMS statuses → Admin Officer, System Admin", as the
+#: permission string the grant data actually carries. Same constant as
+#: ``workflow.FMS_PERM``, spelled here rather than imported: importing the
+#: workflow module from this one would pull the definition seeder into every
+#: request that renders a button.
+FMS_UPDATE_PERM = "reimb.claim.fms_update"
+
+#: Which client verb replaces ``approve`` at ``handed_to_fms``, by claim kind.
+#: Both chains end at a state that must record data, so on both the bare verb is
+#: certain to fail (``lifecycle``'s two chokepoints) while the actor IS
+#: authorized to clear the gate — so the verb is REWRITTEN, never dropped, and
+#: the table is what stops the two chains' answers from drifting apart.
+_TERMINAL_VERB: dict[str, str] = {
+    st.LIQUIDATION_KIND: SETTLE,
+    st.REIMBURSEMENT_KIND: MARK_PAID,
+}
 
 #: Spec §6.2's "one tap": claim the difference an over-advance left owing. Also
 #: not an engine action — it happens AFTER the chain is terminal, and it creates
@@ -92,21 +122,56 @@ async def claim_actions(
         # The approver sees a red callout explaining the gap instead, and
         # `return` — their actual remedy — is untouched.
         verbs = [verb for verb in verbs if verb != "approve"]
-    if (
-        "approve" in verbs
-        and claim.kind == st.LIQUIDATION_KIND
-        and (claim.status or st.DRAFT) == st.HANDED_TO_FMS
-    ):
-        # Same doctrine, one step further (R-6-liq-settle). A bare approve here
-        # is certain to fail — `_assert_advance_settled` refuses it — but the
-        # actor IS authorized to clear this gate; they just have to record the
-        # money while doing it. So the verb is REWRITTEN rather than dropped:
-        # dropping it would leave a hole where the approver needs a button, and
-        # `settle` is that button. `return` (FMS bouncing it back) is untouched.
-        verbs = [SETTLE if verb == "approve" else verb for verb in verbs]
+    if "approve" in verbs and (claim.status or st.DRAFT) == st.HANDED_TO_FMS:
+        # Same doctrine, one step further (R-6-liq-settle, then R-7-events). A
+        # bare approve here is certain to fail — lifecycle's two chokepoints
+        # refuse it — but the actor IS authorized to clear this gate; they just
+        # have to record the facts while doing it. So the verb is REWRITTEN
+        # rather than dropped: dropping it would leave a hole where the approver
+        # needs a button, and `settle`/`mark_paid` is that button. `return` (FMS
+        # bouncing the packet back) is untouched on both chains.
+        terminal = _TERMINAL_VERB.get(claim.kind or st.REIMBURSEMENT_KIND)
+        if terminal is not None:
+            verbs = [terminal if verb == "approve" else verb for verb in verbs]
+    if await _can_relay(session, claim=claim, actor_user_id=actor_user_id):
+        verbs = [*verbs, RELAY]
     if await _can_spawn(session, claim=claim, actor_user_id=actor_user_id):
         verbs = [*verbs, SPAWN]
     return verbs
+
+
+async def _can_relay(
+    session: AsyncSession, *, claim: ReimbClaim, actor_user_id: int
+) -> bool:
+    """May this actor relay what FMS says about this claim?
+
+    Mirrors ``api/external.py``'s own guard exactly — the claim is with FMS, and
+    the actor's ``reimb.claim.fms_update`` grant covers its org unit (spec §3.2:
+    "Set external FMS statuses → Admin Officer, System Admin"). Duplicating the
+    rule here is the price of the R-4-screens doctrine: the button must not be
+    offered to someone certain to get a 403, and the service must not trust the
+    button. Both, or neither is safe — the ``_can_spawn`` precedent.
+
+    Deliberately NOT keyed on holding the *engine's* gate authorization: the
+    relay is not a transition, so ``available_actions`` has nothing to say about
+    it, and an FMS-held claim's engine gate answers a different question.
+
+    The org unit is read straight off the instance rather than through
+    ``deps.claim_org_unit``: a claim at ``handed_to_fms`` is submitted by
+    definition, so that helper's unsubmitted fallback is unreachable here — and
+    reaching from a service into the API layer to borrow it would invert the
+    dependency the whole module is arranged around.
+    """
+    if (claim.status or st.DRAFT) != st.HANDED_TO_FMS:
+        return False
+    if claim.workflow_instance_id is None:
+        return False
+    instance = await session.get(WorkflowInstance, claim.workflow_instance_id)
+    if instance is None or instance.org_unit_id is None:
+        return False
+    return await authorize_scoped(
+        session, actor_user_id, FMS_UPDATE_PERM, instance.org_unit_id
+    )
 
 
 async def _can_spawn(

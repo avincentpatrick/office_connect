@@ -276,6 +276,65 @@ async def soft_delete_attachment(
     soft_delete(row, actor_id=actor_id)
 
 
+async def start_retention(
+    session: AsyncSession,
+    *,
+    holder_kind: str,
+    holder_id: int,
+    at: datetime | None = None,
+) -> int:
+    """Start the retention clock on every one of a holder's attachments.
+
+    ``retain_until()`` derives the disposal date from ``retention_class`` +
+    ``retention_starts_at``, and a NULL start means "never eligible" — the
+    correct fail-safe while a record is still live, and a permanent leak once it
+    is closed. Something has to say *the record is final now*, and only the
+    owning module knows when that is: a claim's clock starts when FMS pays it, a
+    contract's when it expires. So this is the generic half — the module names
+    the moment, core does the stamping (rule 10, the ``descendants_or_self``
+    precedent).
+
+    ``WHERE retention_starts_at IS NULL`` makes it idempotent AND means a re-run
+    can never RE-DATE a clock already running. That matters more than it looks:
+    a record's retention period is a legal obligation with a start date, and
+    silently pushing that date forward on a second call would shorten nothing
+    and lengthen everything, invisibly. A file that arrives after the clock
+    started keeps its own NULL until someone starts it deliberately.
+
+    Soft-deleted rows are skipped — disposition is orthogonal to soft delete
+    (``disposal_eligibility_report`` reads them with ``include_deleted``), and a
+    detached file is not part of the record whose finality we are asserting.
+
+    **Loaded and mutated row by row, never a bulk UPDATE.** ``core/audit.py``
+    refuses bulk ORM DML outright (standing rule 5), and it is right to: starting
+    a legal retention period is precisely the kind of change that must appear in
+    the hash-chained log, so an auditor asking "when did this record become
+    disposable, and who said so" has an answer. The fan-out is bounded by how
+    many files one record has, which is a handful.
+
+    Returns the number of rows stamped. Flushes; the caller owns the commit.
+    """
+    rows = (
+        (
+            await session.execute(
+                select(Attachment).where(
+                    Attachment.holder_kind == holder_kind,
+                    Attachment.holder_id == holder_id,
+                    Attachment.retention_starts_at.is_(None),
+                    Attachment.deleted_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    stamp = at or utc_now()
+    for row in rows:
+        row.retention_starts_at = stamp
+    await session.flush()
+    return len(rows)
+
+
 async def disposal_eligibility_report(
     session: AsyncSession, *, as_of: datetime | None = None
 ) -> list[retention.DisposalCandidate]:

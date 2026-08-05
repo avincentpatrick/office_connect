@@ -233,6 +233,10 @@ export function makeQueueItem(overrides: Partial<QueueItem> = {}): QueueItem {
     claimant_display: "Maria Santos",
     days_with_fms: 4,
     external_followup: false,
+    // Null by default: a packet handed over four days ago may genuinely have
+    // produced no news, and a fixture that always carries a sub-status would
+    // hide the "FMS has said nothing yet" row from every test (R-7-events).
+    external_status_label: null,
     ...overrides,
   };
 }
@@ -314,6 +318,64 @@ export function awaitingSettlement(
   });
 }
 
+/**
+ * A reimbursement with FMS (R-7-events): the server has rewritten `approve`
+ * into `mark_paid` — clearing that gate now has to record the payment reference
+ * spec §6.1 row 8 asks for — and added `relay_fms`, which moves nothing.
+ *
+ * `latest_external` is null by default: a packet handed over this morning has
+ * genuinely produced no news yet, and that is the state most of the FMS leg is
+ * actually in.
+ */
+export function awaitingPayment(
+  overrides: Partial<ClaimDetail> = {},
+): ClaimDetail {
+  return completeClaim({
+    ref_no: "RB-2026-0001",
+    status: "handed_to_fms",
+    status_label: "Handed to FMS",
+    next_action: "Waiting on FMS — update status",
+    holder_kind: "external_fms",
+    holder_display: "FMS",
+    available_actions: ["mark_paid", "return", "relay_fms"],
+    row_version: 5,
+    latest_external: null,
+    ...overrides,
+  });
+}
+
+/** The same claim once FMS paid it — terminal, and read-only for everyone. */
+export function paidClaim(overrides: Partial<ClaimDetail> = {}): ClaimDetail {
+  return completeClaim({
+    ref_no: "RB-2026-0001",
+    status: "paid_closed",
+    status_label: "Paid / Closed",
+    next_action: null,
+    holder_kind: null,
+    holder_display: null,
+    available_actions: [],
+    payout_ref: "ADA-2026-00417",
+    paid_on: "2026-07-03",
+    ...overrides,
+  });
+}
+
+/** One FMS journey update, for the rail and the tracker. */
+export function makeExternalEvent(
+  overrides: Partial<NonNullable<ClaimDetail["latest_external"]>> = {},
+): NonNullable<ClaimDetail["latest_external"]> {
+  return {
+    id: 1,
+    status: "with_accounting",
+    status_label: "With Accounting",
+    noted_by: "Ms. Reyes, Accounting",
+    note: null,
+    event_date: null,
+    created_at: "2026-07-30T02:00:00Z",
+    ...overrides,
+  };
+}
+
 /** The same liquidation after Accounting closed it as an over-advance. */
 export function settledOverAdvance(
   overrides: Partial<ClaimDetail> = {},
@@ -342,11 +404,36 @@ export function settledOverAdvance(
   });
 }
 
+/**
+ * One FMS journey row for the merged tracker (R-7-events). `to_status` is null
+ * because a sub-status is not a workflow state — the display string rides
+ * `to_status_label`, which is what the tracker renders.
+ */
+export function makeExternalTimelineEvent(
+  overrides: Partial<TimelineEvent> = {},
+): TimelineEvent {
+  return {
+    kind: "external",
+    id: 1,
+    from_status: null,
+    from_status_label: null,
+    to_status: null,
+    to_status_label: "With Accounting",
+    actor_display: "Ms. Reyes, Accounting",
+    note: null,
+    event_date: null,
+    reasons: [],
+    created_at: "2026-07-30T02:00:00Z",
+    ...overrides,
+  };
+}
+
 export function makeTimeline(
   overrides: Partial<TimelineEvent>[] = [],
 ): TimelineEvent[] {
   const base: TimelineEvent[] = [
     {
+      kind: "status",
       id: 1,
       from_status: null,
       from_status_label: null,
@@ -358,6 +445,7 @@ export function makeTimeline(
       created_at: "2026-07-28T01:00:00Z",
     },
     {
+      kind: "status",
       id: 2,
       from_status: "draft",
       from_status_label: "Draft",

@@ -43,7 +43,12 @@ from office_connect.modules.reimbursement.api.schemas import (
     QueueItemOut,
 )
 from office_connect.modules.reimbursement.models import ReimbClaim
-from office_connect.modules.reimbursement.services import actions, errors, queue
+from office_connect.modules.reimbursement.services import (
+    actions,
+    errors,
+    external,
+    queue,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +159,10 @@ async def list_claims(
 
     holders = await holder_names(session, page)
     claimants = await claimant_names(session, page)
+    # One DISTINCT ON for the whole page (R-7-events). "12 working days with FMS"
+    # and "…and the last we heard it was With Accounting" are different facts,
+    # and the second is what decides whether the follow-up call is worth making.
+    fms_latest = await external.latest_events(session, [c.id for c in page])
     due = await actions.active_step_due_dates(
         session,
         [c.workflow_instance_id for c in page if c.workflow_instance_id is not None],
@@ -181,12 +190,16 @@ async def list_claims(
             ),
         )
         days = fms_days.get(claim.id)
+        latest = fms_latest.get(claim.id)
         items.append(
             QueueItemOut(
                 **base.model_dump(),
                 claimant_display=claimants.get(claim.claimant_id),
                 days_with_fms=days,
                 external_followup=days is not None and days > threshold,
+                external_status_label=(
+                    external.label(latest.status) if latest is not None else None
+                ),
             )
         )
 

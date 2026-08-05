@@ -62,6 +62,16 @@ async def test_flag_off_404s_the_whole_surface_even_authenticated(
         ("GET", "/api/v1/reimbursement/claims", {}),
         ("GET", "/api/v1/reimbursement/claims/1", {}),
         ("GET", "/api/v1/reimbursement/claims/1/timeline", {}),
+        # R-7-events: the FMS status relay is gated for the same §9e reason as
+        # the queue — refusing a relay strands nothing, because the claim stays
+        # exactly where it is and the update can be recorded the moment the flag
+        # comes back on. Contrast /mark-paid below, which DRIVES a transition.
+        ("GET", "/api/v1/reimbursement/claims/1/external-events", {}),
+        (
+            "POST",
+            "/api/v1/reimbursement/claims/1/external-events",
+            {"json": {"status": "with_budget"}, "headers": CSRF},
+        ),
         ("GET", "/api/v1/reimbursement/regions", {}),
         ("GET", "/api/v1/reimbursement/return-reasons", {}),
         # R-3: the documentary packet is claimant-facing work, so it is gated
@@ -147,7 +157,15 @@ async def test_flag_off_does_not_strand_in_flight_approvals(
         json={"comment": "x", "reason_ids": [1]},
         headers=CSRF,
     )
-    for resp in (approve, returned):
+    # R-7-events: closing a paid claim is a decision on an instance already in
+    # the chain, so it takes the exemption too. Gated, a flag-OFF would strand
+    # every claim at `handed_to_fms` with FMS having already paid it.
+    paid = await client.post(
+        "/api/v1/reimbursement/claims/1/mark-paid",
+        json={"payout_ref": "ADA-1", "paid_on": "2026-07-06"},
+        headers=CSRF,
+    )
+    for resp in (approve, returned, paid):
         assert resp.json()["error"]["code"] != "not_found", resp.text
         # A nonexistent claim id 404s as `reimb_claim_not_found`, never as the
         # flag gate's bare `not_found` — the distinction IS the contract.

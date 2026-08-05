@@ -17,6 +17,8 @@ import { TextareaField } from "../../components/TextareaField/TextareaField";
 import { toast } from "../../components/Toast/toast-bus";
 import { EMPTY_CHECKLIST_SUMMARY } from "./checklist-status";
 import { actionLabel, approveConsequence } from "./claim-status";
+import { FmsStatusDialog } from "./FmsStatusDialog";
+import { MarkPaidDialog } from "./MarkPaidDialog";
 import { SettlementDialog } from "./SettlementDialog";
 import { useReturnReasons } from "./use-claim";
 
@@ -42,12 +44,19 @@ export function ClaimActions({ claim }: { claim: ClaimDetail }) {
   const reasons = useReturnReasons();
 
   const [settleOpen, setSettleOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [fmsOpen, setFmsOpen] = useState(false);
   const canApprove = claim.available_actions.includes("approve");
   const canReturn = claim.available_actions.includes("return");
-  // The liquidation chain's terminal gate. The server REWROTE `approve` into
-  // `settle` here, so this is the same authorization it always was — the act
-  // just has to carry the money now, and that lives on its own route.
+  // The two terminal gates. The server REWROTE `approve` into `settle` (a
+  // liquidation) or `mark_paid` (a reimbursement) here, so this is the same
+  // authorization it always was — the act just has to carry the facts now, and
+  // each lives on its own route.
   const canSettle = claim.available_actions.includes("settle");
+  const canMarkPaid = claim.available_actions.includes("mark_paid");
+  // Not a transition: relaying appends to the FMS journey and moves nothing.
+  // It rides the action set so the browser never infers who may do it.
+  const canRelay = claim.available_actions.includes("relay_fms");
 
   const onSettled = (updated: ClaimDetail) => {
     // The mutation returns the whole claim, so the detail view, the action set
@@ -133,6 +142,8 @@ export function ClaimActions({ claim }: { claim: ClaimDetail }) {
     !canApprove &&
     !canReturn &&
     !canSettle &&
+    !canMarkPaid &&
+    !canRelay &&
     flags.length === 0 &&
     blocking.length === 0
   ) {
@@ -217,13 +228,53 @@ export function ClaimActions({ claim }: { claim: ClaimDetail }) {
             {actionLabel("settle", claim.status)}
           </Button>
         ) : null}
+        {/* Same shape one chain over: closing a claim records a payment
+            reference, so it opens a FORM and states its consequence there. */}
+        {canMarkPaid ? (
+          <Button
+            variant="primary"
+            className="flex-1"
+            onClick={() => setPayOpen(true)}
+          >
+            {actionLabel("mark_paid", claim.status)}
+          </Button>
+        ) : null}
       </div>
+
+      {/* Relaying is not a decision, so it sits BELOW the decision row and
+          never takes the primary slot (ui-standards §3.1: one primary per
+          screen-moment). While a claim is with FMS it is usually the only thing
+          on offer — the packet is out of the bureau's hands, and saying where
+          it got to is the only honest act left. */}
+      {canRelay ? (
+        <div>
+          <Button variant="secondary" onClick={() => setFmsOpen(true)}>
+            {actionLabel("relay_fms", claim.status)}
+          </Button>
+        </div>
+      ) : null}
 
       {canSettle ? (
         <SettlementDialog
           claim={claim}
           open={settleOpen}
           onOpenChange={setSettleOpen}
+        />
+      ) : null}
+
+      {canMarkPaid ? (
+        <MarkPaidDialog
+          claim={claim}
+          open={payOpen}
+          onOpenChange={setPayOpen}
+        />
+      ) : null}
+
+      {canRelay ? (
+        <FmsStatusDialog
+          claim={claim}
+          open={fmsOpen}
+          onOpenChange={setFmsOpen}
         />
       ) : null}
 

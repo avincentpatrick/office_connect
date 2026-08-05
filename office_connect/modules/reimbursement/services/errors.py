@@ -579,6 +579,144 @@ def spawn_below_advance() -> APIError:
     )
 
 
+# --- R-7-events: the FMS relay + the payout record ---------------------------
+
+
+def unknown_external_status(status: str, allowed: list[str]) -> APIError:
+    """Membership is enforced; ORDER never is (spec §6.1 row 6).
+
+    The message says so out loud, because the natural assumption on seeing a
+    three-step journey is that it is a sequence — and an Admin Officer who
+    believes that will not relay "With Accounting" on a packet that skipped
+    Budget, which is the exact case the closed-set-but-open-order design exists
+    to allow.
+    """
+    return APIError(
+        422,
+        "reimb_unknown_external_status",
+        f"'{status}' is not an FMS status this system tracks. Use one of: "
+        f"{', '.join(allowed)} — in any order, and skipping any of them is fine.",
+        details=[{"status": status, "allowed": allowed}],
+    )
+
+
+def external_status_is_terminal() -> APIError:
+    """``paid`` is not a sub-status — it is the end of the claim, and it needs a
+    payment reference. Naming the route is the §9.1-principle-4 courtesy."""
+    return APIError(
+        422,
+        "reimb_external_status_is_terminal",
+        "'Paid' closes the claim rather than updating it, so it is recorded "
+        "with the payment reference FMS gave you — use Mark paid, not the "
+        "status update.",
+        details=[{"action": "mark_paid"}],
+    )
+
+
+def external_event_wrong_state(*, status: str) -> APIError:
+    return APIError(
+        409,
+        "reimb_external_event_wrong_state",
+        f"FMS statuses can only be relayed while FMS has the packet; this "
+        f"claim is '{status}'.",
+    )
+
+
+def external_event_future_date() -> APIError:
+    return APIError(
+        422,
+        "reimb_external_event_future_date",
+        "That date is in the future — record the date FMS actually moved it, "
+        "not a date it is expected to.",
+    )
+
+
+def payout_required(*, claim_id: int) -> APIError:
+    """``paid_closed`` asserts FMS paid — refuse to assert it with no evidence.
+
+    The reimbursement chain's ``settlement_required``, and the second instance of
+    workflow-standards §12 rule 3: the generic approve route must not be the one
+    that closes a claim, and the refusal NAMES the route that does the thing.
+    """
+    return APIError(
+        409,
+        "reimb_payout_required",
+        "Record the payment reference before closing this claim — 'Paid' is "
+        "the one status that has to say what it was paid against.",
+        details=[{"claim_id": claim_id, "action": "mark_paid"}],
+    )
+
+
+def payout_ref_required() -> APIError:
+    """Names the honest alternative rather than just refusing.
+
+    An Admin Officer who has heard "it's paid" on the phone but has no reference
+    yet is not doing anything wrong — they just cannot close the claim on it,
+    because ``paid_closed`` is read-only and nothing can add the reference
+    afterwards. ``Payment processing`` is the true thing they can record today.
+    """
+    return APIError(
+        422,
+        "reimb_payout_ref_required",
+        "Record the payment reference FMS gave you — closing a claim is final "
+        "and nothing can add it afterwards. If you do not have it yet, relay "
+        "'Payment processing' instead.",
+    )
+
+
+def payout_date_required() -> APIError:
+    return APIError(
+        422,
+        "reimb_payout_date_required",
+        "Record the date FMS paid this claim.",
+    )
+
+
+def payout_already_recorded(
+    *, payout_ref: str | None, paid_on: date | None
+) -> APIError:
+    """A repeat, not a race — the ``settlement_already_recorded`` distinction."""
+    when = f" on {paid_on.isoformat()}" if paid_on else ""
+    which = f" ({payout_ref})" if payout_ref else ""
+    return APIError(
+        409,
+        "reimb_payout_already_recorded",
+        f"This claim was already paid{when}{which}. A paid claim is a closed "
+        "record.",
+    )
+
+
+def payout_wrong_state(*, status: str) -> APIError:
+    return APIError(
+        409,
+        "reimb_payout_wrong_state",
+        f"A claim is marked paid once FMS has processed it; this one is "
+        f"'{status}'.",
+    )
+
+
+def payout_not_a_reimbursement() -> APIError:
+    return APIError(
+        422,
+        "reimb_payout_not_a_reimbursement",
+        "A liquidation is settled against its cash advance rather than paid out "
+        "— record the settlement instead.",
+        details=[{"action": "settle"}],
+    )
+
+
+def external_update_not_permitted() -> APIError:
+    """Distinct from ``not_claim_owner``: relaying FMS statuses and closing a
+    paid claim are the Admin Officer's acts (spec §3.2), and telling a traveller
+    "only the claimant may do this" about their own claim would be nonsense."""
+    return APIError(
+        403,
+        "reimb_external_update_not_permitted",
+        "Relaying FMS updates and recording payments is the Admin Officer's "
+        "job. You can follow this claim's progress on its tracker.",
+    )
+
+
 def queue_not_permitted() -> APIError:
     """R-7-queue. Distinct from ``not_claim_owner`` on purpose.
 

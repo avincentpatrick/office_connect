@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { ClaimStatus } from "../../api/reimbursement";
+import { makeQueueItem } from "../../test/reimb-fixtures";
 import {
   CLAIM_STATUS_TO_SEMANTIC,
   actionLabel,
   approveConsequence,
+  queueMeta,
 } from "./claim-status";
 
 /**
@@ -77,5 +79,61 @@ describe("claim-status", () => {
       /2 automatic checks are flagged/,
     );
     expect(approveConsequence("certify_b", 0)).not.toMatch(/flagged/);
+  });
+});
+
+/**
+ * R-7-events: the FMS leg. Two verbs the server rewrites or synthesizes, and
+ * one queue line that has to carry "how long" and "where" as separate facts.
+ */
+describe("claim-status — the FMS leg", () => {
+  it("labels the two verbs the server invents for the FMS leg", () => {
+    // `mark_paid` deliberately reads the SAME as the old `approve` label at
+    // this state: the act has not changed, only what it now has to record.
+    expect(actionLabel("mark_paid", "handed_to_fms")).toBe("Mark paid & close");
+    expect(actionLabel("approve", "handed_to_fms")).toBe("Mark paid & close");
+    // The relay is not a decision and moves nothing — the verb says so.
+    expect(actionLabel("relay_fms", "handed_to_fms")).toBe("Update FMS status");
+    expect(actionLabel("relay_fms", "handed_to_fms")).not.toMatch(/approve/i);
+  });
+
+  it("puts the last FMS word beside the working-day count", () => {
+    // Two different facts: 12 days in Payment Processing is a different
+    // conversation from 12 days in Budget, and the second is what decides
+    // whether the follow-up call is worth making.
+    const meta = queueMeta(
+      makeQueueItem({
+        days_with_fms: 12,
+        external_followup: true,
+        external_status_label: "Payment processing",
+      }),
+    );
+    expect(meta).toContain("12 working days with FMS");
+    expect(meta).toContain("Last: Payment processing");
+  });
+
+  it("says nothing about a status FMS has not given", () => {
+    // Absence is honest here — a packet handed over this morning has no news,
+    // and inventing "Last: With Budget" would report a call nobody made.
+    const meta = queueMeta(
+      makeQueueItem({ days_with_fms: 1, external_status_label: null }),
+    );
+    expect(meta).toContain("1 working day with FMS");
+    expect(meta).not.toContain("Last:");
+  });
+
+  it("falls back to days-in-state for a claim the bureau still holds", () => {
+    const meta = queueMeta(
+      makeQueueItem({
+        status: "admin_review",
+        status_label: "Admin Review",
+        holder_kind: "user",
+        days_with_fms: null,
+        days_in_state: 3,
+        external_status_label: null,
+      }),
+    );
+    expect(meta).toContain("3 days in this step");
+    expect(meta).not.toContain("with FMS");
   });
 });

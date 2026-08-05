@@ -159,6 +159,27 @@ async def _assert_advance_settled(session: AsyncSession, claim: ReimbClaim) -> N
         raise errors.settlement_required(claim_id=claim.id)
 
 
+def _assert_payout_recorded(claim: ReimbClaim) -> None:
+    """The evidence before the terminal state (R-7-events).
+
+    ``paid_closed`` is not merely the last rung — it ASSERTS that FMS paid this
+    claim. Spec §6.1 row 8 says so explicitly ("terminal (admin records payout
+    ref)"), and until this increment a bare ``approve`` asserted it with nothing
+    behind it: the claim went read-only carrying no reference, no date and no
+    way to add either.
+
+    ``services/external.py::record_payout`` writes the reference and then drives
+    this same approve inside one transaction, so the guard is already satisfied
+    by the time it runs; anything else gets a 409 naming the route that does the
+    thing. The sibling of ``_assert_advance_settled``, and the same
+    workflow-standards §12 rule.
+
+    Synchronous — everything it needs is already on the locked claim row.
+    """
+    if not (claim.payout_ref or "").strip():
+        raise errors.payout_required(claim_id=claim.id)
+
+
 async def _assert_return_reasons(
     session: AsyncSession, reason_ids: Sequence[int]
 ) -> None:
@@ -590,15 +611,17 @@ async def claim_action(
         # re-materializing mid-approval would violate "in-flight always
         # finishes" (workflow-standards §9).
         await checklist.assert_persisted_packet_complete(session, claim=claim)
-        # R-6-liq-settle: the last rung of the liquidation chain is a MONEY
-        # state. The engine's approve carries no payload, so the settlement is
-        # recorded by a prior call in this same transaction — see
-        # ``services/settlement.py``.
-        if (
-            claim.kind == st.LIQUIDATION_KIND
-            and (claim.status or st.DRAFT) == st.HANDED_TO_FMS
-        ):
-            await _assert_advance_settled(session, claim)
+        # Both chains end at a MONEY state, and the engine's approve carries no
+        # payload — so on BOTH, the facts are recorded by a prior call in this
+        # same transaction and the bare verb is refused here
+        # (workflow-standards §12 rule 3). A liquidation must find its advance
+        # settled (``services/settlement.py``, R-6-liq-settle); a reimbursement
+        # must find its payment reference (``services/external.py``, R-7-events).
+        if (claim.status or st.DRAFT) == st.HANDED_TO_FMS:
+            if claim.kind == st.LIQUIDATION_KIND:
+                await _assert_advance_settled(session, claim)
+            else:
+                _assert_payout_recorded(claim)
 
     key = idempotency_key or (
         f"{action}:{claim.id}:{instance.revision_no}"

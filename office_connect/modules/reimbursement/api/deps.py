@@ -33,6 +33,7 @@ from office_connect.modules.reimbursement.api.schemas import (
     ChecklistSummaryOut,
     ClaimantOut,
     ClaimDetail,
+    ExternalEventOut,
     LegOut,
     OrgUnitRef,
     PacketOut,
@@ -46,10 +47,16 @@ from office_connect.modules.reimbursement.documents.registry import PACKET
 from office_connect.modules.reimbursement.models import (
     ReimbCashAdvance,
     ReimbClaim,
+    ReimbExternalEvent,
     ReimbItineraryLeg,
 )
 from office_connect.core.time import to_manila, utc_now
-from office_connect.modules.reimbursement.services import actions, checklist, errors
+from office_connect.modules.reimbursement.services import (
+    actions,
+    checklist,
+    errors,
+    external,
+)
 from office_connect.modules.reimbursement.services import cash_advance as ca_service
 from office_connect.modules.reimbursement.services import liquidation
 from office_connect.modules.reimbursement.services import settlement
@@ -235,6 +242,25 @@ def work_item(
         sla_due_at=sla_due_at,
         sla_state=actions.sla_state(sla_due_at, now=now),
         updated_at=claim.updated_at,
+    )
+
+
+def external_event_out(event: ReimbExternalEvent) -> ExternalEventOut:
+    """One FMS event on the wire (R-7-events).
+
+    The label comes from the SERVER's vocabulary, never the browser's: one source
+    for "With Accounting" means the tracker, the claim rail, the queue row and
+    the claimant's notification cannot disagree about what to call it. Same rule
+    ``status.py`` follows for the workflow states themselves.
+    """
+    return ExternalEventOut(
+        id=event.id,
+        status=event.status,
+        status_label=external.label(event.status),
+        noted_by=event.noted_by,
+        note=event.note,
+        event_date=event.event_date,
+        created_at=event.created_at,
     )
 
 
@@ -613,6 +639,11 @@ async def claim_detail(
         if claim.spawned_from_claim_id is not None
         else None
     )
+    # What FMS last said (R-7-events). Read for every claim, not only the ones
+    # with FMS: a paid claim's rail should still be able to say the packet went
+    # Budget → Accounting → paid, and a bounced-and-re-handed claim keeps its
+    # earlier leg. `None` until FMS has said anything at all.
+    latest_external = await external.latest_event(session, claim.id)
     return ClaimDetail(
         id=claim.id,
         ref_no=claim.ref_no,
@@ -652,6 +683,13 @@ async def claim_detail(
         cash_advance=advance_out,
         spawned_claim=spawned_claim,
         spawned_from=spawned_from,
+        latest_external=(
+            external_event_out(latest_external)
+            if latest_external is not None
+            else None
+        ),
+        payout_ref=claim.payout_ref,
+        paid_on=claim.paid_on,
         created_at=claim.created_at,
         updated_at=claim.updated_at,
     )

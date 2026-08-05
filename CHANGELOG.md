@@ -12,6 +12,39 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage C R-7-events — following a claim through FMS, and closing it as paid**
+  (2026-08-05): once a packet leaves the bureau it is out of everyone's hands,
+  and until now the system had nothing to say about it. Two things change that.
+  **The Admin Officer can now relay what FMS says.** A new *Update FMS status*
+  button records where a packet has got to — **With Budget**, **With
+  Accounting**, or **Payment processing** — along with who at FMS said so, when
+  they said it, and any note they gave. The claimant sees each update on their
+  own claim tracker and gets a message ("Your claim RB-2026-0007 is now With
+  Accounting"), so the phone calls asking "any news?" have an answer that does
+  not require a phone call. **These can be recorded in any order, and any of
+  them can be skipped** — FMS often pays straight out of Budget, and sometimes
+  sends a packet back to a desk it already left. Recording the same status twice
+  is fine too; that is what chasing looks like. None of this moves the claim: it
+  stays with FMS, and the "how long has FMS had this" clock on the claim queue
+  keeps counting from the hand-off, which is the number that actually matters.
+  **A claim can now be closed as paid, with the payment reference on it.**
+  *Mark paid & close* records the ADA, LDDAP or cheque reference FMS handed
+  back, and the date they paid. Before this, closing a claim recorded nothing at
+  all — the claim simply went quiet, and if anyone later asked what it was paid
+  against, the system could not say. The reference is required, because a closed
+  claim is read-only and nothing can add it afterwards; an Admin Officer who
+  does not have it yet is told to record *Payment processing* instead. The
+  traveller gets a final message with the amount and the reference on it, which
+  is what they quote to FMS or their bank if the credit has not appeared.
+  **The claim tracker now tells the whole story in one place** — the bureau's
+  own approvals and FMS's updates in a single chronology, each FMS entry marked
+  as theirs and attributed to whoever said it.
+  Behind the scenes this also starts the **10-year records-retention clock** on a
+  claim's attachments when it is finally paid or settled, as government records
+  rules require. That clock had never started on any claim, which meant no file
+  in the system had a disposal date; they now do, counted from the day the money
+  moved.
+
 - **Stage C R-7-queue — the claim queue, and finding work that is with FMS**
   (2026-08-04): Admin Officers and approvers get a new **Claim queue** screen
   listing the claims they oversee, and it closes a real gap: once a packet was
