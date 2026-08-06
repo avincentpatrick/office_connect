@@ -3,30 +3,9 @@ import { render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import type { MeResponse } from "../api/types";
+import { makeMe } from "../test/auth-fixtures";
 import { AuthContext } from "./providers/auth-context";
 import { RequireAuth } from "./guards";
-
-function makeMe(overrides: Partial<MeResponse> = {}): MeResponse {
-  return {
-    user_id: 1,
-    email: "admin@example.gov.ph",
-    roles: ["admin"],
-    idle_tier: "privileged",
-    is_privileged: true,
-    must_change_password: false,
-    mfa_authenticated: true,
-    mfa_setup_required: false,
-    session: {
-      session_id_hash: "abc",
-      created_at: "2026-07-28T00:00:00Z",
-      last_seen_at: "2026-07-28T00:00:00Z",
-      ip: null,
-      user_agent: null,
-      current: true,
-    },
-    ...overrides,
-  };
-}
 
 function renderAt(path: string, me: MeResponse | null) {
   const router = createMemoryRouter(

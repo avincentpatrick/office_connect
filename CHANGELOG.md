@@ -11,6 +11,36 @@ makes the push-per-phase rule auditable.
 
 ## [Unreleased]
 
+### Added
+- **Stage D Increment 1 — a front door** (2026-08-06): signing in used to drop
+  you straight onto a module page. Now it opens on a page that answers one
+  question — *what can you open?* — and lets you get there by typing.
+  **A search box for the whole platform.** Type what you want ("travel",
+  "cash advance", "COA", "where") and the matching pages appear as you type.
+  It matches page names and the everyday words for them, so you do not have to
+  know what a screen is called to find it. If nothing matches, it says so
+  plainly and then shows you everything you *can* open, rather than leaving you
+  at a dead end. There is no guessing and no autocorrect: it will never quietly
+  send you somewhere you did not ask for.
+  **It only ever shows you pages you can actually open.** Previously the
+  navigation guessed from your job role, which was a rough approximation and —
+  because roles were read from the moment you signed in — could be out of date
+  until you signed out and back in. It now reads your actual access, refreshed
+  on every page load. In practice: if an administrator grants you something
+  while you are working, reload the page and it appears. You never need to sign
+  out and in again.
+  **And it tells the truth when you have no access.** Anyone can sign in, but
+  access to each module is granted person by person. Someone with none used to
+  see a "Reimbursement" link that failed the moment they clicked it. They now
+  get a plain explanation of what to do — including their sign-in name to quote
+  to an administrator — and are told which of the two possible reasons applies:
+  nothing has been granted to them yet, or nothing is switched on for the
+  organisation at all. Those need different people to fix them.
+
+### Changed
+- Accounts that are read-only for audit purposes no longer see a Reimbursement
+  link. They never had access to it; the link only ever led to a refusal.
+
 ## [0.3.0] — 2026-08-05 — Stage C complete: the Local Travel Reimbursement module
 
 The first user-facing module. A traveller can file a claim, have it approved,

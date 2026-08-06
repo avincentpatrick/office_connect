@@ -210,6 +210,47 @@ async def _record_admin(session: AsyncSession, email: str, name: str) -> dict[st
 
 
 # ------------------------------------------------------------- load-fixtures
+#: The one dev login that holds NOTHING. Stage D-1's landing shows a person what
+#: they can open, and after R-9 established that the cohort IS the grant list
+#: (api-standards §9i), "can open nothing" is the COMMON case rather than the
+#: edge one — yet every other dev account holds a role, and every seeded role
+#: carries at least ``reimb.claim.read``. Without this account the landing's
+#: no-access state cannot be driven over real HTTP at all.
+#:
+#: **Never grant it a role "for convenience later."** Having none is its entire
+#: value; the moment it has one, the state it exists to prove is untestable again.
+_NO_GRANTS_EMAIL = "no-grants@doh.gov"
+_NO_GRANTS_PASSWORD = "BoardSmoke!2026x"  # matches the other dev smoke accounts
+
+
+async def _ensure_no_grants_account(session: AsyncSession) -> dict[str, Any]:
+    """Idempotently create the grant-less landing-smoke login."""
+    existing = (
+        await session.execute(select(User).where(User.email == _NO_GRANTS_EMAIL))
+    ).scalar_one_or_none()
+    if existing is not None:
+        live_grants = (
+            await session.execute(
+                select(func.count()).select_from(UserRole).where(
+                    UserRole.user_id == existing.id
+                )
+            )
+        ).scalar_one()
+        return {"email": _NO_GRANTS_EMAIL, "created": False, "role_grants": live_grants}
+
+    session.add(
+        User(
+            email=_NO_GRANTS_EMAIL,
+            password_hash=hash_password(_NO_GRANTS_PASSWORD),
+            is_active=True,
+            # Not pending: the point is to reach the LANDING, and a pending
+            # session is redirected to the password screen before it renders.
+            must_change_password=False,
+        )
+    )
+    return {"email": _NO_GRANTS_EMAIL, "created": True, "role_grants": 0}
+
+
 async def _load_fixtures(session: AsyncSession) -> dict[str, Any]:
     existing_titles = set(
         (await session.execute(select(Activity.title))).scalars().all()
@@ -225,6 +266,7 @@ async def _load_fixtures(session: AsyncSession) -> dict[str, Any]:
     ingest = await ingest_directory(
         session, org_units=_FIXTURE_ORG_UNITS, staff=_FIXTURE_STAFF
     )
+    no_grants = await _ensure_no_grants_account(session)
 
     await session.commit()
     total_activities = (
@@ -235,6 +277,7 @@ async def _load_fixtures(session: AsyncSession) -> dict[str, Any]:
         "activities_total": total_activities,
         "org_units_created": ingest.org_units_created,
         "staff_created": ingest.staff_created,
+        "no_grants_account": no_grants,
     }
 
 

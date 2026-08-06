@@ -44,7 +44,7 @@ export function AppShell({
     },
   });
 
-  const items = minimal || !me ? [] : visibleNavItems(features, me.roles);
+  const items = minimal || !me ? [] : visibleNavItems(features, me.permissions);
 
   return (
     <div className="flex min-h-screen flex-col bg-bg">

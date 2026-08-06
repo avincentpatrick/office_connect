@@ -19,6 +19,8 @@ import { TextareaField } from "../components/TextareaField/TextareaField";
 import { WorkItemRow } from "../components/WorkItemRow/WorkItemRow";
 import { PipelineCard } from "../components/PipelineCard/PipelineCard";
 import { RankedBarList } from "../components/RankedBarList/RankedBarList";
+import { QueryBar } from "../components/QueryBar/QueryBar";
+import { matchNavItems } from "../app/nav-match";
 import { Skeleton } from "../components/Skeleton/Skeleton";
 import { StatusChip } from "../components/StatusChip/StatusChip";
 import { Stepper } from "../components/Stepper/Stepper";
@@ -28,6 +30,28 @@ import { Timeline } from "../components/Timeline/Timeline";
 import { toast } from "../components/Toast/toast-bus";
 import { AdminPage, AdminSection } from "../layouts/AdminPage";
 import { formatManilaDate, formatPeso } from "../lib/format";
+
+/** Catalog-local sample destinations — NOT NAV_GROUPS, which is gated. */
+const DEMO_DESTINATIONS = [
+  {
+    label: "Reimbursement",
+    to: "/reimbursement",
+    description: "File a local travel claim.",
+    intentKeywords: ["travel", "claim", "per diem"],
+  },
+  {
+    label: "Cash advances",
+    to: "/reimbursement/cash-advances",
+    description: "Advances and their liquidation countdowns.",
+    intentKeywords: ["cash advance", "liquidation", "COA"],
+  },
+  {
+    label: "Claim queue",
+    to: "/reimbursement/queue",
+    description: "Claims you oversee.",
+    intentKeywords: ["queue", "FMS", "stuck"],
+  },
+];
 
 /**
  * DEV-only living catalog of the component inventory (ui-standards §3) and
@@ -39,11 +63,13 @@ export function UiFoundationPage() {
   const [chips, setChips] = useState<string[]>(["1"]);
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [demoUpload, setDemoUpload] = useState<string>();
+  const [demoQuery, setDemoQuery] = useState("");
+  const demoQueryResults = matchNavItems(DEMO_DESTINATIONS, demoQuery).map((m) => m.item);
 
   return (
     <AdminPage title="UI foundation">
       <p className="text-base text-text-muted">
-        The 19-component inventory and template system on the served design tokens. Development
+        The 24-component inventory and template system on the served design tokens. Development
         builds only.
       </p>
 
@@ -405,6 +431,29 @@ export function UiFoundationPage() {
             <p>This claim cannot be approved until the claimant attaches them.</p>
           </Callout>
         </div>
+      </AdminSection>
+
+      <AdminSection
+        title="24. Query bar (Stage D-1)"
+        description="A search field, NOT an ARIA combobox — no aria-expanded, no aria-activedescendant, no popup, and Enter is a deliberate no-op. Escape clears. It filters nothing: it renders the already-gated array it is handed."
+      >
+        <QueryBar
+          label="What do you want to open?"
+          placeholder="Try “travel” or “COA”"
+          value={demoQuery}
+          onValueChange={setDemoQuery}
+          resultsHeading={demoQuery.trim() === "" ? "Everything" : "Matches"}
+          statusText={
+            demoQuery.trim() === ""
+              ? ""
+              : demoQueryResults.length === 0
+                ? `Nothing matches “${demoQuery}”. Here is everything.`
+                : `${demoQueryResults.length} match${demoQueryResults.length === 1 ? "" : "es"} for “${demoQuery}”. Choose one below.`
+          }
+          results={(demoQueryResults.length === 0 ? DEMO_DESTINATIONS : demoQueryResults).map(
+            (d) => ({ id: d.to, label: d.label, to: d.to, meta: d.description }),
+          )}
+        />
       </AdminSection>
 
       <AdminSection

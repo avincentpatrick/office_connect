@@ -50,7 +50,18 @@ export interface SessionSummary {
 export interface MeResponse {
   user_id: number;
   email: string;
+  /**
+   * Role codes from the session snapshot. NOT a gate: they are stamped at login
+   * and never rewritten, so a role granted afterwards does not appear until the
+   * user signs in again. Gate on `permissions`.
+   */
   roles: string[];
+  /**
+   * The caller's effective permission codes, sorted, resolved server-side
+   * through the same cache the request gates read (api-standards §9j).
+   * Discoverability only — the server re-checks every request regardless.
+   */
+  permissions: string[];
   idle_tier: string;
   is_privileged: boolean;
   must_change_password: boolean;
