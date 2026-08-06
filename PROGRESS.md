@@ -145,6 +145,43 @@ expand it into the full task and confirm with you before starting.
   common case after R-9 — **could not be driven over real HTTP at all.** It is
   created idempotently by `bootstrap load-fixtures`. **Never grant it a role
   "for convenience later": having none is its entire value.**
+- **D-1 QA results.** FE gate **GREEN**: tsc + eslint + **325 vitest** (up from
+  260) + build. `lint-imports` **3/3**, `alembic check` clean, head **`0023`**
+  (D-1 adds no migration). **Live smoke 25/25** over real HTTP as FOUR actors,
+  driving the landing's two inputs and the invariant that matters: *everything
+  the landing lists actually opens, and everything it does not list is refused.*
+  Global `admin_officer` → 5 destinations, all 200. Plain `staff` → Reimbursement
+  only, and the queue **403s**. Scoped `admin_officer` → **identical to the
+  global officer's**, which is the designed behaviour (the nav gates on *holding*
+  the permission, not on the grant's scope — a scoped officer really can open the
+  queue, they just see less inside it). `no-grants@doh.gov` → lists **NOTHING**,
+  `permissions: []`, and 403 on both `my-work` and `claims`. Also confirmed
+  `/config` carries **no** per-user field (api-standards §9j's first rule).
+- **⚠ THE BACKEND SUITE IS NOT GREEN, AND IT IS NOT D-1's DOING — this is the
+  finding to act on next session.** Three full runs were made to establish that,
+  and each produced a **different** failure set: at HEAD *2 failed*
+  (`test_reimb_external_events` — a notification count of 2 where 3 was
+  expected); at the **pre-D-1 commit** *2 failed* (`test_reimb_liquidation_reminders`
+  — an in-app row where none was expected); at HEAD again *1 failed*
+  (`test_reimb_cash_advances::test_the_advance_is_audited_with_its_actor`, where
+  the audit row carried actor `7664` instead of the test's own admin `29755`).
+  **Failures that move between runs, including on code that predates the change,
+  are not a regression.** Both suspect files also pass **100 % in isolation**,
+  and pass alongside the new `test_auth_me_permissions.py`.
+  **The diagnosis, from the third failure — it is the most informative one.** An
+  audit row picking up a *stale actor id* is a leaked `set_audit_context`, i.e.
+  shared state surviving across tests. And the ids themselves tell the rest of
+  the story: **`core_users.id` has reached ≈29,755**, so the dev database has
+  accumulated tens of thousands of rows over many suite runs. `seed_guard`
+  (#28) guards **seeded reference rows** and does exactly that job; it was never
+  meant to catch an append-only outbox and an audit chain growing without bound.
+  **The documented reset is `docker compose down -v`** (conftest's own docstring
+  says so) — **NOT run, because it is destructive**: it would wipe the six dev
+  smoke accounts and the `load-pilot-fixtures` demo data, all of which would need
+  re-bootstrapping. **That is the owner's call, and it is the first question of
+  the next session.** If a reset does not settle it, the next suspect is a
+  fixture that leaves `set_audit_context` set — the fourth costume of the
+  test-hygiene disease, and the one `seed_guard` cannot see.
 - **Test-hygiene note (still true):** a full-suite run leaves
   `module.reimbursement` OFF in dev. Flip it back with
   `python -m office_connect.ops.bootstrap set-flag module.reimbursement --on`.
@@ -174,6 +211,25 @@ fetched by the shell). `/auth/me` now carries sorted `permissions`; NAV_GROUPS g
 permission codes and `requiredRoles` is DELETED; `nav-match.ts` is a deterministic
 six-tier matcher; `QueryBar` is ui-standards §3 row 24. Head 0023 (D-1 added no
 migration). Version stays 0.3.0 - Stage D's gate is the next promotion AND the next push.
+
+⚠ FIRST, BEFORE ANY FEATURE WORK - THE SUITE IS NOT GREEN AND IT IS NOT D-1's DOING.
+Three full runs at #29 each failed a DIFFERENT set: 2 in test_reimb_external_events (HEAD),
+2 in test_reimb_liquidation_reminders (at the PRE-D-1 commit, i.e. code D-1 never touched),
+1 in test_reimb_cash_advances (HEAD again). Every suspect file passes 100% in isolation.
+Moving failures on code that predates the change are not a regression - but the suite
+cannot be called green until this is settled, and Stage D's gate is a PUSH.
+The diagnosis, from the most informative failure: an audit row carried actor id 7664 where
+the test's own admin was 29755 - a leaked `set_audit_context`, i.e. shared state surviving
+across tests. And `core_users.id` has reached ~29,755, so the dev DB has accumulated tens
+of thousands of rows over many runs. `seed_guard` (#28) guards SEEDED REFERENCE rows and
+does that job well; it was never meant to catch an append-only outbox and an audit chain
+growing without bound.
+ASK THE OWNER FIRST: `docker compose down -v` is the documented reset (conftest says so)
+but it is DESTRUCTIVE - it wipes the six dev smoke accounts and the load-pilot-fixtures
+demo data, all of which need re-bootstrapping (init / seed-rbac / seed-workflows /
+load-fixtures / load-pilot-fixtures / set-flag, plus re-minting the smoke logins).
+If a reset does NOT settle it, hunt the fixture that leaves `set_audit_context` set -
+the fourth costume of the test-hygiene disease, and the one `seed_guard` cannot see.
 
 Task: STAGE D INCREMENT 2 - the CALENDAR OF ACTIVITIES surface. This is an OWNER-REQUESTED
 feature (recorded 2026-07-22) and master-plan §1.2 calls `core_activities` "the connection
