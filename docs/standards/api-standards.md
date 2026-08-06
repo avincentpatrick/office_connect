@@ -707,3 +707,61 @@ path, and `test_the_write_paths_reveal_nothing_about_a_claims_state` asserts a
 draft, a submitted claim and a never-issued id are indistinguishable to a
 stranger. `404` for a genuinely absent row is fine and leaks nothing: it says an
 id was never issued, not anything about a claim somebody filed.
+
+## §9j. Telling a client what it may do is not authorizing it (Stage D Increment 1, 2026-08-06)
+
+`GET /auth/me` now carries a sorted `permissions: list[str]` — the caller's own
+effective permission codes. That is a new *category* of payload, not just a new
+field: **a response whose content is the caller's authorization state**, served so
+a UI can show a person what they can actually open rather than guessing. The
+landing shell is the first consumer; every future "what can I do here" surface is
+the next. Four rules, and the first is a security rule.
+
+- **A per-user payload never rides a shared-key cache.** The trap is already in
+  this repository: `/api/v1/config` is Redis-cached under **one global key**
+  (`oc:config:v1`, §9-era), and it is also the endpoint the UI already fetches at
+  boot for flags and branding — so it is exactly where the next person will reach
+  to put "one more thing the UI needs". One user's entitlements served from a
+  tenant-wide cache entry is a cross-user leak that no test asking "does the field
+  work?" would ever catch. Entitlements ride an **authenticated, per-user**
+  response, cached only under a per-user key.
+
+- **A "what may I do" payload is read through the SAME resolver the gate reads.**
+  `/auth/me` and `require_permission` both call
+  `core/auth/dependencies.py::effective_permission_codes`, which is the version-keyed
+  cache path and nothing else. Two readers of one set eventually disagree, and the
+  visible form of that disagreement is a UI offering a destination the server
+  refuses — §9f's failure mode arriving through the front door instead of a list
+  endpoint. Corollary: **the payload is composed from permission codes, never role
+  names.** A role name in a client re-encodes a role→permission mapping that lives
+  in the database and that an administrator can change with no code change (§7).
+
+- **It is discoverability, never authorization.** No server code may branch on it,
+  and **no request path may accept one**. The set travels outward only. Every route
+  re-checks entitlement on every request regardless of what the client was told,
+  and hiding a link remains what ui-standards §4 says it is: discoverability, with
+  the server as the boundary. A client that lies about its permissions changes what
+  its own screen looks like and nothing else.
+
+- **Sort it, and the reason is not tidiness.** `PermissionCache.get_or_load`
+  returns `set(json.loads(...))` on a hit and the loader's raw `set` on a miss —
+  both unordered. Emitting either directly makes the response **non-deterministic
+  as a function of cache warmth**: stable on a warm dev box, arbitrary in
+  production, and impossible to snapshot-test. `sorted()` at the boundary.
+
+**On reachability while a session is pending.** `/auth/me` answers under
+`require_session_pending_ok`, so a user mid-password-change or mid-MFA-setup gets
+this field. That is correct and deliberately not special-cased: the field describes
+the caller *to* the caller, and every real action is still gated by
+`require_permission`, which sits on `require_session` and refuses a pending session
+outright. **Do not return `[]` while pending** — `[]` is the wire value meaning
+"this person holds nothing", it drives a UI's no-access state, and returning it for
+a pending session would tell the freshly-bootstrapped administrator they have no
+access on their first login.
+
+**On degradation.** The field's resolver can fail (a cold cache plus an
+unreachable database). It must fail as a **503 with the standard envelope**, never
+as an empty list: `[]` is a claim about the world, and a claim about somebody's
+entitlements is the last one worth guessing at. Note the consequence for clients,
+recorded rather than discovered: an auth surface that can now fail on a database
+blip is one a client may render as "signed out" unless it distinguishes the two.

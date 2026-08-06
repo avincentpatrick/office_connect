@@ -90,6 +90,7 @@ first**. Required states in parentheses.
 | **Callout** | inline, status-coloured aside (§2 semantics) explaining a condition next to the decision it affects. `<section aria-labelledby>`; the status word is `sr-only` text so meaning never rides colour alone (§6). **Does not take focus and is not `role=alert`** — that is Error summary's job. |
 | **Countdown ring** | a deadline rendered as remaining time against a total, in semantic colour (§2): green on track / amber due soon / red overdue. The ring itself is **decorative and `aria-hidden`** — the state is carried by adjacent real text ("12 days left · due Aug 2, 2026"), never by the arc or its colour. Takes a server-derived state and day count; it **computes nothing**, because a deadline a browser worked out is a deadline a wrong clock can get wrong. Renders an honest "not started" when there is no deadline yet, never a full or empty ring. |
 | **Ranked bar list** | an ordered list of counts, largest first, each with a bar showing its share **of the largest row — never of a total**. Bars are `aria-hidden` decoration; every number is real text on the row (`valueText` is required for exactly that reason), so a screen reader hears "12 returns", not a rectangle. It **does not re-order** — the order arrives from the server and is the content. A zero row keeps its place and draws no bar at all. Optional per-row `meta` line and `action` slot. |
+| **Query bar** | a labelled search field over destinations **plus the one results list beneath it** — the two are a single accessibility unit, never split across caller and component. A **search field, NOT an ARIA combobox**: `<form role="search">` + a real visible `<label>` + `<input type="search">` + a polite live region carrying one status sentence + results as real links in a real list. **It filters nothing** — it renders the array it is handed, in the order it is handed, and that array has already been gated. Fully controlled (no internal state), so it lifts into another surface unchanged. An unmatched query is **not a validation error**: no `aria-invalid`, no red border — the answer is a sentence. |
 
 > **Inventory amendment 2026-07-28 (R-2-shell):** **Error summary** added as
 > the fourteenth component. master-plan §2 R-2 names it as a deliverable; it is
@@ -267,6 +268,67 @@ first**. Required states in parentheses.
 > content, so a client-side re-sort would be a second ranking to keep in step
 > with the first.
 
+> **Inventory amendment 2026-08-06 (Stage D Increment 1):** row 24, **Query
+> bar** — the platform's front door. It is a component rather than another
+> page-local composition (the R-5 / R-5-packet answer) for R-8's reason: **what
+> would be got wrong here is an accessibility contract, not a layout**, and the
+> next consumer — the same bar lifted into the App shell — would get it wrong
+> independently.
+>
+> **It is a search field, NOT an ARIA combobox, and that is this row's main
+> content.** Four reasons, because the pull toward a combobox is strong and the
+> failure is invisible to sighted testing:
+> 1. **Radix ships no Combobox.** The pattern therefore means hand-rolling
+>    `role="combobox"` + `aria-expanded` + `aria-controls` + `aria-autocomplete`
+>    + `role="listbox"`/`option` **plus virtual focus** (DOM focus stays in the
+>    input while `aria-activedescendant` moves) — the hardest widget in ARIA.
+>    §7 permits Radix primitives inside `components/` *precisely so focus
+>    management comes from the platform*; hand-rolling the one widget that most
+>    needs a platform is the opposite of that policy.
+> 2. **Its semantics changed incompatibly between ARIA 1.0/1.1 and 1.2**, and
+>    `aria-activedescendant` is still announced differently by NVDA, JAWS and
+>    VoiceOver — and is not usefully supported by iOS VoiceOver at all. §6 puts
+>    phones first; a pattern that is weakest on the platform §6 prioritizes is
+>    indefensible here.
+> 3. **What a combobox buys, this surface does not need** — an overlay popup
+>    (the content under the bar *is* the list being filtered, so there is
+>    nothing underneath worth preserving) and selection without moving focus.
+> 4. **Real links in a real list are in the tab order**, reachable by every
+>    screen reader's links-list and lists-list navigation, and right-, middle-
+>    and Cmd-clickable. §6 says "all actions keyboard-reachable": a link is that
+>    *by definition*, a virtual `option` only if we implement it correctly.
+>
+> Three rules it establishes, binding on any future search or filter control:
+> 1. **A real, visible `<label>`. A placeholder is not a label** — it disappears
+>    on input, fails contrast, and is announced inconsistently.
+> 2. **Results are real links in a real list**, in the tab order (rule 4 above).
+> 3. **The control filters nothing.** It renders the array it is handed, in the
+>    order it is handed, and that array has **already been gated by permission**.
+>    A control able to reach the navigation registry itself could offer a
+>    destination the user cannot open — api-standards §9f's mistake in a new
+>    place. The matcher behind it (`web/src/app/nav-match.ts`) is generic over
+>    `{label, intentKeywords}` and imports nothing from `app/nav.ts`, so the leak
+>    is **structurally impossible rather than merely avoided**.
+>
+> Recorded so nobody "improves" it later: **no `aria-expanded`, no
+> `aria-activedescendant`, no `aria-autocomplete`, no popup, no focus trap, no
+> debounce, no recent-searches, no fuzzy scoring — and Enter is a deliberate
+> no-op.** "Enter goes to the first result" is an *invisible* rule: nothing on
+> screen says a result is selected, and if the top match is wrong it moves the
+> user somewhere they did not ask for. Making it visible is the combobox we just
+> declined. The status sentence says "Choose one below" and the first result is
+> one Tab away. **Escape clears the query and keeps focus in the field** — the
+> one keyboard nicety worth having, because users expect it from every search
+> box. An unmatched query is not a validation error (no `aria-invalid`, no red
+> border): it is a true answer, and §6's "status by text, never colour" applies
+> to answers as much as to states.
+>
+> **No new dependency** (rule 9). `cmdk`, `downshift` and `fuse.js` were
+> considered and rejected: a deterministic six-tier matcher over ≤7 destinations
+> needs no library, and a fuzzy scorer would make *"nothing matches"* impossible
+> to state honestly — which is the one sentence this surface exists to be able
+> to say.
+
 ## 4. Layout templates — LOCKED
 
 **No page is built outside one of these templates.** New template = amend
@@ -336,6 +398,21 @@ this doc first.
 > server's own explanation in the page's empty state — never a blank page, never
 > a paraphrase the FE then has to keep true.
 
+> **Template note 2026-08-06 (Stage D Increment 1) — the landing is a plain
+> content page, and §4 is UNCHANGED.** §8's template notes already record
+> HomePage and the auth screens as rendering "as a plain content page inside the
+> App shell"; the landing is that page grown up. No new template, for two
+> reasons. **A template exists to enforce mandatory structure** — the List page's
+> `loading`/`isEmpty`/`emptyState`, the Board page's per-column skeleton — and
+> the landing **fetches nothing**, so it has no loading state and no
+> server-driven empty state for a template to guarantee. There is nothing to
+> enforce. And **one consumer is not a pattern**, which is the same promotion
+> rule §3 applies to components (R-5, R-5-packet, R-6-clock). The App shell's
+> `max-w-5xl` cap is adequate: the content is one column of at most six
+> destinations, and the master plan's word for this surface is MINIMALIST — the
+> anti-dashboard. **Fill-trigger for a real amendment:** the first landing that
+> needs full-bleed or a second column.
+
 ## 5. Copy standard — LOCKED
 
 - Sentence case everywhere (buttons, titles, tabs, labels).
@@ -399,10 +476,40 @@ dependency pins live in [`tech-stack.md`](tech-stack.md) §4.
 - **FE QA gate** — `npm run lint && npm run typecheck && npm run test &&
   npm run build`, run via the `web` container (tech-stack §5); paired with the
   backend pytest / lint-imports gates.
-- **Nav/permission gating — recorded deferral** — `NAV_GROUPS`
-  (`web/src/app/nav.ts`) filters on feature flags (absent = OFF) + role codes
-  from `/auth/me`. `/auth/me` exposes roles, not permission strings; a
-  self-permissions endpoint is deferred until a surface needs finer gating.
+- **Nav/permission gating — FILLED (Stage D Increment 1, 2026-08-06; the
+  R-2-shell deferral is LIFTED).** `NAV_GROUPS` (`web/src/app/nav.ts`) filters on
+  feature flags (absent = OFF) + **permission codes** from `/auth/me`, which now
+  carries a sorted `permissions: string[]` resolved through the **same**
+  version-keyed Redis cache `require_permission` reads — one resolver,
+  `core/auth/dependencies.py::effective_permission_codes`, serving both the gate
+  and the "me" surface, because two readers of the same set eventually disagree
+  and the UI ends up offering a destination the server refuses (api-standards
+  §9j).
+  **`requiredRoles` is DELETED, not deprecated.** Three reasons, the third of
+  which was not visible at R-2-shell:
+  1. Authorization is on permission STRINGS everywhere else (api-standards §7).
+     A role name in the client re-encodes a role→permission mapping that lives
+     in the database and that an administrator can change with no code change.
+  2. The four oversight items need "holds ANY of `reimb.claim.review` /
+     `.fms_update` / `.approve`" — which is
+     `modules/reimbursement/services/queue.py::OVERSIGHT_PERMS` **verbatim**,
+     i.e. the server's own refusal rule rather than a paraphrase of it. Holding
+     any one of the three is exactly equivalent to `oversight_scope()` returning
+     a non-empty scope.
+  3. **`me.roles` is a login-time snapshot.** `SessionStore.set_permissions_version`
+     stamps the version onto live sessions but never rewrites the session's
+     `roles` field, so a role granted *after* login did not change the nav until
+     the user signed in again. A permission set read through the version-keyed
+     cache lands on the **next request**, which is the promise api-standards §7
+     already makes everywhere else. The old gate was not merely coarse — it was
+     out of date.
+  **The nav is still discoverability, not authorization.** §4's doctrine is
+  unchanged: every route stays reachable by anyone and the server still refuses.
+  What changed is that the client's guess now matches the server's rule instead
+  of approximating it. **The nav also deliberately does NOT narrow by org
+  SCOPE** — a scoped Admin Officer can genuinely open the queue, they just see
+  less inside it, and shipping scope to the client would mean shipping the org
+  tree to the client.
 
 ## 8. Per-component visual specs — SEEDED (R-2-shell, 2026-07-28) · *deepens as each component grows*
 
@@ -437,6 +544,7 @@ under `web/src/components/<Name>/`.
 | Form dialog | Dialog chrome (above) with a `<form>` body: title, optional muted description, caller's fields, then Cancel (secondary, wrapped in `Dialog.Close`) + submit (`type="submit"`, danger when destructive, `loading` while in flight). Submit is NOT wrapped in `Close`. Panel scrolls (`max-h-[90vh] overflow-y-auto`) — dialog forms grow on a phone. |
 | Countdown ring | inline SVG: a track circle plus a `stroke-dasharray`/`dashoffset` arc in `currentColor`, the wrapper coloured `status-done` / `status-due` / `status-blocked` from the **server's** state. `<svg aria-hidden focusable="false">` with the number centered as SVG text for sighted readers, and the full sentence ("12 days left · due Aug 2, 2026 · On track") as real text beside the ring for everyone. `null` state renders a dashed track and "Not started" — never a full or empty arc. Sizes `sm` (list rows) / `md` (detail rails); both ≥44 px so a linked ring is a legal touch target. |
 | Ranked bar list | `<ol aria-label>`; each `<li>` is label + `valueText` on one baseline row, then an `aria-hidden` track (`h-2 border-border bg-surface`) holding a `bg-brand` fill at `count / max` per cent, then an optional muted `meta` line with the row's `action` right-aligned. `max` is guarded to ≥1 so an empty or all-zero list divides safely and simply draws no fill. Neutral `brand`, never a semantic status colour: a ranking is not a verdict, and colouring the top row red would say "this is bad" about a number nobody has judged. |
+| Query bar | `<form role="search">` (not the `<search>` element — jsdom/axe support is still patchy; a later swap) wrapping a real visible `<label>` above an `<input type="search" autoComplete="off" enterKeyHint="go">` `min-h-11 rounded-md border-border bg-surface`, `aria-describedby` the status line. Below the form, `<p role="status" aria-live="polite">` carries **one** sentence — the match count or the refusal — supplied by the page's copy module, empty while idle so nothing is announced on load. Then `<section aria-labelledby>` with an `<h2>` and a single `divide-y divide-border` `<ul>` of router-`Link` rows: `min-h-11` full-row padding (the whole row is the touch target), Lucide icon `aria-hidden`, label, then the destination's own muted description line. When there are no results the status sentence renders **alone** — no empty `<ul>`, no dangling heading. `onSubmit` prevents default and does nothing; `Escape` clears the value and keeps focus in the field. |
 
 **Template notes (§4 as-built):** all six templates exist in
 `web/src/layouts/`. The **App shell** takes a `minimal` mode (brand bar only)
