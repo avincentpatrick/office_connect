@@ -137,6 +137,32 @@ async def load_permission_entry(
     return codes, (min(boundaries) if boundaries else None)
 
 
+async def effective_permission_codes(
+    cache: PermissionCache, principal: Principal
+) -> set[str]:
+    """The actor's current permission codes, through the version-keyed cache.
+
+    ONE resolver for both consumers: the **gate** (``require_permission``) and
+    the **"me" surface** (``GET /auth/me``'s ``permissions``, ui-standards §7).
+    If those two ever read the set differently, the UI offers a destination the
+    server refuses — api-standards §9f's failure mode arriving through the front
+    door instead of a list endpoint. api-standards §9j makes the shared resolver
+    the rule; this function is it.
+
+    No DB on a cache hit; a miss lazily loads via ``load_permission_entry``,
+    whose TTL is capped at the next grant window edge so a delegation opening or
+    closing lands on the next request rather than at re-login.
+    """
+
+    async def _loader() -> tuple[set[str], datetime | None]:
+        async with SessionLocal() as session:
+            return await load_permission_entry(session, principal.user_id)
+
+    return await cache.get_or_load(
+        principal.user_id, principal.permissions_version, _loader
+    )
+
+
 def require_permission(
     perm: str,
     scope: OrgUnitScope = OrgUnitScope.GLOBAL,
@@ -166,14 +192,7 @@ def require_permission(
         cache: PermissionCache = Depends(get_permission_cache),
     ) -> Principal:
         if scope is OrgUnitScope.GLOBAL:
-
-            async def _loader() -> tuple[set[str], datetime | None]:
-                async with SessionLocal() as session:
-                    return await load_permission_entry(session, principal.user_id)
-
-            codes = await cache.get_or_load(
-                principal.user_id, principal.permissions_version, _loader
-            )
+            codes = await effective_permission_codes(cache, principal)
             if perm not in codes:
                 raise APIError(
                     403, "forbidden", "You do not have permission to do that."

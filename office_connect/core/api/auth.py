@@ -31,11 +31,14 @@ from office_connect.core.api.schemas.auth import (
 from office_connect.core.audit import append_auth_event
 from office_connect.core.auth import mfa, service
 from office_connect.core.auth.dependencies import (
+    effective_permission_codes,
+    get_permission_cache,
     get_session_store,
     require_permission,
     require_session,
     require_session_pending_ok,
 )
+from office_connect.core.auth.permission_cache import PermissionCache
 from office_connect.core.auth.password_policy import (
     PasswordPolicyError,
     normalize_password,
@@ -169,14 +172,36 @@ async def logout(
 async def me(
     principal: Principal = Depends(require_session_pending_ok),
     store: SessionStore = Depends(get_session_store),
+    cache: PermissionCache = Depends(get_permission_cache),
 ):
+    """The caller, described to the caller (api-standards §9j).
+
+    ``permissions`` reads the SAME resolver the gate reads, so the UI's picture
+    of what it may open cannot drift from what the server will allow. Note this
+    endpoint is **no longer DB-free**: a cold permission cache costs one indexed
+    join. That is the same work ``require_permission`` does on every gated
+    request, moved one endpoint earlier — and the entry it warms is the one the
+    first module request would otherwise have missed.
+
+    Reachable while a session is pending (``require_session_pending_ok``), and
+    deliberately NOT special-cased there: the field describes the caller, every
+    real action is still gated by ``require_session``, and returning ``[]`` for a
+    pending session would tell a freshly-bootstrapped administrator they have no
+    access on their first login.
+    """
     rec = await store.get_session_record(principal.session_id)
     if rec is None:
         raise APIError(401, "unauthorized", "Authentication required.")
+    codes = await effective_permission_codes(cache, principal)
     return MeResponse(
         user_id=principal.user_id,
         email=principal.email,
         roles=list(principal.roles),
+        # Sorted, and not for tidiness: the cache returns a `set` on BOTH the hit
+        # and miss paths, so emitting either directly would make the response
+        # non-deterministic as a function of cache warmth — stable on a warm dev
+        # box, arbitrary in production (api-standards §9j).
+        permissions=sorted(codes),
         idle_tier=principal.idle_tier,
         is_privileged=principal.is_privileged,
         must_change_password=principal.must_change_password,

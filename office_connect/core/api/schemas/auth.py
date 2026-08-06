@@ -47,7 +47,20 @@ class SessionSummary(BaseModel):
 class MeResponse(BaseModel):
     user_id: int
     email: str
+    #: Role codes from the session snapshot — NOT a gate. They are stamped at
+    #: login and never rewritten, so a role granted afterwards does not appear
+    #: here until the user signs in again. Gate on ``permissions`` below.
     roles: list[str]
+    #: The caller's effective permission codes, SORTED, resolved through the
+    #: same version-keyed cache ``require_permission`` reads
+    #: (``effective_permission_codes``). Discoverability for the UI
+    #: (ui-standards §7) — **never** an authorization input: every route
+    #: re-checks entitlement regardless of what the client was told, and no
+    #: request path accepts one. api-standards §9j.
+    #:
+    #: Required, not defaulted: ``[]`` means "this person holds nothing" and
+    #: drives the landing's no-access state, so it must never arrive by accident.
+    permissions: list[str]
     idle_tier: str
     is_privileged: bool
     must_change_password: bool
