@@ -236,3 +236,34 @@ compose-internal network. Backups: nightly `pg_dump -Fc` + 3-2-1 placement,
 graduating to pgBackRest + WAL archiving before real claims if a sub-24 h RPO
 is demanded. Exact VM/OS/engine versions recorded here at deployment
 provisioning (rule 9).
+
+### 7a. ⚠ The application sets NO security headers (finding, 2026-08-09 — owed)
+
+Recorded during the Stage D-3 kickoff and kept when that increment moved, because
+the gap has nothing to do with CSS-IS.
+
+**Today the app emits no `Content-Security-Policy`, no `X-Frame-Options` /
+`frame-ancestors`, no `Referrer-Policy`, no `Permissions-Policy`, no HSTS.** A
+repo-wide search returns zero hits. `main.py` registers exactly four middlewares —
+request-id, CSRF, auth-principal, query-log — and the only security header set
+anywhere is `X-Content-Type-Options: nosniff`, on the attachment download route
+alone (`core/api/attachments.py`). **The assumption that the reverse proxy above
+supplies them is unwritten, untested, and has no config file in this repo to
+inspect.** It is a documented obligation now, not an assumption.
+
+**Two traps that must be handled by whoever closes this** — both found by reading
+the code that would break, not by guessing:
+
+1. **A CSP without `frame-src 'self'` breaks the claim-packet preview.**
+   `web/src/pages/reimbursement/PacketPreview.tsx` embeds the generated PDF in an
+   `<iframe>`, and its own comment says it *"can render at all only because the
+   server serves a generated PDF with `Content-Disposition: inline` and **sets no
+   frame-blocking header for its own origin**"*. The feature depends on the
+   current absence.
+2. **A `style-src` without `'unsafe-inline'` or a nonce breaks tenant theming.**
+   Tailwind v4 is CSS-first and `injectTokens()` writes the `--oc-*` custom
+   properties onto `<html>` at runtime so a tenant re-themes without a rebuild
+   (§4, ui-standards §7). Vite dev additionally injects `<style>` tags.
+
+Ship it as a core middleware with tests, not as proxy config alone: the proxy is
+deployment-time and post-development, while the app is what the suite can pin.

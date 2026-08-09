@@ -76,7 +76,7 @@ compiled by hand. Connectedness is enforced structurally, not aspirationally:
 | 13 | **Document-type / signatory-config / template-map taxonomy** | One registry (types, Google-Docs/PDF template links, signatory chains, wet-signature flags) consumed by DTWIS, reimbursement, and QMS — the references specified this separately in §19.7 and `reimb_signatory_config`; unified here. | dtwis, reimb, qms |
 | 14 | **Staff directory + org units** | Plantilla-authoritative person registry + self-referencing `core_org_units`; modules join, never copy. | all modules |
 | 15 | **Activity spine** | `core_activities` (+ `core_activity_tags` for GAD / CCET climate / DRR / UHC — configurable taxonomies, never boolean columns) + `core_pap_codes` (per-FY PREXC tree: cost structure → OO → program → subprogram → activity/project; UACS never-reuse/deactivate semantics; year-rollover re-mapping wizard) + `core_object_codes` (10-digit UACS; travel = 5-02-01-010-00). | everything (§1.2) |
-| 16 | **AI service** | CSS-IS `ai_core` promoted (Gemini + Groq fallback, DB-backed budget, audit tables reconciled with the query log). **The Stage D-1 query bar is deterministic and has NO `ai_core` dependency** — it becomes a consumer only if a later increment adds natural-language intent. `ai_core` is its own Stage D increment (D-4). | query bar *(only if NL intent ships)*, css, later modules |
+| 16 | **AI service** | CSS-IS `ai_core` promoted (Gemini + Groq fallback, DB-backed budget, audit tables reconciled with the query log). **The Stage D-1 query bar is deterministic and has NO `ai_core` dependency** — it becomes a consumer only if a later increment adds natural-language intent. **Moved from Stage D (D-4) to Stage G on 2026-08-09** for two independent reasons: *promotion* requires the css-is repo, which is not in this workspace; and with the query bar deterministic this service currently has **zero consumers** — and one consumer is already the registry's threshold for a pattern. `modules/css-is.md` §5b. | query bar *(only if NL intent ships)*, css, later modules |
 | 17 | **Calendar composition** (`core/calendar/`) — **SHIPPED 2026-08-09 (Stage D-2; contract: `docs/standards/api-standards.md` §9k)** | The registry that lets ONE agenda surface read many modules without any of them importing each other. Core owns the `CalendarEvent` value type, the `CalendarSource` dataclass, `register_source()` and the merge/window/day-grouping; each module implements a source where its OWN scope rule is a local import; `main.py` registers them. Every source declares the NAME of the rule it applies (`register_source` refuses an empty one) and may carry a feature flag — a flag-OFF source is **absent**, not empty. **Not the same thing as #11** (`core_compliance_deadlines` is *data*; this is *composition*) and **not #6** (`core/workdays` is the date math this consumes). A second calendar-shaped surface reads this registry; it never grows its own fan-out. | reimb (travel + liquidation), admin (bookings), dtwis (document deadlines), perf (SPMS dates), reports |
 
 ### 1.2 The connection spine
@@ -139,15 +139,22 @@ modules that have hard annual government cycles but do not block the pilot ship 
 | **A** | 0 (inc 2–4) | Ops + integrations + spine amendments | phase-0 QA green, tag pushed |
 | **B** | 2 | Identity & access (auth/RBAC/directory) | one-login gate |
 | **C** | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | R-9 gate, flag ON for pilot cohort |
-| **D** | 3 | Landing shell, query bar, **Calendar surface**, AI service | shell QA |
+| **D** | 3 | Landing shell, query bar, **Calendar surface** | shell QA |
 | **E** | 4–7 | **DTWIS** (renamed from DMWIS) | documents-only pilot |
 | **F** | new | **QMS module** (controlled docs + risk + MR + NC/CAPA) | ISO-evidence QA |
-| **G** | 1+8 | CSS-IS convergence (PG migration + React + ARTA v2023) | parity + score-identity QA |
 | **H** | 9 | Admin + unified Reports + **Government Outputs** | cross-module drill-down QA |
+| **G** | 1+8 | CSS-IS convergence (PG migration + React + ARTA v2023) **+ the shell proxy and `ai_core`, moved here from Stage D** | parity + score-identity QA |
 | **I** | 10 | Legacy migration, sync, hardening, SIT, **pilot gate** | pilot exit criteria |
 | **W2-A** | new | Planning & Budget (WFP/BED/BAR + PPMP/APP) | own R-0 + QA gate |
 | **W2-B** | new | Supply Management | own R-0 + QA gate |
 | **W2-C** | new | Performance & Deliverables (SPMS + COA findings) | own R-0 + QA gate |
+
+**⚠ The table is in BUILD ORDER, which is why H precedes G.** Stage letters are
+permanent identifiers, not a sequence — renaming stages to restore the alphabet
+would break every citation in `PROGRESS.md`, the module docs and the session log.
+**Read the row order, never the letters.** CSS-IS convergence moved behind Stage H
+on 2026-08-09 (§4 register row 12) together with the two Stage-D increments that
+depended on it; that row also records what the move costs.
 
 ### Stage A — Foundation completion (Phase 0, increments 2–4)
 
@@ -275,15 +282,23 @@ ledger (§5) and research hardening — full detail in `docs/modules/reimburseme
   non-negotiables throughout (one holder, one next action, My Work, holder-only SLA
   ladder, stalls visible, returns never orphan).
 
-### Stage D — Landing shell, query bar, Calendar surface, AI (Phase 3)
+### Stage D — Landing shell, query bar, Calendar surface (Phase 3)
 
 Minimalist landing + deterministic intent matcher on NAV_GROUPS (incl. report
 intents); **Calendar of Activities screen** — the connected calendar the owner asked
 for: reads `core_activities`, travel claims, statutory deadlines (from
 `core_compliance_deadlines`), and — as later stages ship — room bookings, document
 deadlines, SPMS dates; shows cash-advance liquidation countdowns on funded events.
-CSS-IS reverse-proxied into the shell (session carries). `ai_core` promoted to the
-shared AI service (budget + `ai_interaction` reconciled with the query log).
+
+**Scope amended 2026-08-09 (§4 register row 12).** Two increments left this stage
+for **Stage G**, where the system they depend on already lives: *CSS-IS
+reverse-proxied into the shell (session carries)* and *`ai_core` promoted to the
+shared AI service*. Both required the css-is repo, which is not in this workspace;
+and "session carries" was specified as a property of the Phase 1/2 identity
+unification — i.e. of Stage G — so Stage D had been asking the session to carry
+before the unified user store that makes it carry existed. The whole finding is in
+[`modules/css-is.md`](modules/css-is.md) §5a/§5b. Stage D therefore closes on the
+landing shell, the query bar and the Calendar.
 
 ### Stage E — Document Tracking & Workflow IS (Phases 4–7, renamed)
 
@@ -339,7 +354,18 @@ controlled docs reuse attachments/signatures/workflow. Risk Registry + MR sit he
 (not in Performance) because ISO instruments cohere as one module — flagged as a
 confirmable decision in §4.
 
-### Stage G — CSS-IS convergence (Phases 1+8)
+### Stage G — CSS-IS convergence (Phases 1+8) — *runs AFTER Stage H*
+
+**Two increments arrived here from Stage D on 2026-08-09** (§4 register row 12),
+and they sequence *inside* this stage rather than beside it:
+
+- **The shell proxy ("session carries")** — lands **after** the Phase-2 identity
+  unification below, because that is what makes a session carry. The embed shape is
+  expected to be a deployment-tier host proxy, needing no application code; a PIA
+  amendment is a precondition, since the Stage-B PIA records CSS-IS as *"feed-only,
+  no live link"*. Analysis in [`modules/css-is.md`](modules/css-is.md) §5a.
+- **`ai_core` promotion** to core-service #16 — lands with the code it is promoted
+  *from*. §5b of the same doc.
 
 SQLite→PostgreSQL migration (per-table-class naive-Manila→UTC conversion, SQLAlchemy
 async rewrite of `storage.py`, audit re-chain, dual migration: dev snapshot now +
@@ -362,7 +388,11 @@ per module + leadership view + drill-down; XLSX-first exports for DBM/COA matrix
 annexes (Excel is what URS encoding needs; PDF second). **Government Outputs
 screen**: one card per mandated output — legal basis, period, working-day-aware
 deadline countdown (from `core_compliance_deadlines`), source coverage %, last
-generated + lineage, Generate button. Outputs at this stage: CSMR, FOI registry,
+generated + lineage, Generate button. **⚠ CSMR ships here as a PLACEHOLDER card
+only** — it is generated over CSS-IS data, and Stage G now runs *after* this stage
+(§4 register row 12). The card renders its legal basis, its Apr-30 countdown and
+**0 % source coverage**, which is exactly what the coverage field exists to say;
+it completes when G lands. Outputs at this stage: CSMR *(placeholder)*, FOI registry,
 DTrak/communications registry, ISO evidence pack, liquidation/claim packets,
 Calendar of Activities (CY), **Transparency Seal posting pack** (quarterly BAR/FAR
 render set + APP + annual report items per GAA General Provisions), **consolidated
@@ -540,6 +570,7 @@ calendar; surfaced as countdown cards on Government Outputs with amber/red state
 | 9 | QMS regrouping (Risk Registry + MR in QMS module, not Performance) | keep in QMS (ISO instruments cohere) | plan review ✔ (adopted) |
 | 10 | LGU Health Scorecard / LHS maturity scope | calendar/activity feeds only until bureau confirms | W2 planning |
 | 11 | Leave/DTR data contract (feeds IPCR 90-day rule + calendar) | define contract when W2-C is scoped; module itself out of scope | W2-C R-0 |
+| 12 | **CSS-IS sequencing: the shell proxy + `ai_core` leave Stage D, and Stage G moves behind Stage H** | **RESOLVED (owner, 2026-08-09).** Both Stage-D increments needed the css-is repo, which is not in this workspace, and "session carries" was specified as a property of the Phase 1/2 identity unification — i.e. of Stage G — so Stage D was asking a session to carry before the store that carries it existed. Build order becomes **A·B·C·D·E·F·H·G·I**. Full finding: `modules/css-is.md` §5a/§5b. **⚠ The cost, stated up front: Government Output #1 (CSMR) is generated over CSS-IS data, so it is NOT servable when Stage H builds the Government Outputs screen.** #1 ships there as a placeholder card — legal basis, deadline countdown and 0 % source coverage, which is what the card is designed to show — and completes when G lands. It joins #5 (OPCR actuals), already partial at H for its own reasons. Reversing this is one row-order change in §2 plus the `modules/reports.md` §5 note. | ~~Stage D~~ ✅ |
 
 ## 5. Reference corrections ledger (research vs references)
 

@@ -2,14 +2,21 @@
 
 ## 1. Status
 
-**IN PROGRESS. Phase slot: 3 (Stage D).**
+**COMPLETE on its shipped scope (D-1 + D-2). Phase slot: 3 (Stage D).** Stage D's
+QA gate, version promotion and push are still owed.
 
 | Increment | Scope | Status |
 |---|---|---|
 | **D-1** | Landing shell + deterministic query bar | **✅ shipped 2026-08-06** |
-| D-2 | Calendar of Activities surface — **owns its own doc, [`calendar.md`](calendar.md)** | **in progress (kickoff 2026-08-09)** |
-| D-3 | CSS-IS reverse-proxied into the shell (session carries) | not started |
-| D-4 | `ai_core` promoted to the shared platform AI service | not started |
+| **D-2** | Calendar of Activities surface — **owns its own doc, [`calendar.md`](calendar.md)** | **✅ shipped 2026-08-09** |
+| ~~D-3~~ | CSS-IS reverse-proxied into the shell (session carries) | **moved to Stage G, 2026-08-09** — [`css-is.md`](css-is.md) §5a |
+| ~~D-4~~ | `ai_core` promoted to the shared platform AI service | **moved to Stage G, 2026-08-09** — [`css-is.md`](css-is.md) §5b |
+
+**Stage D closes at D-2.** Both remaining increments needed the css-is repo, which
+is not in this workspace, and "session carries" turned out to be a property of the
+Phase 1/2 identity unification — Stage G's work, not Stage D's. The move is
+recorded as [`master-plan.md`](../master-plan.md) §4 register row 12, which also
+carries what it costs Stage H.
 
 ## 2. Purpose
 
@@ -149,17 +156,23 @@ D-1 is *deterministic*, explicitly not an LLM.
   `no-grants@doh.gov` was minted with no role at all. It must never be given a
   role "for convenience later": having none is its entire value.
 
-### 6e. Remaining Stage D increments
+### 6e. How Stage D ended
 
-D-2 Calendar of Activities — **kicked off 2026-08-09; see
-[`calendar.md`](calendar.md)**, which now owns its plan, its delta register and
-its test posture. Note one scope change made at that kickoff and recorded there:
-**`core_compliance_deadlines` is DEFERRED** as a fourth source (the table stores
-`due_rule` JSONB with 15 distinct kinds and no evaluator exists; its real consumer
-is Stage H's Government Outputs). D-3 CSS-IS reverse-proxied into the shell · D-4
-`ai_core` promoted to the shared AI service. Each is its own increment with its own
-kickoff.
+D-2 Calendar of Activities — **shipped 2026-08-09; see [`calendar.md`](calendar.md)**,
+which owns its plan, its delta register and its test posture. Note one scope change
+made at that kickoff and recorded there: **`core_compliance_deadlines` is DEFERRED**
+as a fourth source (the table stores `due_rule` JSONB with 15 distinct kinds and no
+evaluator exists; its real consumer is Stage H's Government Outputs).
 
-**What D-1 leaves ready for them:** every new surface is one `NAV_GROUPS` row —
-gated, matchable and listed on the landing the moment it is added, with the census
-failing the suite if that row ships without a declared rule.
+**D-3 and D-4 were kicked off, researched, and moved rather than built.** The D-3
+kickoff's own question list asked *"is CSS-IS in this repo at all? CHECK BEFORE
+ASSUMING"*, and the answer removed both increments from this stage: the css-is repo
+is not in this workspace, no deployment locator for it exists anywhere in the repo,
+and *"session carries"* was specified by the execution plan as a property of the
+Phase 1/2 identity unification — which is Stage G. The full finding, including the
+embed-shape analysis so it is not re-derived, is [`css-is.md`](css-is.md) §5a/§5b.
+
+**What Stage D leaves ready, unchanged by the move:** every new surface is one
+`NAV_GROUPS` row — gated, matchable and listed on the landing the moment it is added,
+with the census failing the suite if that row ships without a declared rule — plus
+D-2's `CalendarSource` registry, which is one file and one line per module.

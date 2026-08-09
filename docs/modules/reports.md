@@ -34,6 +34,17 @@ matrix annexes (URS encoding needs Excel; PDF second).
 
 ## 5. Open decisions
 
+- **⚠ CSMR is NOT servable at Stage H, and this is a sequencing fact, not a
+  shortfall (recorded 2026-08-09).** Government Output **#1** is generated over
+  CSS-IS data, and **Stage G (CSS-IS convergence) now runs *after* Stage H** —
+  master plan [§4 register row 12](../master-plan.md). So the Government Outputs
+  screen ships #1 as a **placeholder card**: legal basis, the Apr-30 countdown from
+  `core_compliance_deadlines` (`csmr_to_arta`, already seeded), and **0 % source
+  coverage**. That is precisely what the coverage field is for — a card that states
+  it has no source data is honest; one that renders an empty report is not. #1
+  completes when G lands, and it joins **#5 (OPCR actuals)**, already partial at H
+  for its own reasons. **Do not build a CSMR exporter at Stage H** to close the gap:
+  the exporter is a Stage G deliverable over a data store that does not exist yet.
 - **Table prefix:** default per master plan §4 #7 — fold lineage into core
   (`core_report_lineages`); no `rpt_` tables until a real table need appears.
   Final registration in `database-standards.md` §2 at Stage H.

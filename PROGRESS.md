@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage D Increment 3: CSS-IS reverse-proxied into the shell.**
+> **Resume Office-Connect — Stage D closeout: the seed-guard ADD detector, the security-header layer, then the Stage D QA gate and push.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,15 +10,20 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **STAGE D IS OPEN — Increments 1 and 2 are COMPLETE.** Stage C
-  remains complete and pushed at `0.3.0` / `stage-c-complete`. **D-3 (CSS-IS
-  reverse proxy) is next, then D-4 (`ai_core`).** D-1 gave the platform a front
-  door; **D-2 gave it the first surface that reads the connection spine.**
-  `GET /api/v1/calendar` + the `/calendar` page answer *what is happening, and
-  what is due?* over three sources — activities, travel, liquidation clocks.
-  Head is **`0024`**. Version stays `0.3.0`; Stage D's gate is the next
-  promotion AND the next push.
-- **Last session:** #30 — 2026-08-09 — **Stage D Increment 2: the Calendar of
+- **Phase:** **STAGE D IS SCOPE-COMPLETE — D-1 and D-2 shipped; D-3 and D-4 have
+  MOVED to Stage G.** Stage C remains complete and pushed at `0.3.0` /
+  `stage-c-complete`. D-1 gave the platform a front door; **D-2 gave it the first
+  surface that reads the connection spine** — `GET /api/v1/calendar` + the
+  `/calendar` page answer *what is happening, and what is due?* over three
+  sources. Head is **`0024`**. Version stays `0.3.0`. **What is owed before the
+  stage tag: the two platform-floor items below, then the QA gate, the promotion
+  to `0.4.0` and the push of `stage-d-complete`.**
+- **Last session:** #31 — 2026-08-09 — **the D-3 kickoff, and its answer: MOVE,
+  don't build.** Docs only, no code, no migration. `docs/modules/css-is.md` §1
+  + **new §5a/§5b/§6**; master-plan §2 stage table (**build order is now
+  A·B·C·D·E·F·H·G·I**), Stage D + Stage G + Stage H sections, §1.1 #16, **new §4
+  register row 12**; `landing.md` §1/§6e; `reports.md` §5; **new tech-stack §7a**.
+- **Previous session:** #30 — 2026-08-09 — **Stage D Increment 2: the Calendar of
   Activities. D-2 CLOSED.** Docs first (rule 1): **api-standards §9k**,
   ui-standards §4 template note, **new `docs/modules/calendar.md`** (rule 8),
   landing.md §1/§5/§6e, master-plan §1.1 **core-service #17** + §1.3. Then code:
@@ -28,6 +33,55 @@ expand it into the full task and confirm with you before starting.
   `modules/reimbursement/calendar.py`, `main.py` registration, richer fixtures;
   FE `api/calendar.ts`, `CalendarPage`, `calendar-copy.ts`, nav row + census,
   route.
+- **✅ D-3 WAS RESEARCHED TO A DECISION AND MOVED, WHICH IS THE OUTCOME THE BRIEF
+  PRE-AUTHORISED.** Its own question (3) said *"is CSS-IS in this repo at all?
+  CHECK BEFORE ASSUMING"*. It is not. `module.css_is` exists **only** as a seeded
+  OFF flag (migration 0001 + `bootstrap.DEFAULT_FLAGS`) — **no `css_*` table, no
+  route, no model, no nav row, no permission.** Every CSS-IS mention in
+  `office_connect/` is a comment describing *a separate system that feeds data in*.
+  **And no deployment locator exists anywhere in the repo** — no Space URL, no
+  host, no env var, no credential; the only path in any source is a dead local one
+  in the `.docx`. A proxy route had nothing to point at.
+- **⚠ THE REAL FINDING: "session carries" IS A PROPERTY OF IDENTITY UNIFICATION,
+  NOT OF PLUMBING.** The `.docx` states it twice as conditional — Phase 2 QA is
+  *"one user record per person platform-wide"*, and Finding C-3 resolves to
+  *"migrate CSS-IS to PostgreSQL first (Phase 1), then repoint it to core auth
+  (Phase 2), so there is one user store"*. **Those are Stage G.** Stage D-3 was
+  asking a session to carry before the store that carries it existed — the
+  dependency was inverted in the lettering, not in the design. CSS-IS auth today
+  is a stateless HMAC cookie over its **own local user table**, so all three SSO
+  shapes need either their `.session_secret` or a change in their repo.
+  **⚠ Never pick cookie-minting as the easy one:** a shared signing secret makes
+  Office-Connect able to impersonate any CSS-IS user *inside CSS-IS's own
+  tamper-evident hash chain*. Full analysis — including the embed-shape
+  comparison so it is never re-derived — is **`docs/modules/css-is.md` §5a**.
+- **D-4 (`ai_core`) moved for two INDEPENDENT reasons**, either of which alone
+  would do it: §1.1 #16's verb is *"promoted"*, and you cannot promote code you do
+  not have; and with D-1's query bar deliberately deterministic the service would
+  ship with **zero consumers** — the repo's own bar is *"one consumer is not a
+  pattern"*. css-is.md §5b.
+- **⚠ THE PRICE OF THE RESEQUENCING, PAID KNOWINGLY.** Stage G now runs **after**
+  Stage H, so **Government Output #1 (CSMR) is not servable when Stage H builds
+  the Government Outputs screen.** It ships there as a **placeholder card** —
+  legal basis, the Apr-30 countdown (`csmr_to_arta` is already seeded in
+  `core_compliance_deadlines`) and **0 % source coverage**, which is exactly what
+  the coverage field exists to say. It joins #5 (OPCR actuals), already partial at
+  H. Recorded in master-plan §4 row 12 **and** `reports.md` §5, which also says:
+  do NOT build a CSMR exporter at Stage H to close the gap. Reversing the decision
+  is one row-order change in master-plan §2 plus that note.
+- **⚠ NEW PLATFORM-FLOOR GAP FOUND, NOT CSS-IS-RELATED, NOT YET CLOSED: the app
+  sets NO security headers at all.** Zero repo-wide hits for
+  `Content-Security-Policy`, `X-Frame-Options`, `frame-ancestors`,
+  `Referrer-Policy` or HSTS. `main.py` registers four middlewares (request-id,
+  CSRF, auth-principal, query-log) and the only security header anywhere is
+  `X-Content-Type-Options: nosniff` on the attachment download route. The
+  assumption that the reverse proxy supplies them is **unwritten, untested, and
+  has no config file in this repo**. Two traps for whoever closes it, both read
+  off the code that would break: a CSP without **`frame-src 'self'`** breaks
+  `PacketPreview.tsx` (whose own comment says it renders only because no
+  frame-blocking header is set), and a `style-src` without `'unsafe-inline'` or a
+  nonce breaks tenant theming (`injectTokens()` writes `--oc-*` at runtime).
+  Recorded as **tech-stack §7a**.
 - **✅ THE #29 SUITE MYSTERY IS SOLVED, AND THE ANSWER WAS ACCUMULATION.** The
   owner authorised the destructive reset. `docker compose down -v` + a full
   re-bootstrap, and the suite came back **1012 passed, 0 failed** on the first
@@ -43,8 +97,9 @@ expand it into the full task and confirm with you before starting.
   natural keys are invisible to it. Forty-eight hash-suffixed rows in a seeded
   reference table are what that blind spot looks like. A `seed_guard` sibling
   that fails a run which *adds* rows to a seeded table is the obvious next
-  hardening; it was **NOT built this session** (scope), and it is recorded here
-  rather than left to be re-discovered.
+  hardening. **It is now item (1) of the Stage D closeout** — carried, unbuilt,
+  through #30 (out of scope) and #31 (docs-only), and it goes in before the
+  stage tag because it guards the very suite that tag depends on.
 - **⚠ THE RESET DESTROYED FIVE ACCOUNTS NO CODE COULD RECREATE — now fixed.**
   PROGRESS.md described the six-account smoke cohort in prose, but only
   `no-grants@doh.gov` was reproducible (added to `bootstrap` at #29, precisely
@@ -149,44 +204,63 @@ expand it into the full task and confirm with you before starting.
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Stage A + B + C are complete and PUSHED (0.3.0, tag `stage-c-complete`). STAGE D
-IS OPEN with TWO of four increments closed. D-1 gave the platform a front door (`/` is a
-minimalist landing + a deterministic query bar, no API calls of its own). D-2 gave it the
-CALENDAR OF ACTIVITIES: `GET /api/v1/calendar` + the `/calendar` page, an agenda list over
-THREE sources - `core_activities` (tenant-wide), travel claims (scoped by
-`queue.oversight_scope` UNION your own), and your own cash-advance liquidation clocks.
-Head is 0024. Version stays 0.3.0 - Stage D's gate is the next promotion AND the next push.
+Context: Stage A + B + C are complete and PUSHED (0.3.0, tag `stage-c-complete`). STAGE D IS
+SCOPE-COMPLETE. D-1 gave the platform a front door (`/` is a minimalist landing + a
+deterministic query bar, no API calls of its own). D-2 gave it the CALENDAR OF ACTIVITIES:
+`GET /api/v1/calendar` + the `/calendar` page, an agenda list over THREE sources -
+`core_activities` (tenant-wide), travel claims (scoped by `queue.oversight_scope` UNION your
+own), and your own cash-advance liquidation clocks. Head is 0024, version still 0.3.0.
 
-THE SUITE IS GREEN AND THE #29 MYSTERY IS CLOSED. The owner authorised
-`docker compose down -v`; after a full re-bootstrap the suite ran 1012 passed / 0 failed,
-then 1046 with D-2's tests. The moving failures were ACCUMULATION, not a code defect
-(core_users had reached 30,493; core_audit_logs 568,461; core_compliance_deadlines held 48
-leaked `csmr_to_arta_<hash>` test rows against 22 real seeds). Do NOT go hunting a leaked
-`set_audit_context` - that hypothesis is closed.
-⚠ BUT ONE THING IS RECORDED AND NOT BUILT: `seed_guard` catches a seeded row MODIFIED and
-not restored; it CANNOT see rows ADDED under fresh natural keys, which is what those 48
-rows were. A sibling guard that fails a run which ADDS rows to a seeded table is the
-obvious next hardening. It is a candidate for this session if you want a cheap, high-value
-start; it is not required by D-3.
+⚠ D-3 AND D-4 NO LONGER EXIST AS STAGE D WORK - session 31 MOVED them to Stage G, and the
+build order is now A-B-C-D-E-F-H-G-I. Do NOT reopen either. The reasons are settled and
+written down: the css-is repo is not in this workspace and no deployment locator for it
+exists anywhere in the repo; "session carries" was specified by the `.docx` as a property of
+the Phase 1/2 IDENTITY UNIFICATION (Stage G), so D-3 was asking a session to carry before the
+store that carries it existed; and `ai_core` cannot be "promoted" from code we do not have,
+and would ship with zero consumers. Full finding, including the embed-shape analysis so
+nobody re-derives it: docs/modules/css-is.md §5a/§5b + §6. The sequencing decision and its
+COST (Government Output #1/CSMR becomes a placeholder card at Stage H) are master-plan §4
+register row 12 + reports.md §5.
 
-Task: STAGE D INCREMENT 3 - CSS-IS REVERSE-PROXIED INTO THE SHELL ("session carries").
-Master plan Stage D. Expect a KICKOFF conversation before code - this increment is mostly
-DECISIONS, and several are security decisions:
-(1) WHAT does "reverse-proxied into the shell" mean concretely - an iframe, a path-prefixed
-    proxy route, or a link-out? Each has a different session story and a different CSP one.
-(2) HOW does the session carry? CSS-IS is a SEPARATE system (its own auth). Sharing a
-    cookie across origins, minting a token, or SSO are three very different blast radii.
-    api-standards §9j's rule binds here: telling a client what it may do is not authorizing
-    it, and nothing on a request path may accept an entitlement claim.
-(3) Is CSS-IS in this repo at all, or an external deployment? CHECK BEFORE ASSUMING -
-    `module.css_is` is a seeded feature flag (migration 0001) and `docs/modules/css-is.md`
-    exists, but no CSS-IS code has been written. If it does not exist yet, D-3 may reduce to
-    a flag-gated nav row plus the proxy plumbing, and that is a legitimate outcome to
-    propose rather than a shortfall.
-(4) The CSP question is real: the artifact/browser story for embedding a third-party app
-    inside the shell needs deciding before any markup is written.
+Task: STAGE D CLOSEOUT - three items, in this order. The first two are platform-floor work
+that belongs BEFORE a stage tag; the third is the tag.
 
-FREE FROM D-2 - do NOT rebuild any of it:
+(1) THE `seed_guard` SIBLING - a guard that fails a run which ADDS rows to a seeded table.
+    This is the #29 blind spot, recorded at #30 and still not built. `tests/conftest.py::seed_guard`
+    snapshots the rows each dataset DECLARES and diffs them, so it catches a seeded row
+    MODIFIED and not restored - exactly the job it was built for at #28. Rows ADDED under
+    fresh natural keys are INVISIBLE to it, and 48 leaked `csmr_to_arta_<hash>` rows in
+    `core_compliance_deadlines` are what that blind spot looked like. Design note: the check
+    is a COUNT/key-set diff per seeded table, not a row diff - the point is that a test which
+    inserts into a seeded reference table fails loudly instead of poisoning the next run.
+    Decide deliberately whether it fails the offending test or the session, and whether it is
+    opt-out per dataset.
+
+(2) THE SECURITY-HEADER LAYER - it does not exist at all. Zero repo-wide hits for
+    Content-Security-Policy / X-Frame-Options / frame-ancestors / Referrer-Policy / HSTS.
+    `main.py` registers four middlewares (request-id, CSRF, auth-principal, query-log) and the
+    only security header anywhere is `X-Content-Type-Options: nosniff` on the attachment
+    download route. Ship a core middleware WITH TESTS, not proxy config alone: the proxy is
+    deployment-time and post-development; the app is what the suite can pin. Recorded as
+    tech-stack §7a.
+    ⚠ TWO TRAPS, both read off the code that would break - handle them or the suite tells you:
+    - A CSP without `frame-src 'self'` BREAKS `web/src/pages/reimbursement/PacketPreview.tsx`.
+      Its own comment says the frame "can render at all only because the server serves a
+      generated PDF with Content-Disposition: inline and SETS NO FRAME-BLOCKING HEADER for its
+      own origin." The feature depends on today's absence.
+    - A `style-src` without `'unsafe-inline'` (or a nonce) BREAKS TENANT THEMING. Tailwind v4
+      is CSS-first and `injectTokens()` writes the `--oc-*` custom properties onto `<html>` at
+      runtime so a tenant re-themes without a rebuild (ui-standards §7). Vite dev additionally
+      injects `<style>` tags, so dev and prod differ - check both.
+    Also decide: HSTS off when app_env == "local" (mirror `resolved_cookie_secure`), and
+    whether `frame-ancestors 'none'` is right given nothing embeds us today.
+
+(3) THE STAGE D QA GATE - backend suite + FE gates IN SEQUENCE, then promote APP_VERSION to
+    0.4.0, roll CHANGELOG `[Unreleased]` into a `0.4.0` section, tag `stage-d-complete` and
+    PUSH. Rule 4: push happens ONLY at a stage gate, and this is one. Fill the stage tracker's
+    QA-gate and Pushed cells for row D in the same session.
+
+FREE FROM D-1/D-2 - do NOT rebuild any of it:
 - **The CALENDAR SOURCE REGISTRY** (`core/calendar/sources.py`, master-plan §1.1 #17,
   api-standards §9k). Any module that wants rows on the calendar writes ONE file and ONE
   line in `main.py`. Core owns the protocol, the merge, the window and the day grouping.
@@ -196,29 +270,32 @@ FREE FROM D-2 - do NOT rebuild any of it:
 - `core/workdays.load_nonworking_labels` - names a holiday instead of merely greying it.
 - The `activity.calendar.read` permission. `activity.read` / `activity.manage` are RESERVED
   for a future activity-registry maintenance screen - do not repurpose the calendar's grant.
-- The reproducible SMOKE COHORT: `bootstrap load-fixtures` now creates all six dev logins
+- The reproducible SMOKE COHORT: `bootstrap load-fixtures` creates all six dev logins
   (`_ensure_smoke_cohort`), their org tree (SMOKE-A/A1, SMOKE-B/B1) and staff.
+- The NAV CENSUS (`web/src/app/nav.test.ts`) - a nav row without a census row FAILS the suite,
+  and every row must name the server rule it mirrors.
 
-DEFERRED, RECORDED, AND NOW UNBLOCKED - each is its own decision, do not start silently:
-- **Reimbursement's wizard activity picker.** It was cut from v1 for want of an activities
-  endpoint (reimbursement.md, spec §9.3 step 1). That endpoint now exists. All 10 demo
-  claims carry an `activity_id`; real ones still cannot.
-- **Statutory deadlines as a 4th calendar source.** DEFERRED with reasons in calendar.md
-  §5a: `core_compliance_deadlines` has NO due-date column - it stores `cadence` + `due_rule`
-  JSONB with **15 distinct kinds**, several unexpandable without inputs no table supplies
-  (`per_certification_body`, `before_expiry`, `working_days_from_event`). Its real consumer
-  is Stage H's Government Outputs countdown cards. Building it is an OCCURRENCE ENGINE, not
-  a query.
-- A month grid (fill-trigger: a user asking to see a whole month at once) · an activity
-  create/edit write path · a calendar strip on the landing (D-1's no-API-calls property is
-  deliberate and test-pinned).
+WHAT COMES AFTER THE TAG, so the choice is deliberate rather than defaulted:
+- **Stage E - DTWIS kickoff** (`docs/modules/document-tracking.md`). The next stage in build
+  order, and the biggest unblocked body of work.
+- **Reimbursement's wizard activity picker.** Cut from v1 for want of an activities endpoint
+  (reimbursement.md, spec §9.3 step 1). That endpoint now exists and all 10 demo claims carry
+  an `activity_id`; real ones still cannot. Its own increment - do not start it silently.
+- Recorded deferrals with named fill-triggers: a month grid · an activity create/edit write
+  path · a calendar strip on the landing (D-1's no-API-calls property is deliberate and
+  test-pinned) · statutory deadlines as a 4th calendar source (calendar.md §5a - that one is
+  an OCCURRENCE ENGINE over 15 `due_rule` kinds, not a query, and its real consumer is Stage
+  H's Government Outputs).
+- BLOCKED ON PEOPLE, NOT CODE: amount tiers for both chains (needs DOH DO 2019-0225/-0225A)
+  and whether a wet-signed page must be BOUND to its step as a frozen snapshot or filed under
+  `CRT-C`. Ask the accountant / resident COA auditor when convenient.
 
-⚠ THE CENSUS LESSON D-2 LEARNED, because it will recur at D-3. `test_reimb_authz_census.py`
-filters routes on the `/api/v1/reimbursement` PREFIX; `test_reimb_scope_security.py` asserts
+⚠ THE CENSUS LESSON, still binding. `test_reimb_authz_census.py` filters routes on the
+`/api/v1/reimbursement` PREFIX; `test_reimb_scope_security.py` asserts
 `len(oversight_paths) == 3`. The calendar became a FOURTH consumer of `oversight_scope`
-OUTSIDE that prefix, and both tests stayed green regardless of what it did. Any D-3 surface
-that reads module data from a core route has the identical hole. `tests/test_calendar_sources.py`
-is the pattern to copy.
+OUTSIDE that prefix and both tests stayed green regardless of what it did. Any surface that
+reads module data from a core route has the identical hole. `tests/test_calendar_sources.py`
+is the pattern to copy: a census whose MISSING row fails the suite.
 
 TEST HYGIENE IS MECHANICAL: `tests/conftest.py::seed_guard`; `_backdated` owns its undo.
 ⚠ A CALENDAR-SHAPED SURFACE USES THE PRIVATE-YEAR CONVENTION: `_ISOLATED_YEAR = 2029` in
@@ -229,9 +306,14 @@ the SECOND run fail on a constraint. There is no freezegun; services take an inj
 before their session leaves `pending`, so drive `staff` over HTTP and assert grants against
 `ROLE_GRANTS` directly. ⚠ `import.meta.env.DEV` is TRUE under vitest - use
 `vi.stubEnv("DEV", false)` for the production shape.
+⚠ A full-suite run leaves `module.reimbursement` OFF in dev. Flip it back with
+`python -m office_connect.ops.bootstrap set-flag module.reimbursement --on`.
 LIVE SMOKE EARNS ITS PLACE (#25 found a duplicate-notification defect every unit test
 passed; #28 a claim-enumeration oracle; #29 a landmark/field accessible-name collision;
-#30 confirmed the flag-OFF source really is ABSENT rather than empty).
+#30 confirmed the flag-OFF source really is ABSENT rather than empty). For (2), the live
+smoke IS the gate: open a claim packet preview and confirm the iframe still renders, and
+confirm tenant tokens still apply, in a REAL browser - jsdom runs axe with `iframes: false`
+and will not catch either.
 Smoke accounts (dev only, all BoardSmoke!2026x), created by `bootstrap load-fixtures`:
 board-smoke@doh.gov (global admin_officer), scoped-officer@doh.gov (scoped to SMOKE-B),
 smoke-approver-a@doh.gov (approver on SMOKE-A1), board-traveller@doh.gov (staff, SMK-A-1),
@@ -242,11 +324,10 @@ OPS: after touching documents/, seeds.py or ops/, run `docker compose restart wo
 `docker compose exec web sh -c "cd /app && npm run typecheck && npm run lint && npm test"`.
 RUN THE BACKEND AND FE GATES IN SEQUENCE, not concurrently. The backend suite takes ~12
 minutes; expect to background it.
-Read CLAUDE.md, then docs/master-plan.md Stage D + §1.1 (note NEW core-service #17) + §1.2 +
-§1.3, docs/modules/css-is.md, docs/modules/calendar.md (all of it - §6b explains why the
-liquidation layer reads the ADVANCE and not the claim's mirror column), landing.md §6e,
-docs/standards/api-standards.md §9j + NEW §9k, ui-standards §3 + §4 (incl. the 2026-08-09
-agenda note) + §6 + §7.
+Read CLAUDE.md, then docs/master-plan.md §2 (note the BUILD-ORDER warning above the stage
+table) + §4 row 12 + Stage D, docs/standards/tech-stack.md §7a (the security-header finding),
+docs/standards/development-workflow.md §4 + §6 (the push/promotion rules this session
+executes), and - only if you need the CSS-IS background - docs/modules/css-is.md §5a.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed; no naive
 datetimes; working-day math ONLY through core/workdays.
 ```
@@ -254,17 +335,20 @@ datetimes; working-day math ONLY through core/workdays.
 ## Stage tracker *(rule 4 — commit per session, push per phase/stage gate)*
 
 Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
+**⚠ Rows are in BUILD ORDER, which is why H precedes G** (resequenced 2026-08-09,
+master-plan §4 row 12). Stage letters are permanent identifiers, not a sequence —
+renaming them would break every citation in this file and the module docs.
 
 | Stage | Old # | Scope | Status | Sessions | QA gate | Pushed (tag / date) |
 |---|---|---|---|---|---|---|
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | **complete (pushed)** — R-1…R-9 all ✅ | 11–28 | ✅ passed | `stage-c-complete` / 2026-08-05 |
-| D | 3 | Landing shell / query bar / Calendar surface / AI service | **in progress** — D-1 ✅ (landing + query bar); D-2 ✅ (Calendar of Activities + the source registry); D-3 CSS-IS proxy next, then D-4 `ai_core` | 29–30 | — | — |
+| D | 3 | Landing shell / query bar / Calendar surface | **QA** — scope complete: D-1 ✅ (landing + query bar), D-2 ✅ (Calendar + the source registry); **D-3 and D-4 moved to G** (session 31). Gate + `0.4.0` + push still owed | 29–31 | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
-| G | 1/8 | CSS-IS convergence (PG migration + React + ARTA v2023) | not started | — | — | — |
-| H | 9 | Admin + Reports + Government Outputs | not started | — | — | — |
+| H | 9 | Admin + Reports + Government Outputs — **⚠ CSMR ships as a placeholder card; G now runs after H** | not started | — | — | — |
+| G | 1/8 | CSS-IS convergence (PG migration + React + ARTA v2023) **+ the shell proxy ("session carries") + `ai_core`, moved here from D** | not started | — | — | — |
 | I | 10 | Hardening / SIT / pilot gate | not started | — | — | — |
 | W2-A | new | Planning & Budget (WFP/BED/BAR + PPMP/APP) | not started | — | — | — |
 | W2-B | new | Supply Management | not started | — | — | — |
@@ -280,6 +364,74 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-09 (session 31 — the D-3 kickoff, and its answer: MOVE, don't build.
+  Stage D closes at the Calendar; all CSS-IS work goes behind Stage H)** — docs
+  only. No code, no migration, no test changes.
+  - **The increment's own question answered itself.** D-3's brief asked, as
+    question (3), *"is CSS-IS in this repo at all, or an external deployment?
+    CHECK BEFORE ASSUMING"* — and pre-authorised a reduced outcome as *"a
+    legitimate outcome to propose rather than a shortfall."* The check came back
+    emptier than that: `module.css_is` exists **only** as a seeded OFF flag
+    (migration 0001 + `bootstrap.DEFAULT_FLAGS`), with **no `css_*` table, no
+    route, no model, no nav row, no permission**. Every CSS-IS mention in
+    `office_connect/` is a comment describing *a separate system that feeds data
+    in*. **And no deployment locator exists anywhere in the repo** — no Space URL,
+    no host, no env var, no credential. The only path in any source is a dead
+    local one in the `.docx`. A proxy route had nothing to point at.
+  - **⚠ The real finding, and it is a sequencing bug in the plan rather than a
+    missing artifact.** *"Session carries"* is stated twice in the `.docx` as
+    **conditional**: Phase 2 QA is *"one user record per person platform-wide"*,
+    and Finding C-3 resolves to *"migrate CSS-IS to PostgreSQL first (Phase 1),
+    then repoint it to core auth (Phase 2), so there is one user store."* Those
+    are **Stage G**. Stage D-3 was asking a session to carry **before the store
+    that carries it existed** — the dependency was inverted in the lettering, not
+    in the design. CSS-IS auth today is a stateless HMAC cookie over its **own
+    local user table**, so all three SSO shapes need either their
+    `.session_secret` or a change in their repo, and we have neither.
+  - **⚠ Recorded so it is never picked as "the easy one":** minting a CSS-IS
+    cookie from a shared secret would make Office-Connect able to impersonate any
+    CSS-IS user *inside CSS-IS's own tamper-evident hash chain* — forging the one
+    record whose entire value is that it cannot be forged.
+  - **The embed-shape analysis was written down rather than discarded**
+    (`css-is.md` §5a(4)), because it does not change when the repo arrives: a
+    cross-origin iframe cannot hold a session (the CSS-IS cookie becomes
+    third-party; our own `oc_session` is `SameSite=Lax` + `Path=/api`); a
+    `/css-is/*` path proxy buys a URL-rewriting layer over ~171 root-relative
+    Jinja routes and puts our ASGI app in the data path for uploads and
+    websockets; the **deployment-tier host proxy** — which
+    `Hosting_Target_Clarification.md` §2 already makes responsible for TLS and
+    routing — gets first-party cookies with zero application code. Also flagged:
+    a live link is a **new data flow the Stage-B PIA does not cover**, so a PIA
+    amendment is a precondition, not a follow-up.
+  - **D-4 moved for two independent reasons.** §1.1 #16's verb is *"promoted"* and
+    you cannot promote code you do not have; and with D-1's query bar deliberately
+    deterministic, the AI service would ship with **zero consumers** — against the
+    repo's own bar, written twice, that *"one consumer is not a pattern."*
+  - **⚠ The price, paid knowingly rather than discovered later.** Stage G now runs
+    **after** Stage H, so **Government Output #1 (CSMR) is not servable when Stage
+    H builds the Government Outputs screen**. It ships there as a **placeholder
+    card** — legal basis, the Apr-30 countdown (`csmr_to_arta` is already seeded)
+    and **0 % source coverage**, which is exactly what the coverage field exists
+    to say. It joins #5 (OPCR actuals), already partial at H. `reports.md` §5 adds
+    the instruction that matters: **do not build a CSMR exporter at Stage H** to
+    close the gap — the exporter is a Stage G deliverable over a store that does
+    not exist yet. Reversing the whole decision is one row-order change plus that
+    note.
+  - **⚠ An unrelated platform-floor gap found on the way, and kept:** the app sets
+    **no security headers at all** — zero repo-wide hits for CSP,
+    `X-Frame-Options`, `frame-ancestors`, `Referrer-Policy` or HSTS. The
+    assumption that the reverse proxy supplies them is unwritten, untested, and
+    has no config file in this repo. Recorded as **tech-stack §7a** with its two
+    traps: a CSP without `frame-src 'self'` breaks `PacketPreview.tsx` (whose own
+    comment says it renders only because no frame-blocking header is set), and a
+    `style-src` without `'unsafe-inline'` or a nonce breaks tenant theming.
+  - **Touched:** `docs/modules/css-is.md` (§1 + new §5a/§5b/§6),
+    `docs/master-plan.md` (§2 stage table + build-order warning, Stage D, Stage G,
+    Stage H, §1.1 #16, new §4 row 12), `docs/modules/landing.md` (§1, §6e),
+    `docs/modules/reports.md` (§5), `docs/standards/tech-stack.md` (new §7a),
+    `PROGRESS.md`. `CHANGELOG.md` deliberately untouched — a plan re-order changes
+    nothing a user can see, and `[Unreleased]` is promoted at the gate.
 
 - **2026-08-09 (session 30 — Stage D Increment 2: the Calendar of Activities.
   D-2 CLOSED)** — the platform got its first surface that reads the connection
