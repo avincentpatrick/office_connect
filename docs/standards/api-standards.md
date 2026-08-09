@@ -836,3 +836,115 @@ cannot see" is a disclosure the actor could not have assembled by hand — it te
 division chief how much travel a sibling division booked — and §9h is explicit that
 for an aggregate the scope IS the privacy boundary. State the rule; never the
 residue.
+
+---
+
+## §10. Security headers (Stage D closeout, 2026-08-09)
+
+**Until this section existed the app set none.** A repo-wide search for
+`Content-Security-Policy`, `X-Frame-Options`, `frame-ancestors`, `Referrer-Policy`
+or HSTS returned zero hits; the only security header anywhere was
+`X-Content-Type-Options: nosniff`, on the attachment download route alone. The
+belief that the reverse proxy supplied the rest was unwritten, untested, and had
+no config file in this repo to inspect (tech-stack §7a). Shipped as
+`core/api/security_headers.py` with `tests/test_security_headers.py`, because the
+app is the part the suite can pin — the proxy is deployment-time and
+post-development.
+
+### 10.1 The app's headers
+
+Set by `SecurityHeadersMiddleware` on **every** response. It is registered outside
+`CSRFMiddleware` (nesting: `request_id → security-headers → CSRF → auth-principal →
+query-log → route`), so a 403 from CSRF and a 401 from a protected route carry the
+same headers a 200 does. A header present only on the happy path is one a scanner
+reports as passing and an attacker reports as absent.
+
+| Header | Value |
+|---|---|
+| `Content-Security-Policy` | the API policy, or the HTML policy on the paths in 10.2 |
+| `X-Frame-Options` | `SAMEORIGIN` — **never `DENY`** (10.3) |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | every unused feature denied; `fullscreen=(self)` |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains`, only when enabled |
+
+**Only HSTS is configurable**, and only because it is the one header that breaks
+local http dev — a browser that sees it once refuses plain http to that host for a
+year, and `localhost` is shared with every other project on the machine.
+`HSTS_ENABLED` unset resolves from `app_env` exactly as `SESSION_COOKIE_SECURE`
+does, and a test asserts the two agree: both answer the same question (*is this
+deployment reachable over https?*), so they must never disagree. Everything else
+is a module constant with no knob, on purpose.
+
+### 10.2 Two policies, because the app serves two kinds of thing
+
+**The API policy** — almost every response, and correct rather than merely safe
+for JSON and streamed PDFs: they should load nothing, frame nothing, submit nowhere.
+
+```
+default-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'
+```
+
+**The HTML policy** — the *only* three HTML surfaces this app serves: `/docs`,
+`/redoc` and `GET /api/v1/audit/verify`. Swagger UI and ReDoc boot from an inline
+`<script>` and fetch assets from jsDelivr; the audit report renders an inline
+`<style>` block. Matched on **exact path**, never a prefix, so `/docs` cannot
+relax a `/docs-*` route a later stage adds.
+
+```
+default-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none';
+script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;
+style-src  'self' 'unsafe-inline' https://cdn.jsdelivr.net;
+img-src 'self' data: https://fastapi.tiangolo.com; font-src 'self' data:
+```
+
+Naming the loose policy and scoping it beats weakening one policy until it fits
+the loosest surface: the cost stays visible and stays small. A nonce is not an
+option for either — the inline script is FastAPI's own, emitted inside
+`get_swagger_ui_html` where no per-request value can be threaded.
+
+### 10.3 ⚠ `frame-ancestors` is `'self'`, and that is not a compromise
+
+`X-Frame-Options: DENY` and `frame-ancestors 'none'` both look like the stricter
+answer, and both blank the claim-packet preview in production while every test
+still passes. `PacketPreview.tsx` embeds the generated packet in an `<iframe>`
+served from **this origin** by `/api/v1/attachments/{id}/content`.
+
+tech-stack §7a named `frame-src 'self'` as the fix. That is only half of it, and
+the wrong half for this layer: **`frame-src` binds the *embedding* document** —
+the SPA, which FastAPI does not serve — while **`frame-ancestors` binds the
+*embedded* PDF**, which it does. Only the second was ever in this middleware's
+power to get wrong. Pinned on the real response in `test_reimb_packet_api.py`,
+not just in the header module's own tests.
+
+### 10.4 The policy the reverse proxy owes, written down
+
+**FastAPI never serves the SPA document** — Vite does in dev, the reverse proxy
+does in production (§6). So `script-src` and `style-src` above govern only the
+three surfaces in 10.2, and the SPA's own policy is a **deployment obligation this
+repo cannot test**. It is recorded here so it stops being folklore; the proxy
+config itself lands with the Stage I hardening work.
+
+The proxy must serve, with `index.html`:
+
+```
+default-src 'self'; frame-ancestors 'self'; base-uri 'none'; object-src 'none';
+form-action 'self'; img-src 'self' data:; font-src 'self' data:;
+script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'
+```
+
+Two clauses are load-bearing and must not be tightened without reading this:
+
+- **`style-src 'unsafe-inline'` is required by tenant theming, and a nonce cannot
+  replace it.** `injectTokens()` writes the `--oc-*` custom properties via
+  `document.documentElement.style.setProperty` (ui-standards §7) — an inline style
+  **attribute**, governed by `style-src-attr`, and nonces only ever apply to
+  `<style>` *elements*. The narrower alternative, if the cost is ever judged too
+  high, is `style-src-elem 'self'` + `style-src-attr 'unsafe-inline'`.
+- **`frame-src 'self'`** (inherited here from `default-src 'self'`) is what lets
+  the SPA embed the packet PDF — the embedding half of 10.3.
+
+`script-src` needs no `'unsafe-inline'`: `web/index.html` carries exactly one
+external module script and zero inline script or style. Vite's dev server injects
+`<style>` elements and eval-flavoured transforms, but it serves its own document
+and is never the production path — do not widen the production policy to match dev.

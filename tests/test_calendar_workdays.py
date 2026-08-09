@@ -1,14 +1,23 @@
 """Increment 4 Group C — working-day engine + holiday/deadline calendar.
 
 Gate line: "holiday-calendar working-day math correct across a holiday/weekend/
-suspension." Committed natural keys are tokenized per run.
+suspension."
+
+⚠ Every committed row here lands in a SEEDED reference table, so it goes in
+through ``owned_row`` and comes back out again. Tokenized natural keys were the
+old defence and they are not one: this module is where the #29 defect was born —
+one ``csmr_to_arta_<hash>`` row per run, 48 of them against 22 real seeds by the
+time anyone looked. ``seed_addition_guard`` now fails the run if this regresses.
 """
 
 import uuid
+from contextlib import AsyncExitStack
 from datetime import date
 
 from office_connect.core import workdays
 from office_connect.core.models import ComplianceDeadline, Holiday
+
+from tests.conftest import owned_row
 
 
 def _tok() -> str:
@@ -73,34 +82,34 @@ def test_adjust_backward():
 
 async def test_load_nonworking_dates_from_db(app_session):
     tok = _tok()
-    app_session.add_all(
-        [
-            Holiday(
-                calendar_date=date(2026, 8, 21),
-                name=f"Ninoy Aquino Day {tok}",
-                holiday_type="special_non_working",
-            ),
-            Holiday(
-                calendar_date=date(2026, 8, 25),
-                name=f"Localized suspension {tok}",
-                holiday_type="work_suspension",
-            ),
-            Holiday(
-                calendar_date=date(2026, 8, 26),
-                name=f"Founding Anniversary {tok}",
-                holiday_type="special_working",
-            ),
-        ]
-    )
-    await app_session.commit()
+    rows = [
+        Holiday(
+            calendar_date=date(2026, 8, 21),
+            name=f"Ninoy Aquino Day {tok}",
+            holiday_type="special_non_working",
+        ),
+        Holiday(
+            calendar_date=date(2026, 8, 25),
+            name=f"Localized suspension {tok}",
+            holiday_type="work_suspension",
+        ),
+        Holiday(
+            calendar_date=date(2026, 8, 26),
+            name=f"Founding Anniversary {tok}",
+            holiday_type="special_working",
+        ),
+    ]
+    async with AsyncExitStack() as stack:
+        for row in rows:
+            await stack.enter_async_context(owned_row(app_session, row))
 
-    nonworking = await workdays.load_nonworking_dates(
-        app_session, date(2026, 8, 1), date(2026, 8, 31)
-    )
-    assert date(2026, 8, 21) in nonworking
-    assert date(2026, 8, 25) in nonworking
-    # special_working is NOT non-working.
-    assert date(2026, 8, 26) not in nonworking
+        nonworking = await workdays.load_nonworking_dates(
+            app_session, date(2026, 8, 1), date(2026, 8, 31)
+        )
+        assert date(2026, 8, 21) in nonworking
+        assert date(2026, 8, 25) in nonworking
+        # special_working is NOT non-working.
+        assert date(2026, 8, 26) not in nonworking
 
 
 async def test_compliance_deadline_persists(app_session):
@@ -113,7 +122,6 @@ async def test_compliance_deadline_persists(app_session):
         tenant_id=None,
         effective_from=date(2026, 1, 1),
     )
-    app_session.add(dl)
-    await app_session.commit()
-    assert dl.id is not None
-    assert dl.use_working_day_math is True
+    async with owned_row(app_session, dl):
+        assert dl.id is not None
+        assert dl.use_working_day_math is True

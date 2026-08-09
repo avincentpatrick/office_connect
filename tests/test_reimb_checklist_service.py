@@ -240,7 +240,7 @@ async def test_an_item_holding_evidence_survives_becoming_inapplicable(
 
 
 async def test_an_upload_rides_core_attachments_and_lands_on_the_join_table(
-    make_user, seed_rbac, app_session
+    make_user, seed_rbac, app_session, no_scan_worker
 ):
     cast = await standard_cast(app_session, make_user, packet=False)
     catalog_id = await _catalog_id(app_session, "TO-01")

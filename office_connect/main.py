@@ -17,6 +17,7 @@ from office_connect import APP_VERSION
 from office_connect.core.api.errors import register_error_handlers
 from office_connect.core.api.query_log_middleware import QueryLogMiddleware
 from office_connect.core.api.router import api_router
+from office_connect.core.api.security_headers import SecurityHeadersMiddleware
 from office_connect.core.auth.middleware import AuthPrincipalMiddleware, CSRFMiddleware
 from office_connect.core.auth.permission_cache import PermissionCache
 from office_connect.core.auth.session_store import SessionStore
@@ -87,13 +88,21 @@ register_error_handlers(app)
 
 # Middleware. Starlette runs middleware in REVERSE registration order, so the
 # FIRST add_middleware becomes the INNERMOST wrapper. Effective nesting:
-# request_id (outermost) → CSRF → auth-principal → query-log → route. The query
-# log is innermost so it sees the resolved route params + final status; gated by a
-# config flag so it adds zero overhead when off.
+# request_id (outermost) → security-headers → CSRF → auth-principal → query-log
+# → route. The query log is innermost so it sees the resolved route params +
+# final status; gated by a config flag so it adds zero overhead when off.
+# Security headers sit OUTSIDE CSRF so a 403 from CSRF and a 401 from a
+# protected route carry them too — a header present only on the happy path is
+# the kind a scanner passes and an attacker walks around (api-standards §10).
 if settings.query_log_enabled:
     app.add_middleware(QueryLogMiddleware)
 app.add_middleware(AuthPrincipalMiddleware, cookie_name=settings.session_cookie_name)
 app.add_middleware(CSRFMiddleware, header_name=settings.csrf_header_name)
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    hsts=settings.resolved_hsts_enabled,
+    hsts_max_age=settings.hsts_max_age,
+)
 
 
 @app.middleware("http")

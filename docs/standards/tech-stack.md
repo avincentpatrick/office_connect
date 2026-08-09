@@ -237,33 +237,44 @@ graduating to pgBackRest + WAL archiving before real claims if a sub-24 h RPO
 is demanded. Exact VM/OS/engine versions recorded here at deployment
 provisioning (rule 9).
 
-### 7a. ⚠ The application sets NO security headers (finding, 2026-08-09 — owed)
+### 7a. Security headers — ✅ CLOSED at the Stage D gate (2026-08-09)
 
-Recorded during the Stage D-3 kickoff and kept when that increment moved, because
-the gap has nothing to do with CSS-IS.
+Found during the Stage D-3 kickoff and kept when that increment moved, because the
+gap had nothing to do with CSS-IS. **The app emitted no `Content-Security-Policy`,
+no `X-Frame-Options` / `frame-ancestors`, no `Referrer-Policy`, no
+`Permissions-Policy` and no HSTS** — a repo-wide search returned zero hits, and
+the only security header anywhere was `X-Content-Type-Options: nosniff` on the
+attachment download route alone. The belief that the reverse proxy supplied the
+rest was unwritten, untested, and had no config file in this repo to inspect.
 
-**Today the app emits no `Content-Security-Policy`, no `X-Frame-Options` /
-`frame-ancestors`, no `Referrer-Policy`, no `Permissions-Policy`, no HSTS.** A
-repo-wide search returns zero hits. `main.py` registers exactly four middlewares —
-request-id, CSRF, auth-principal, query-log — and the only security header set
-anywhere is `X-Content-Type-Options: nosniff`, on the attachment download route
-alone (`core/api/attachments.py`). **The assumption that the reverse proxy above
-supplies them is unwritten, untested, and has no config file in this repo to
-inspect.** It is a documented obligation now, not an assumption.
+**Closed by `core/api/security_headers.py` + `tests/test_security_headers.py`**,
+registered in `main.py` outside `CSRFMiddleware`. The policy, the per-surface
+exception, the HSTS resolution rule and — the part that was actually missing —
+**the CSP the reverse proxy owes alongside `index.html`** are all specified in
+[`api-standards.md` §10](api-standards.md). Read that; this entry is the
+provenance, not the spec.
 
-**Two traps that must be handled by whoever closes this** — both found by reading
-the code that would break, not by guessing:
+**The two traps recorded here were both real, and both were half-right.** Worth
+keeping, because the corrections are the useful part:
 
-1. **A CSP without `frame-src 'self'` breaks the claim-packet preview.**
-   `web/src/pages/reimbursement/PacketPreview.tsx` embeds the generated PDF in an
-   `<iframe>`, and its own comment says it *"can render at all only because the
-   server serves a generated PDF with `Content-Disposition: inline` and **sets no
-   frame-blocking header for its own origin**"*. The feature depends on the
-   current absence.
-2. **A `style-src` without `'unsafe-inline'` or a nonce breaks tenant theming.**
-   Tailwind v4 is CSS-first and `injectTokens()` writes the `--oc-*` custom
-   properties onto `<html>` at runtime so a tenant re-themes without a rebuild
-   (§4, ui-standards §7). Vite dev additionally injects `<style>` tags.
+1. **The packet preview.** The directive named here was `frame-src 'self'`. That
+   binds the **embedding** document — the SPA, which FastAPI does not serve — so it
+   was never in the middleware's power. What governs the **embedded** PDF is
+   `frame-ancestors`, and `X-Frame-Options: DENY` / `frame-ancestors 'none'` would
+   have blanked the preview in production with the whole suite green. §10.3.
+2. **Tenant theming.** Correct that `style-src` needs `'unsafe-inline'`, but "or a
+   nonce" is not an alternative: `injectTokens()` writes an inline style
+   **attribute** via `setProperty`, governed by `style-src-attr`, and nonces only
+   ever apply to `<style>` elements. Also a proxy-layer concern, not an app one, for
+   the same reason as trap 1. §10.4.
 
-Ship it as a core middleware with tests, not as proxy config alone: the proxy is
-deployment-time and post-development, while the app is what the suite can pin.
+**Two more surfaced while closing it, neither of which this entry knew about** —
+both would have broken silently, since nothing in the suite opened either page:
+
+3. **`/docs` and `/redoc` are live** (no `docs_url=None`) and Swagger UI boots from
+   an **inline `<script>`** with assets from `cdn.jsdelivr.net`.
+4. **`GET /api/v1/audit/verify`** returns server-rendered HTML with an inline
+   `<style>` block (`core/api/audit.py`).
+
+Both are covered by §10.2's named HTML policy and are now the only three paths in
+the app that get it.

@@ -165,6 +165,18 @@ class Settings(BaseSettings):
     clamav_host: str | None = None
     clamav_port: int = 3310
 
+    # --- Security headers (Stage D closeout) ---
+    # CSP / X-Frame-Options / Referrer-Policy / Permissions-Policy are constants
+    # in core/api/security_headers.py and are always on — a policy nobody can
+    # switch off is the point. Only HSTS is configurable, because it is the one
+    # header that BREAKS local http dev: a browser that sees it once refuses
+    # plain http to that host for a year, and localhost is shared with every
+    # other project on this machine. Same three-state shape as
+    # session_cookie_secure below — None resolves from app_env, an explicit
+    # value wins. api-standards §10.
+    hsts_enabled: bool | None = None  # None -> True unless app_env=="local"
+    hsts_max_age: int = 31536000  # 1 year, the value preload lists require
+
     @property
     def resolved_session_redis_url(self) -> str:
         """The session store's Redis URL — explicit override, else redis_url@db."""
@@ -178,6 +190,16 @@ class Settings(BaseSettings):
         if self.session_cookie_secure is None:
             return self.app_env != "local"
         return self.session_cookie_secure
+
+    @property
+    def resolved_hsts_enabled(self) -> bool:
+        """HSTS — on everywhere except local http dev, unless forced. Mirrors
+        ``resolved_cookie_secure`` deliberately: both answer the same question
+        (*is this deployment reachable over https?*), so they must never
+        disagree."""
+        if self.hsts_enabled is None:
+            return self.app_env != "local"
+        return self.hsts_enabled
 
 
 @lru_cache

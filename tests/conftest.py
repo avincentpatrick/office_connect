@@ -11,6 +11,7 @@ rows behind in the dev DB (never tampered data — tamper tests roll back);
 
 import secrets
 import subprocess
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -164,12 +165,19 @@ def seed_guard(migrated_db):
     is a later test failing for a reason that has nothing to do with it, or
     worse, a dev database that quietly disagrees with production.
 
-    **Scope: the rows the datasets DECLARE, and only those.** Tests create their
-    own holidays, PAP codes and activity tags in the very same tables, with
-    randomized keys — that is ordinary test data, not seed drift, and an earlier
-    version of this guard that watched whole tables reported fifteen of them and
+    **Scope: the rows the datasets DECLARE, and only those.** An earlier version
+    of this guard watched whole tables, reported fifteen test-created rows and
     said nothing useful. Narrowing it to the declared natural keys is what makes
-    a failure here mean exactly one thing.
+    a failure here mean exactly one thing: *shared config was changed and not
+    changed back*.
+
+    ⚠ **That narrowing is a blind spot, and ``seed_addition_guard`` below is the
+    other half.** This fixture said those test-created holidays and PAP codes
+    were "ordinary test data, not seed drift". #29 is the evidence that they are
+    a defect of their own: they never leave, and 48 of them in
+    ``core_compliance_deadlines`` are what made three suite runs fail three
+    different ways. The two guards are deliberately separate because they
+    diagnose different diseases — this one *mutation*, that one *accumulation*.
 
     Session-scoped and synchronous on purpose: ``asyncio.run`` at setup and
     teardown runs outside any test's event loop, so this cannot interact with
@@ -209,6 +217,151 @@ def seed_guard(migrated_db):
         "it in a `finally` or a context manager, not at the end of the happy "
         "path (a failing assertion skips that)."
     )
+
+
+# --- seed ADDITION guard (Stage D closeout): the #29 blind spot, closed -------
+
+#: Seeded tables a run is allowed to GROW, table name → the reason why.
+#:
+#: **It ships empty, and that is the whole point.** A seeded reference table is
+#: config, not scratch space: every row a test leaves behind is read by every
+#: later test and by the dev database forever after. Adding an entry here is
+#: choosing to let a table accumulate — it needs a reason someone else can
+#: audit, not just a green suite.
+_ADD_GUARD_EXEMPT: dict[str, str] = {}
+
+
+async def _snapshot_seed_keys() -> dict[str, set[tuple]]:
+    """Every LIVE natural key in each seeded table, keyed by table name.
+
+    Cheaper than ``_snapshot_seeds``: only the natural-key columns are selected,
+    because a key set is all an addition can be detected from. Same connection
+    posture for the same reasons (migration role, ``NullPool``, disposed in a
+    ``finally``, live rows only).
+    """
+    from sqlalchemy import select
+
+    engine = create_async_engine(
+        get_settings().migration_database_url, poolclass=NullPool
+    )
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    snapshot: dict[str, set[tuple]] = {}
+    try:
+        async with factory() as session:
+            for dataset in _guarded_datasets():
+                table = dataset.model.__table__
+                if table.name in _ADD_GUARD_EXEMPT:
+                    continue
+                key_cols = [table.c[name] for name in dataset.natural_key]
+                stmt = select(*key_cols)
+                # LIVE rows only — which is also what makes soft delete a valid
+                # undo. The unique indexes on these tables are partial on
+                # `deleted_at IS NULL`, so a test that takes its row back by
+                # soft-deleting it both frees the key and reads as clean here.
+                if "deleted_at" in table.c:
+                    stmt = stmt.where(table.c.deleted_at.is_(None))
+                keys = snapshot.setdefault(table.name, set())
+                for record in (await session.execute(stmt)).all():
+                    keys.add(tuple(record))
+    finally:
+        await engine.dispose()
+    return snapshot
+
+
+@pytest.fixture(scope="session", autouse=True)
+def seed_addition_guard(migrated_db):
+    """Fail the RUN if the suite ADDED rows to a seeded reference table.
+
+    **This is the #29 blind spot, and ``seed_guard`` structurally cannot see
+    it.** That guard diffs the rows each dataset DECLARES, so it catches a
+    seeded row modified and not restored — exactly the job it was built for at
+    #28. A row added under a FRESH natural key was invisible to it. Forty-eight
+    hash-suffixed ``csmr_to_arta_<hash>`` rows in ``core_compliance_deadlines``
+    against 22 real seeds is what that blind spot looked like, and it is why
+    three runs at #29 each failed a *different* set of tests while nothing about
+    the code changed. Nobody could see it because nothing was watching.
+
+    **A key-set diff, not a row diff.** The question is only *did this table
+    grow*, so the failure is loud and the diagnosis is one sentence. What the
+    added keys look like usually names the culprit outright — they are literal
+    values, so they are greppable.
+
+    **It fails the RUN, not the offending test, and that is a cost decision.**
+    Snapshotting 13 tables around each of ~1000 tests is unaffordable, and a
+    per-test snapshot would have to run inside that test's event loop — the
+    precise collision with ``_dispose_engine_pool`` that both guards are shaped
+    to avoid (see ``seed_guard``'s docstring). Session teardown is what this
+    check can afford, so session teardown is where it lives.
+
+    The fix for a failure is never an exemption: it is for the test to take its
+    row back, with ``owned_row`` — soft delete in a ``finally``, so a failing
+    assertion cannot skip the undo.
+    """
+    import asyncio
+
+    before = asyncio.run(_snapshot_seed_keys())
+    yield
+    after = asyncio.run(_snapshot_seed_keys())
+
+    added: list[str] = []
+    for table, keys in sorted(after.items()):
+        new_keys = keys - before.get(table, set())
+        if not new_keys:
+            continue
+        shown = sorted(new_keys, key=repr)[:10]
+        lines = [f"{table}: {len(new_keys)} row(s) added"]
+        lines += [f"    {key!r}" for key in shown]
+        if len(new_keys) > len(shown):
+            lines.append(f"    … and {len(new_keys) - len(shown)} more")
+        added.append("\n  ".join(lines))
+
+    assert not added, (
+        "the test run ADDED rows to seeded reference tables and left them "
+        "there:\n  " + "\n  ".join(added) + "\n\nA seeded reference table is "
+        "config, not scratch space — every row left behind is read by every "
+        "later run. Take the row back with `owned_row` (tests/conftest.py), "
+        "which soft-deletes in a `finally` so a failing assertion cannot skip "
+        "the undo. This is the #29 defect: 48 leaked rows in "
+        "core_compliance_deadlines made three suite runs fail three different "
+        "ways, and no guard could see them."
+    )
+
+
+@asynccontextmanager
+async def owned_row(session, row):
+    """Add ``row`` for the body of a test, then take it back.
+
+    **The R-9 lesson, applied to reference tables.** ``_backdated`` learned it
+    for mutation: a docstring asking the caller to clean up is not an
+    enforcement mechanism, a context manager is — there is no way to take the
+    row without also taking the restore. ``seed_addition_guard`` is what makes
+    forgetting this loud instead of silent.
+
+    Undone by SOFT delete, which is both mandatory (the app role physically
+    cannot hard-delete, rule 6) and sufficient: the unique indexes on these
+    tables are partial on ``deleted_at IS NULL``, so the natural key is free
+    again for the next run. That last part is not theoretical —
+    ``core_holidays`` is exactly where a leaked row makes the SECOND run fail on
+    a constraint violation.
+    """
+    from office_connect.core.soft_delete import soft_delete
+
+    session.add(row)
+    await session.commit()
+    model, pk = type(row), row.id
+    try:
+        yield row
+    finally:
+        # Re-fetch by primary key rather than reusing ``row``. A test that
+        # provokes an IntegrityError rolls its session back, and a rollback
+        # expires every instance in it — touching ``row.deleted_at`` in this
+        # synchronous ``finally`` would then emit lazy IO and raise
+        # MissingGreenlet *instead of* undoing anything, which is the one
+        # failure mode a cleanup path must not have.
+        live = await session.get(model, pk)
+        if live is not None:
+            soft_delete(live)
+            await session.commit()
 
 
 @pytest.fixture(autouse=True)
@@ -357,6 +510,34 @@ async def reimb_flag_off(app_session):
 
 
 @pytest.fixture
+def no_scan_worker():
+    """Unhook the attachment scan enqueuer so an uploaded row STAYS ``pending``.
+
+    **Without this, asserting ``scan_status == "pending"`` is a race the test can
+    only win by being quick.** An upload enqueues ``ops.scan_attachment`` after
+    commit (``core/attachments/scan_queue.py``), the worker container is up during
+    a suite run, and the NullScanner turns a row ``clean`` in well under a tenth
+    of a second. Not hypothetical: at the Stage D gate run, attachment 3109 was
+    inserted at 07:24:58.797, scanned at 07:24:58.874 — 77 ms later — and the
+    assertion ran 36 ms after *that*. The same test then passed five times in a
+    row in isolation, which is exactly how a race disguises itself as a fluke.
+
+    The house save/replace/restore idiom, same as the capturing enqueuer in
+    ``test_attachments_api.py`` and ``register_enqueuer(None)`` in
+    ``test_reimb_packet_api.py``. Nothing is left permanently unscanned — the
+    every-5-min beat sweeper still drains the row.
+    """
+    from office_connect.core.attachments import scan_queue
+
+    previous = scan_queue._enqueuer
+    scan_queue.register_enqueuer(None)
+    try:
+        yield
+    finally:
+        scan_queue._enqueuer = previous
+
+
+@pytest.fixture
 async def seed_rbac(app_session):
     """Idempotently seed the permission/role catalogs + default grants."""
     from office_connect.core.seeds import apply_dataset
@@ -373,13 +554,26 @@ async def seed_rbac(app_session):
 
 
 @pytest.fixture
-def make_user(app_session):
+async def make_user(app_session):
     """Factory: create a live ``core_users`` row (random email) with optional
     roles/MFA. Returns ``(user, plaintext_password)``. Roles are looked up by code
     (created if absent), so grant seeding is optional unless the test needs the
-    role's permissions (request ``seed_rbac`` for those)."""
+    role's permissions (request ``seed_rbac`` for those).
+
+    ⚠ **A role minted here is a row in a SEEDED table.** ``core_roles`` is one of
+    the 13 datasets ``seed_addition_guard`` watches, and its five rows are config.
+    Today every caller happens to name one of those five, so nothing is minted and
+    nothing leaks — the hazard is latent, which is the only reason it survived
+    this long. The first ``roles=("some_new_thing",)`` would put a permanent role
+    in the catalog from conftest itself, the least useful place for a defect to
+    live. Undoing what this factory CREATED costs one list and one loop; the
+    seeded five are looked up, never minted, and never touched.
+    """
     from office_connect.core.models import Role, User, UserRole
     from office_connect.core.security import hash_password
+    from office_connect.core.soft_delete import soft_delete
+
+    minted: list[int] = []  # PKs, not instances — a rollback expires instances
 
     async def _make(
         *,
@@ -405,9 +599,17 @@ def make_user(app_session):
                 role = Role(code=code, name=code.replace("_", " ").title())
                 app_session.add(role)
                 await app_session.flush()
+                minted.append(role.id)
             app_session.add(UserRole(user_id=user.id, role_id=role.id))
         await app_session.commit()
         await app_session.refresh(user)
         return user, password
 
-    return _make
+    yield _make
+
+    for role_id in minted:
+        live = await app_session.get(Role, role_id)
+        if live is not None:
+            soft_delete(live)
+    if minted:
+        await app_session.commit()

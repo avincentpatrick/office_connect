@@ -11,6 +11,15 @@ makes the push-per-phase rule auditable.
 
 ## [Unreleased]
 
+_Nothing yet — `0.4.0` was cut at the Stage D gate on 2026-08-09._
+
+## [0.4.0] — 2026-08-09 — Stage D complete: the front door and the Calendar
+
+Signing in now opens on a page that answers *what can you open?*, and a new
+Calendar answers *what is happening, and what is due?* over three kinds of thing
+at once. Behind both, the browser is finally told what this application is and is
+not allowed to do. Everything below since `0.3.0`.
+
 ### Added
 - **Stage D Increment 2 — a calendar that knows what everything was for**
   (2026-08-09): a new **Calendar** page answering *what is happening, and what
@@ -70,6 +79,23 @@ makes the push-per-phase rule auditable.
 - The five demonstration sign-ins used for testing existed only on whichever
   machine had created them by hand. They are now created automatically alongside
   the sixth, so a rebuilt environment comes back complete.
+
+### Security
+- **The application now tells the browser what it is allowed to do** (2026-08-09).
+  It previously sent none of the standard protective instructions that a browser
+  looks for — no content-security policy, nothing about whether other websites may
+  embed our pages, nothing about how much of a page address to hand on when a user
+  follows a link away. The protection was assumed to come from the server sitting
+  in front of the application, an assumption nobody had written down or tested.
+  Every response now carries those instructions, and a test suite fails if any of
+  them goes missing. In practice this closes off a family of attacks in which
+  another website silently wraps a page of ours and collects what a user types
+  into it. Two things people already rely on were deliberately protected while
+  doing this: the claim-packet preview still displays inside the claim page, and a
+  bureau's own colours still apply without rebuilding the application. On a server
+  reached over a secure connection the browser is also told to refuse an insecure
+  one for a year; local development is exempt, because that instruction is
+  remembered per machine and would break every other project on it.
 
 ## [0.3.0] — 2026-08-05 — Stage C complete: the Local Travel Reimbursement module
 

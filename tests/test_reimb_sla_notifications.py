@@ -28,6 +28,7 @@ from office_connect.modules.reimbursement.services.notify import (
     notify_escalation,
     sweep_sla_reminders,
 )
+from tests.conftest import owned_row
 from tests.reimb_lifecycle_helpers import standard_cast
 from tests.workflow_helpers import build_chain
 
@@ -108,23 +109,25 @@ async def test_sla_stamp_respects_seeded_holidays(
     import secrets
 
     await _clear_holidays(app_session, date(2027, 3, 29), date(2027, 4, 18))
-    app_session.add(
-        Holiday(
-            calendar_date=date(2027, 4, 6),
-            name=f"Test Holiday R-4-app {secrets.token_hex(4)}",
-            holiday_type="regular", is_active=True,
+    # `owned_row` rather than a bare add: the flush here is committed by
+    # `submit_claim` below, so this row DID survive every run — the fifth leak
+    # `seed_addition_guard` found, and the only one the targeted runs missed
+    # because it takes a full suite to reach this module.
+    holiday = Holiday(
+        calendar_date=date(2027, 4, 6),
+        name=f"Test Holiday R-4-app {secrets.token_hex(4)}",
+        holiday_type="regular",
+        is_active=True,
+    )
+    async with owned_row(app_session, holiday):
+        cast = await standard_cast(app_session, make_user)
+        claim = await submit_claim(
+            app_session, claim_id=cast.claim.id, actor_user_id=cast.owner.id,
+            now=datetime(2027, 4, 5, 2, 0, tzinfo=UTC),
         )
-    )
-    await app_session.flush()
-
-    cast = await standard_cast(app_session, make_user)
-    claim = await submit_claim(
-        app_session, claim_id=cast.claim.id, actor_user_id=cast.owner.id,
-        now=datetime(2027, 4, 5, 2, 0, tzinfo=UTC),
-    )
-    (step,) = await _division_steps(app_session, claim)
-    # Tue is non-working → Tue,Wed,Thu shifts to Wed,Thu,Fri 04-09.
-    assert step.sla_due_at == datetime(2027, 4, 9, 9, 0, tzinfo=UTC)
+        (step,) = await _division_steps(app_session, claim)
+        # Tue is non-working → Tue,Wed,Thu shifts to Wed,Thu,Fri 04-09.
+        assert step.sla_due_at == datetime(2027, 4, 9, 9, 0, tzinfo=UTC)
 
 
 async def test_handed_to_fms_is_never_stamped(

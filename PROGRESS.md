@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage D closeout: the seed-guard ADD detector, the security-header layer, then the Stage D QA gate and push.**
+> **Resume Office-Connect — Stage E kickoff: DTWIS (Document Tracking & Workflow IS), Increment E-1.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,310 +10,272 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **STAGE D IS SCOPE-COMPLETE — D-1 and D-2 shipped; D-3 and D-4 have
-  MOVED to Stage G.** Stage C remains complete and pushed at `0.3.0` /
-  `stage-c-complete`. D-1 gave the platform a front door; **D-2 gave it the first
-  surface that reads the connection spine** — `GET /api/v1/calendar` + the
-  `/calendar` page answer *what is happening, and what is due?* over three
-  sources. Head is **`0024`**. Version stays `0.3.0`. **What is owed before the
-  stage tag: the two platform-floor items below, then the QA gate, the promotion
-  to `0.4.0` and the push of `stage-d-complete`.**
-- **Last session:** #31 — 2026-08-09 — **the D-3 kickoff, and its answer: MOVE,
-  don't build.** Docs only, no code, no migration. `docs/modules/css-is.md` §1
-  + **new §5a/§5b/§6**; master-plan §2 stage table (**build order is now
-  A·B·C·D·E·F·H·G·I**), Stage D + Stage G + Stage H sections, §1.1 #16, **new §4
-  register row 12**; `landing.md` §1/§6e; `reports.md` §5; **new tech-stack §7a**.
-- **Previous session:** #30 — 2026-08-09 — **Stage D Increment 2: the Calendar of
-  Activities. D-2 CLOSED.** Docs first (rule 1): **api-standards §9k**,
-  ui-standards §4 template note, **new `docs/modules/calendar.md`** (rule 8),
-  landing.md §1/§5/§6e, master-plan §1.1 **core-service #17** + §1.3. Then code:
-  `core/calendar/{sources,service,activities}.py`, `core/api/calendar.py` +
-  `schemas/calendar.py`, `core/features.py`, `workdays.load_nonworking_labels`,
-  `activity.calendar.read` in the rbac seeds, migration **0024**,
-  `modules/reimbursement/calendar.py`, `main.py` registration, richer fixtures;
-  FE `api/calendar.ts`, `CalendarPage`, `calendar-copy.ts`, nav row + census,
-  route.
-- **✅ D-3 WAS RESEARCHED TO A DECISION AND MOVED, WHICH IS THE OUTCOME THE BRIEF
-  PRE-AUTHORISED.** Its own question (3) said *"is CSS-IS in this repo at all?
-  CHECK BEFORE ASSUMING"*. It is not. `module.css_is` exists **only** as a seeded
-  OFF flag (migration 0001 + `bootstrap.DEFAULT_FLAGS`) — **no `css_*` table, no
-  route, no model, no nav row, no permission.** Every CSS-IS mention in
-  `office_connect/` is a comment describing *a separate system that feeds data in*.
-  **And no deployment locator exists anywhere in the repo** — no Space URL, no
-  host, no env var, no credential; the only path in any source is a dead local one
-  in the `.docx`. A proxy route had nothing to point at.
-- **⚠ THE REAL FINDING: "session carries" IS A PROPERTY OF IDENTITY UNIFICATION,
-  NOT OF PLUMBING.** The `.docx` states it twice as conditional — Phase 2 QA is
-  *"one user record per person platform-wide"*, and Finding C-3 resolves to
-  *"migrate CSS-IS to PostgreSQL first (Phase 1), then repoint it to core auth
-  (Phase 2), so there is one user store"*. **Those are Stage G.** Stage D-3 was
-  asking a session to carry before the store that carries it existed — the
-  dependency was inverted in the lettering, not in the design. CSS-IS auth today
-  is a stateless HMAC cookie over its **own local user table**, so all three SSO
-  shapes need either their `.session_secret` or a change in their repo.
-  **⚠ Never pick cookie-minting as the easy one:** a shared signing secret makes
-  Office-Connect able to impersonate any CSS-IS user *inside CSS-IS's own
-  tamper-evident hash chain*. Full analysis — including the embed-shape
-  comparison so it is never re-derived — is **`docs/modules/css-is.md` §5a**.
-- **D-4 (`ai_core`) moved for two INDEPENDENT reasons**, either of which alone
-  would do it: §1.1 #16's verb is *"promoted"*, and you cannot promote code you do
-  not have; and with D-1's query bar deliberately deterministic the service would
-  ship with **zero consumers** — the repo's own bar is *"one consumer is not a
-  pattern"*. css-is.md §5b.
-- **⚠ THE PRICE OF THE RESEQUENCING, PAID KNOWINGLY.** Stage G now runs **after**
-  Stage H, so **Government Output #1 (CSMR) is not servable when Stage H builds
-  the Government Outputs screen.** It ships there as a **placeholder card** —
-  legal basis, the Apr-30 countdown (`csmr_to_arta` is already seeded in
-  `core_compliance_deadlines`) and **0 % source coverage**, which is exactly what
-  the coverage field exists to say. It joins #5 (OPCR actuals), already partial at
-  H. Recorded in master-plan §4 row 12 **and** `reports.md` §5, which also says:
-  do NOT build a CSMR exporter at Stage H to close the gap. Reversing the decision
-  is one row-order change in master-plan §2 plus that note.
-- **⚠ NEW PLATFORM-FLOOR GAP FOUND, NOT CSS-IS-RELATED, NOT YET CLOSED: the app
-  sets NO security headers at all.** Zero repo-wide hits for
-  `Content-Security-Policy`, `X-Frame-Options`, `frame-ancestors`,
-  `Referrer-Policy` or HSTS. `main.py` registers four middlewares (request-id,
-  CSRF, auth-principal, query-log) and the only security header anywhere is
-  `X-Content-Type-Options: nosniff` on the attachment download route. The
-  assumption that the reverse proxy supplies them is **unwritten, untested, and
-  has no config file in this repo**. Two traps for whoever closes it, both read
-  off the code that would break: a CSP without **`frame-src 'self'`** breaks
-  `PacketPreview.tsx` (whose own comment says it renders only because no
-  frame-blocking header is set), and a `style-src` without `'unsafe-inline'` or a
-  nonce breaks tenant theming (`injectTokens()` writes `--oc-*` at runtime).
-  Recorded as **tech-stack §7a**.
-- **✅ THE #29 SUITE MYSTERY IS SOLVED, AND THE ANSWER WAS ACCUMULATION.** The
-  owner authorised the destructive reset. `docker compose down -v` + a full
-  re-bootstrap, and the suite came back **1012 passed, 0 failed** on the first
-  run. Three runs at #29 had each failed a *different* set; nothing about the
-  code changed. **Evidence gathered before the reset, worth keeping:**
-  `core_users` had reached **30,493**, `core_audit_logs` **568,461** — and
-  `core_compliance_deadlines` held **70 rows of which 48 were leaked
-  `csmr_to_arta_<hash>` test rows** against 22 real seeds.
-- **⚠ `seed_guard` CANNOT SEE THAT CLASS OF LEAK, and this is the finding to
-  carry.** It snapshots the rows each dataset *declares* and diffs them before
-  and after the run — so it catches a seeded row **modified** and not restored,
-  which is exactly the job it was built for at #28. Rows **ADDED** under fresh
-  natural keys are invisible to it. Forty-eight hash-suffixed rows in a seeded
-  reference table are what that blind spot looks like. A `seed_guard` sibling
-  that fails a run which *adds* rows to a seeded table is the obvious next
-  hardening. **It is now item (1) of the Stage D closeout** — carried, unbuilt,
-  through #30 (out of scope) and #31 (docs-only), and it goes in before the
-  stage tag because it guards the very suite that tag depends on.
-- **⚠ THE RESET DESTROYED FIVE ACCOUNTS NO CODE COULD RECREATE — now fixed.**
-  PROGRESS.md described the six-account smoke cohort in prose, but only
-  `no-grants@doh.gov` was reproducible (added to `bootstrap` at #29, precisely
-  because someone had hit this wall once already). The other five had been
-  minted by hand in earlier sessions. They are now `_SMOKE_ORG_UNITS` /
-  `_SMOKE_STAFF` / `_SMOKE_ACCOUNTS` + `_ensure_smoke_cohort()` in
-  `ops/bootstrap.py`, created idempotently by `load-fixtures`. **A cohort
-  described in a document is not a cohort** — the same lesson `_backdated`
-  learned about docstrings that ask callers to clean up.
-- **The architecture decision D-2 turned on.** `oversight_scope` +
-  `OVERSIGHT_PERMS` live in `modules/reimbursement/services/queue.py`, and the
-  import-linter contracts forbid **both** `core → modules` and `module ↔
-  module`. There is no import that reaches the rule. So the calendar
-  **inverts**: core owns a `CalendarSource` value type + `register_source()`;
-  each module implements a source where its own scope rule is a local import;
-  `main.py` registers them. Precedent already in the tree —
-  `core/notifications/outbox.py::register_enqueuer`. **This is not a workaround
-  for the contracts, it is the shape they were protecting:** a join written in
-  core would have hard-coded one module's org-placement rule into the platform
-  floor, and contributor number two would have had to match it or fork it. Room
-  bookings, DTWIS deadlines and SPMS dates now arrive as one file and one line.
-- **The twelve D-2 kickoff decisions (all user-confirmed)** are recorded in
-  `docs/modules/calendar.md` §5. The four that shape the code most: **(2)**
-  activities tenant-wide, travel bounded by `oversight_scope` ∪ your own;
-  **(3)** an agenda LIST on the existing `ListPage`, not a month grid; **(9)**
-  state the RULE, never a count of hidden rows; **(11)** the liquidation layer
-  is **own advances only**.
-- **⚠ TWO CORRECTIONS FOUND DURING DESIGN, both worth remembering.**
-  **(a) `reimb_claims.liquidation_deadline` is a MIRROR** —
-  `cash_advance.py::link_claim` says so verbatim (*"a MIRROR, written here
-  only"*), with `reimb_cash_advances.deadline_date` the source of truth. Feeding
-  both would have drawn **two countdown rows for one obligation on the same
-  day**, a defect that looks exactly like working software. **(b) There is NO
-  set-form scope rule for cash advances anywhere:** `GET /cash-advances` is
-  single-claimant and `deps.can_read_cash_advance` is a per-ROW rule placing a
-  person by `staff.section_id or staff.division_id` — a *different* rule from
-  the claim's `WorkflowInstance.org_unit_id`. Building the set form would mean a
-  second org-placement predicate that must agree with the first forever. Hence
-  own-only. Cost to widen later: one service function, two census rows, three
-  security tests.
-- **⚠ THE CENSUS GAP — the most important thing in this increment.**
-  `tests/test_reimb_authz_census.py` filters routes on the
-  `/api/v1/reimbursement` prefix and `test_reimb_scope_security.py` asserts
-  `len(oversight_paths) == 3`. The calendar's travel source is a **FOURTH
-  consumer of `oversight_scope`** living outside that prefix, so **both stay
-  green whatever the calendar does.** Closed by three deliverables:
-  **`tests/test_calendar_sources.py`** (a SOURCE census — the third instance of
-  the R-9 pattern after `AUTHZ_TABLE` and `NAV_CENSUS`), **two new
-  attacker-shaped tests inside `test_reimb_scope_security.py`** (where the other
-  chairs already live), and an **amended drift message** naming the new file.
-  `register_source` **raises** on an empty `scope_rule`, so the omission is
-  impossible at import time rather than merely discouraged.
-- **`reimb_claims.activity_id` is populated for the first time.** It had been
-  validated on PATCH since R-1 and was non-null on **0 of 838** claims, because
-  the wizard's activity picker was cut for want of an activities endpoint
-  (reimbursement.md, spec §9.3 step 1). All 10 demo claims now carry one. **The
-  picker itself is now UNBLOCKED and deliberately not built** — recorded as a
-  deferral, not an oversight.
-- **The clock convention a calendar needs.** No `freezegun` in this repo, by
-  design. `?start=&end=` **IS the seam `_backdated` was faking**: HTTP tests
-  create rows in a **private year (`_ISOLATED_YEAR = 2029`)** and ask for that
-  year's window, so absolute assertions are safe and nothing needs undoing.
-  `urgency` is the one thing a window cannot isolate (it is relative to *today*)
-  — asserted as a SHAPE over HTTP, pinned exactly by `deadline.py`'s own unit
-  tests. Rejected: a `?today=` debug parameter — a client-controlled clock on a
-  surface whose job is stating deadlines is the same mistake as client-side
-  money.
-- **Smoke accounts (dev DB only), all `BoardSmoke!2026x`, NOW REPRODUCIBLE via
+- **Phase:** **STAGE D IS COMPLETE AND PUSHED — `0.4.0` / `stage-d-complete`,
+  2026-08-09.** D-1 gave the platform a front door; **D-2 gave it the first surface
+  that reads the connection spine** (`GET /api/v1/calendar` + the `/calendar` page,
+  three sources); D-3 and D-4 moved to Stage G at #31. The closeout paid off **two
+  platform-floor debts that belonged to no increment**: the security-header layer
+  the app had never had, and the seed-guard blind spot #29 was killed by. Head is
+  **`0024`** (unchanged — the closeout needed no migration). **Next in build order:
+  Stage E, the DTWIS kickoff.**
+- **Last session:** #32 — 2026-08-09 — **the Stage D closeout and gate.**
+  `seed_addition_guard` + `owned_row` + six offender fixes; the
+  `SecurityHeadersMiddleware` + `resolved_hsts_enabled` + 11 new tests; **new
+  api-standards §10**, tech-stack §7a rewritten from *owed* to *closed*,
+  calendar.md §6a, landing.md §1/§6e, master-plan §2 Stage D, development-workflow
+  §4, CLAUDE.md; then the gate, `0.4.0`, the tag and the push.
+- **✅ THE GATE, IN FULL.** `pytest` **1057 passed, 0 failed** (11:59) ·
+  `lint-imports` **3 kept / 0 broken** · `alembic upgrade head` clean, `alembic
+  check` = *no new upgrade operations*, single head `0024` · FE gate green
+  (`tsc -b`, `eslint`, **353 vitest across 48 files**, `vite build`) · backend and
+  FE run **in sequence**, never concurrently · live HTTP smoke below.
+- **⚠ THE ONE GATE ITEM NOT PERFORMED: the human eyeball in a real browser.** The
+  brief asked for a visual confirmation that the packet iframe renders and tenant
+  tokens still apply. **Everything it would have checked was verified over real
+  HTTP instead, and the reasoning is written down so the next person can judge it**
+  — but nobody opened Chrome, and there is no Playwright/Puppeteer in this repo to
+  do it headlessly. **Worth five minutes at the start of the next session:** open a
+  claim with a packet at `/reimbursement/claims/820`, confirm the PDF appears in the
+  frame, confirm the page is branded, and open `http://localhost:8001/docs`.
+- **What the live HTTP smoke DID prove**, end to end as `board-traveller@doh.gov`
+  over `localhost:8001` (legs → compute → generate → fetch): the framed packet
+  `/api/v1/attachments/6261/content` returns **`content-disposition: inline`**,
+  **`content-type: application/pdf`**, **`frame-ancestors 'self'`** (not `'none'`),
+  **`X-Frame-Options: SAMEORIGIN`** (not `DENY`), **exactly one**
+  `x-content-type-options: nosniff`, and 31,947 bytes beginning `%PDF-1.7`. `/docs`
+  carries the HTML policy with `'unsafe-inline'` + jsdelivr; `/api/v1/config`
+  carries the locked-down API policy; no HSTS anywhere (`app_env=local`).
+- **⚠ AND THE THEMING TRAP DISSOLVED ON INSPECTION, which is the more useful
+  finding.** tech-stack §7a warned that a `style-src` without `'unsafe-inline'`
+  would break `injectTokens()`. **It cannot: FastAPI never serves the SPA
+  document.** Vite serves it in dev (verified — `curl -I localhost:5174/` returns
+  **no CSP header at all**) and the reverse proxy serves it in production
+  (api-standards §6). The app's `style-src` reaches only `/docs`, `/redoc` and the
+  audit report. **The real obligation is the PROXY's policy, and it is now written
+  down** — api-standards **§10.4**, including why a nonce can never substitute for
+  `'unsafe-inline'` there (`setProperty` writes a style **attribute**, governed by
+  `style-src-attr`; nonces only ever cover `<style>` elements).
+- **⚠ §7a's OTHER trap was also half-right, and the half it missed is the dangerous
+  one.** It named `frame-src 'self'` as what protects the packet preview.
+  `frame-src` binds the **embedding** document — the SPA, not ours.
+  `frame-ancestors` binds the **embedded** PDF, which *is* ours. So the directive
+  §7a named was never in this middleware's power, and the one that was could have
+  blanked the preview in production with the entire suite green. Pinned on the real
+  PDF response in `test_reimb_packet_api.py`, not only in the header module's tests.
+- **⚠ TWO TRAPS NOBODY HAD RECORDED, both of which fail silently.** `/docs` and
+  `/redoc` **are live** (no `docs_url=None`) and Swagger boots from an **inline
+  `<script>`** with assets from `cdn.jsdelivr.net`; `GET /api/v1/audit/verify`
+  returns HTML with an **inline `<style>`** block. A strict `script-src 'self'`
+  would have left both blank and **no test would have noticed, because nothing in
+  the suite opened either page**. Hence §10.2's named HTML policy on exactly three
+  paths — matched on **exact path, never a prefix**, so `/docs` cannot relax a
+  `/docs-*` route a later stage adds. Both are now covered by tests.
+- **✅ `seed_addition_guard` — THE #29 BLIND SPOT, CLOSED.** A sibling to
+  `seed_guard`, not a change to it: mutation and accumulation are different
+  diagnoses and a failure message should mean one thing. It diffs the live
+  natural-KEY SET of all 13 seeded tables around the session and fails the run on
+  growth, naming the table and the added keys.
+- **⚠ IT WAS MADE TO FIRE BEFORE IT WAS MADE TO PASS, and that is why it found five
+  leaks and not one.** First run named **four** tables, not the one on record:
+  `core_compliance_deadlines` (the 48-row `csmr_to_arta_<hash>` leak),
+  `core_holidays`, `core_pap_codes` and `core_object_codes`. A **fifth** only
+  surfaced in the full suite — `test_reimb_sla_notifications.py` injected a 2027
+  holiday with a bare `flush()` that a later `submit_claim` committed. A guard that
+  has never been seen to fail is not a guard.
+- **The fix is one shape, applied six times: `owned_row(session, row)`** in
+  `tests/conftest.py` — the `_holiday()` context manager promoted and generalised.
+  Soft delete in a `finally`, so a failing assertion cannot skip the undo, and the
+  partial-unique indexes free the natural key again. **It re-fetches by primary key
+  rather than reusing the instance**, because two of the offenders provoke an
+  `IntegrityError` and a rollback expires every instance — touching
+  `row.deleted_at` in a synchronous `finally` would then raise `MissingGreenlet`
+  *instead of* undoing anything, which is the one failure mode a cleanup path must
+  not have.
+- **⚠ A SIXTH LEAK IS LATENT IN CONFTEST ITSELF, and is now closed.** `make_user`
+  mints a `core_roles` row for any code outside the seeded five, and commits it.
+  Nothing leaks today only because every caller happens to name one of the five —
+  the first `roles=("some_new_thing",)` would put a permanent role in the catalog
+  from conftest, the least useful place for a defect to live. It is now a yield
+  fixture that soft-deletes what it minted.
+- **The exemption list `_ADD_GUARD_EXEMPT` ships EMPTY and should stay that way.** A
+  seeded reference table is config, not scratch space. `seed_guard`'s own docstring
+  used to call these rows *"ordinary test data, not seed drift"*; the 48 rows are
+  the counter-evidence. Both docstrings now say so and point at each other.
+- **⚠ A PRE-EXISTING RACE WAS FOUND AND FIXED — it is the #29 disease in a second
+  costume.** `test_download_pending_returns_409` failed the first gate run and
+  passed **five times in a row** in isolation, which is exactly how a race
+  disguises itself as a fluke. The evidence settles it: attachment 3109 was
+  inserted at `07:24:58.797`, scanned by the **live Celery worker** at
+  `07:24:58.874` — **77 ms later** — and the assertion ran 36 ms after that. An
+  upload enqueues `ops.scan_attachment` after commit and the `worker` container is
+  up during a suite run, so *any* test asserting `scan_status == "pending"` is
+  racing it. **Six such assertions existed across four files**; all six now take
+  the new `no_scan_worker` fixture (the house `register_enqueuer(None)` idiom).
+  Only one had ever fired. **Not caused by this session's changes** — the
+  middleware merely perturbed the timing enough to lose a race the test never
+  controlled.
+- **⚠ DEV-DATA NOTE:** the live smoke gave smoke claim **820** two itinerary legs,
+  computed totals and a generated packet. Harmless dev data, and it makes the claim
+  a better manual-test subject — but it is a hand change, so it is recorded rather
+  than left to be rediscovered. `bootstrap load-fixtures` still recreates the cohort
+  idempotently.
+- **⚠ THE TAG-NAMING RULE WAS AMBIGUOUS AND IS NOW NOT.** development-workflow §4
+  said `phase-<N>-complete` *where the stage has an old phase number* — and tracker
+  row D carries Old # `3`, so the literal rule pointed at `phase-3-complete` while
+  every other document said `stage-d-complete`. **Owner chose `stage-d-complete`**
+  and §4 is amended to key off the stage letter always: stage letters are the
+  permanent identifiers (renaming one would break every citation in this file), and
+  the *Old #* column is for traceability, not naming. `phase-0-complete` and
+  `phase-2-complete` keep their names as historical facts; nothing was renamed.
+- **Two stale statements were corrected while passing through.** `CLAUDE.md` still
+  said *"No remote yet — provision before Phase 0 closes"* (fixed in
+  development-workflow at `875accf`, never in the condensed copy), and master-plan
+  §2 Stage D still listed **statutory deadlines as in-scope** when they had been
+  deferred at the D-2 kickoff — the shipped scope and the stated exit criteria
+  disagreed until the gate.
+- **A CORRECTION TO CARRY:** `core/attachments/service.py` compares
+  `content_type == "application/pdf"` correctly. An earlier reading of this session
+  flagged it as a `"application\pdf"` typo; it is not one, and the live smoke
+  confirms it — the packet returns `content-disposition: inline`, which is only
+  reachable through that branch.
+- **Test hygiene, now three mechanical guards rather than three docstrings:**
+  `seed_guard` (mutation) · `seed_addition_guard` (accumulation) · `owned_row` /
+  `_backdated` / `no_scan_worker` (a change cannot be taken without its undo).
+- **⚠ Still true, unchanged by the gate:** a full-suite run leaves
+  `module.reimbursement` OFF in dev — flip it back with
+  `python -m office_connect.ops.bootstrap set-flag module.reimbursement --on`
+  (done at the end of this session). Run the backend and FE gates **in sequence**.
+  Privileged roles (`approver` / `admin_officer` / `system_admin`) need MFA
+  enrolment before their session leaves `pending`, so drive `staff` over HTTP and
+  assert grants against `ROLE_GRANTS`. `import.meta.env.DEV` is TRUE under vitest.
+- **Smoke accounts (dev DB only, all `BoardSmoke!2026x`), reproducible via
   `bootstrap load-fixtures`:** `board-smoke@doh.gov` (GLOBAL `admin_officer`),
   `scoped-officer@doh.gov` (`admin_officer` scoped to **Smoke Office B**),
   `smoke-approver-a@doh.gov` (`approver` on **Smoke Division A1**),
-  `board-traveller@doh.gov` (plain `staff`, staff `SMK-A-1` in A1),
-  `smoke-b-traveller@doh.gov` (plain `staff`, `SMK-B-1` in B1 — the stranger),
-  and `no-grants@doh.gov` — **the only account that holds NOTHING; never grant
-  it a role.** The tree is deliberately separate from BLHSD, and the scoped
-  officer is granted on the **office** while staff sit in the **division** below
-  it, so smoke exercises `descendants_or_self` rather than an equality on one
-  unit.
-- **⚠ Note on privileged roles in tests:** `approver` / `admin_officer` /
-  `system_admin` require MFA enrolment before their session leaves the pending
-  state, so an HTTP test that logs one in gets `mfa_setup_required`. That is a
-  property of those roles, not of any surface — drive `staff` over HTTP and
-  assert the grants against `ROLE_GRANTS` directly.
-- **Test-hygiene note (still true):** a full-suite run leaves
-  `module.reimbursement` OFF in dev. Flip it back with
-  `python -m office_connect.ops.bootstrap set-flag module.reimbursement --on`.
-- **⚠ FE test note (still true):** run the backend and FE gates **in sequence,
-  not in parallel** — one `DocumentsStepPage` test flaked at #28 under CPU
-  contention.
+  `board-traveller@doh.gov` (plain `staff`, `SMK-A-1` in A1),
+  `smoke-b-traveller@doh.gov` (plain `staff`, `SMK-B-1` — the stranger), and
+  `no-grants@doh.gov` — **the only account that holds NOTHING; never grant it a
+  role.** Demo data: `bootstrap load-pilot-fixtures`.
+- **The D-2 architecture decision, still the precedent to copy.** Core owns a
+  `CalendarSource` value type + `register_source()`; each module implements a source
+  where its own scope rule is a local import; `main.py` registers them
+  (`core/notifications/outbox.py::register_enqueuer` is the earlier instance, and
+  `scan_queue`/`documents_queue` are two more). **Not a workaround for the
+  import-linter contracts — the shape they were protecting.** Room bookings, DTWIS
+  deadlines and SPMS dates each arrive as one file and one line.
+- **⚠ THE CENSUS LESSON, still binding.** `test_reimb_authz_census.py` filters on the
+  `/api/v1/reimbursement` prefix and `test_reimb_scope_security.py` asserts
+  `len(oversight_paths) == 3`; the calendar became a **fourth** consumer of
+  `oversight_scope` outside that prefix and both stayed green regardless.
+  `tests/test_calendar_sources.py` is the pattern to copy: a census whose MISSING
+  row fails the suite. Any surface reading module data from a core route has the
+  identical hole.
 - **Blockers / waiting on user:** none.
-- **⚠ Open questions for the accountant / resident COA auditor (unchanged by
-  D-2):** **amount tiers** for both chains still need DOH DO 2019-0225/-0225A —
-  both chains stay untiered and gain tiers as an authored v2. **Wet-signature
-  capture** is narrowed to one question: whether the signed page must be BOUND
-  to the step as a frozen snapshot (core-service #3's unbuilt half) or whether
-  filing it under `CRT-C` suffices. The A/B/C **shape**, the **CTC-47**
-  question, the **payout shape** and the **retention terminals** are all CLOSED.
-  **Worth confirming when convenient (not blocking):** whether DOH BLHSD's FMS
-  quotes a DV number *and* an ADA reference as two separate facts — if so, the
-  payout record grows a second column as an authored v2.
+- **⚠ Open questions for the accountant / resident COA auditor (unchanged):**
+  **amount tiers** for both chains still need DOH DO 2019-0225/-0225A — both chains
+  stay untiered and gain tiers as an authored v2. **Wet-signature capture** is
+  narrowed to one question: whether the signed page must be BOUND to the step as a
+  frozen snapshot (core-service #3's unbuilt half) or whether filing it under
+  `CRT-C` suffices. The A/B/C **shape**, the **CTC-47** question, the **payout
+  shape** and the **retention terminals** are all CLOSED. **Worth confirming when
+  convenient (not blocking):** whether DOH BLHSD's FMS quotes a DV number *and* an
+  ADA reference as two separate facts — if so, the payout record grows a second
+  column as an authored v2.
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
-Context: Stage A + B + C are complete and PUSHED (0.3.0, tag `stage-c-complete`). STAGE D IS
-SCOPE-COMPLETE. D-1 gave the platform a front door (`/` is a minimalist landing + a
-deterministic query bar, no API calls of its own). D-2 gave it the CALENDAR OF ACTIVITIES:
-`GET /api/v1/calendar` + the `/calendar` page, an agenda list over THREE sources -
-`core_activities` (tenant-wide), travel claims (scoped by `queue.oversight_scope` UNION your
-own), and your own cash-advance liquidation clocks. Head is 0024, version still 0.3.0.
+Context: Stages A, B, C and D are all COMPLETE and PUSHED. Stage D closed on 2026-08-09 at
+`0.4.0` / `stage-d-complete` (gate: pytest 1057/0, lint-imports 3/3, single head `0024`,
+alembic check clean, FE 353 vitest + build, live HTTP smoke). Build order is
+A·B·C·D·E·F·H·G·I — H before G, resequenced at #31 (master-plan §4 row 12). **Stage E is
+next and it is the biggest unblocked body of work in the plan.**
 
-⚠ D-3 AND D-4 NO LONGER EXIST AS STAGE D WORK - session 31 MOVED them to Stage G, and the
-build order is now A-B-C-D-E-F-H-G-I. Do NOT reopen either. The reasons are settled and
-written down: the css-is repo is not in this workspace and no deployment locator for it
-exists anywhere in the repo; "session carries" was specified by the `.docx` as a property of
-the Phase 1/2 IDENTITY UNIFICATION (Stage G), so D-3 was asking a session to carry before the
-store that carries it existed; and `ai_core` cannot be "promoted" from code we do not have,
-and would ship with zero consumers. Full finding, including the embed-shape analysis so
-nobody re-derives it: docs/modules/css-is.md §5a/§5b + §6. The sequencing decision and its
-COST (Government Output #1/CSMR becomes a placeholder card at Stage H) are master-plan §4
-register row 12 + reports.md §5.
+⚠ ONE THING IS OWED FROM #32 AND IT TAKES FIVE MINUTES. The Stage D gate ran everything
+except the human eyeball: nobody opened a real browser, and there is no Playwright in this
+repo to do it headlessly. Everything it would have checked was verified over real HTTP
+instead (see Current Status), so this is confirmation, not investigation. Do it FIRST:
+  1. `/reimbursement/claims/820` — the packet PDF appears inside the frame (claim 820 was
+     given legs, totals and a generated packet by #32's live smoke, precisely so this is
+     a one-click check). Log in as board-traveller@doh.gov / BoardSmoke!2026x.
+  2. The page is branded — tenant tokens still apply (`injectTokens`).
+  3. `http://localhost:8001/docs` — Swagger renders, not a blank page.
+If any of the three is wrong, the cause is `core/api/security_headers.py` and the fix is
+api-standards §10.2's HTML policy. If all three are right, say so in the session log and
+the security-header layer is fully discharged.
 
-Task: STAGE D CLOSEOUT - three items, in this order. The first two are platform-floor work
-that belongs BEFORE a stage tag; the third is the tag.
+Task: STAGE E INCREMENT 1 — the DTWIS REQUIREMENTS SESSION. Docs before code (rule 1), and
+this module has never had a requirements session: `docs/modules/document-tracking.md` §7
+is literally *"(Filled at the module's requirements session; scope per master-plan §2 Stage
+E.)"*. **Do NOT start writing tables or endpoints before §7 exists and the user has
+confirmed it.**
 
-(1) THE `seed_guard` SIBLING - a guard that fails a run which ADDS rows to a seeded table.
-    This is the #29 blind spot, recorded at #30 and still not built. `tests/conftest.py::seed_guard`
-    snapshots the rows each dataset DECLARES and diffs them, so it catches a seeded row
-    MODIFIED and not restored - exactly the job it was built for at #28. Rows ADDED under
-    fresh natural keys are INVISIBLE to it, and 48 leaked `csmr_to_arta_<hash>` rows in
-    `core_compliance_deadlines` are what that blind spot looked like. Design note: the check
-    is a COUNT/key-set diff per seeded table, not a row diff - the point is that a test which
-    inserts into a seeded reference table fails loudly instead of poisoning the next run.
-    Decide deliberately whether it fails the offending test or the session, and whether it is
-    opt-out per dataset.
+What that session has to settle, from the module doc's own §6 open decisions:
+(1) THE `dtwis_*` TABLE SET, pluralized (rule 7). The references use singular names — record
+    every delta in §4. This is the module's spine and everything else waits on it.
+(2) OCR SCOPE AND STORAGE for scanned documents, against the Stage A storage decision
+    (`core/storage/`, local content-addressed volume is the prod default). ⚠ OCR was
+    RE-DEFERRED to Stage H once already at Stage C R-9 (`keyword_absent`) — check that
+    history before re-opening it, and be explicit about whether Stage E needs it at all.
+(3) THE FLAG KEY RENAME. The seeded flag is still `module.dmwis`; the module is DTWIS. §1
+    says renaming it is part of THIS module's first migration. It is a seeded row in
+    `core_feature_flags` — plan the rename as a migration, not a hand edit.
+(4) Google Sheets sync + DTrak cutover stay DEFERRED to Stage I (master plan). Do not scope
+    them in; confirm the deferral is still right and move on.
 
-(2) THE SECURITY-HEADER LAYER - it does not exist at all. Zero repo-wide hits for
-    Content-Security-Policy / X-Frame-Options / frame-ancestors / Referrer-Policy / HSTS.
-    `main.py` registers four middlewares (request-id, CSRF, auth-principal, query-log) and the
-    only security header anywhere is `X-Content-Type-Options: nosniff` on the attachment
-    download route. Ship a core middleware WITH TESTS, not proxy config alone: the proxy is
-    deployment-time and post-development; the app is what the suite can pin. Recorded as
-    tech-stack §7a.
-    ⚠ TWO TRAPS, both read off the code that would break - handle them or the suite tells you:
-    - A CSP without `frame-src 'self'` BREAKS `web/src/pages/reimbursement/PacketPreview.tsx`.
-      Its own comment says the frame "can render at all only because the server serves a
-      generated PDF with Content-Disposition: inline and SETS NO FRAME-BLOCKING HEADER for its
-      own origin." The feature depends on today's absence.
-    - A `style-src` without `'unsafe-inline'` (or a nonce) BREAKS TENANT THEMING. Tailwind v4
-      is CSS-first and `injectTokens()` writes the `--oc-*` custom properties onto `<html>` at
-      runtime so a tenant re-themes without a rebuild (ui-standards §7). Vite dev additionally
-      injects `<style>` tags, so dev and prod differ - check both.
-    Also decide: HSTS off when app_env == "local" (mirror `resolved_cookie_secure`), and
-    whether `frame-ancestors 'none'` is right given nothing embeds us today.
+Grounding that already exists and must be read, not re-derived: §2 (the lifecycle, grounded
+in 2,062 real 2026 documents and the 16-column DTrak legacy sheet), §3 source references and
+research, §5 integration obligations (Blueprint §3/§6 + master-plan §1.3).
 
-(3) THE STAGE D QA GATE - backend suite + FE gates IN SEQUENCE, then promote APP_VERSION to
-    0.4.0, roll CHANGELOG `[Unreleased]` into a `0.4.0` section, tag `stage-d-complete` and
-    PUSH. Rule 4: push happens ONLY at a stage gate, and this is one. Fill the stage tracker's
-    QA-gate and Pushed cells for row D in the same session.
+⚠ RULE 10 IS THE BINDING CONSTRAINT ON THIS MODULE, more than on any so far. DTWIS has
+routing, assignment, deadlines, signatures and dashboards — every one of which already has a
+core service. CHECK THE REGISTRY (master-plan §1.1) BEFORE PROPOSING ANY TABLE. In
+particular: the core WORKFLOW ENGINE owns routing/approval (there is one, built at Stage C
+and proven across R-1…R-9); `core_activities` + the CALENDAR SOURCE REGISTRY own
+"what is due" (one file + one line — `core/calendar/sources.py`, api-standards §9k);
+`core_attachments` owns files; `core_audit_logs` owns history; `core_contacts` is the ONE
+external-contacts registry (§1.1 row 12, shared with CSS-IS resource persons). A duplicate
+needs a documented waiver.
 
-FREE FROM D-1/D-2 - do NOT rebuild any of it:
-- **The CALENDAR SOURCE REGISTRY** (`core/calendar/sources.py`, master-plan §1.1 #17,
-  api-standards §9k). Any module that wants rows on the calendar writes ONE file and ONE
-  line in `main.py`. Core owns the protocol, the merge, the window and the day grouping.
-  `register_source` REFUSES a source with an empty `scope_rule`.
-- `core/features.py::feature_enabled` - the single reader of `core_feature_flags`, shared by
-  `require_feature` and the calendar's source dispatcher.
-- `core/workdays.load_nonworking_labels` - names a holiday instead of merely greying it.
-- The `activity.calendar.read` permission. `activity.read` / `activity.manage` are RESERVED
-  for a future activity-registry maintenance screen - do not repurpose the calendar's grant.
-- The reproducible SMOKE COHORT: `bootstrap load-fixtures` creates all six dev logins
-  (`_ensure_smoke_cohort`), their org tree (SMOKE-A/A1, SMOKE-B/B1) and staff.
-- The NAV CENSUS (`web/src/app/nav.test.ts`) - a nav row without a census row FAILS the suite,
-  and every row must name the server rule it mirrors.
+FREE FROM STAGE D — do not rebuild:
+- **The CALENDAR SOURCE REGISTRY.** DTWIS document deadlines are already named as a future
+  calendar source. One file implementing `CalendarSource` + one `register_source()` line in
+  `main.py`. Core owns the protocol, merge, window and day grouping; the module owns its own
+  scope rule as a local import. `register_source` REFUSES a source with an empty `scope_rule`.
+- **The NAV CENSUS** (`web/src/app/nav.test.ts`) — a nav row without a census row FAILS the
+  suite, and every row must name the server rule it mirrors. A DTWIS nav row needs one.
+- The landing query bar picks up any new `NAV_GROUPS` row automatically — gated, matchable
+  and listed the moment it is added.
+- `core/features.py::feature_enabled`, `core/workdays` (ALL working-day math), `core/time.py`.
+- **The SECURITY-HEADER LAYER** (api-standards §10). Any new HTML-serving surface must be
+  added to `HTML_PATHS` or it gets `default-src 'none'` and renders blank. Exact-path match.
 
-WHAT COMES AFTER THE TAG, so the choice is deliberate rather than defaulted:
-- **Stage E - DTWIS kickoff** (`docs/modules/document-tracking.md`). The next stage in build
-  order, and the biggest unblocked body of work.
-- **Reimbursement's wizard activity picker.** Cut from v1 for want of an activities endpoint
-  (reimbursement.md, spec §9.3 step 1). That endpoint now exists and all 10 demo claims carry
-  an `activity_id`; real ones still cannot. Its own increment - do not start it silently.
-- Recorded deferrals with named fill-triggers: a month grid · an activity create/edit write
-  path · a calendar strip on the landing (D-1's no-API-calls property is deliberate and
-  test-pinned) · statutory deadlines as a 4th calendar source (calendar.md §5a - that one is
-  an OCCURRENCE ENGINE over 15 `due_rule` kinds, not a query, and its real consumer is Stage
-  H's Government Outputs).
-- BLOCKED ON PEOPLE, NOT CODE: amount tiers for both chains (needs DOH DO 2019-0225/-0225A)
-  and whether a wet-signed page must be BOUND to its step as a frozen snapshot or filed under
-  `CRT-C`. Ask the accountant / resident COA auditor when convenient.
-
-⚠ THE CENSUS LESSON, still binding. `test_reimb_authz_census.py` filters routes on the
-`/api/v1/reimbursement` PREFIX; `test_reimb_scope_security.py` asserts
+⚠ THE CENSUS LESSON, still binding and now twice-proven. `test_reimb_authz_census.py` filters
+routes on the `/api/v1/reimbursement` PREFIX; `test_reimb_scope_security.py` asserts
 `len(oversight_paths) == 3`. The calendar became a FOURTH consumer of `oversight_scope`
-OUTSIDE that prefix and both tests stayed green regardless of what it did. Any surface that
-reads module data from a core route has the identical hole. `tests/test_calendar_sources.py`
-is the pattern to copy: a census whose MISSING row fails the suite.
+OUTSIDE that prefix and both stayed green regardless. `tests/test_calendar_sources.py` is the
+pattern: a census whose MISSING row fails the suite. DTWIS needs its own from day one.
 
-TEST HYGIENE IS MECHANICAL: `tests/conftest.py::seed_guard`; `_backdated` owns its undo.
-⚠ A CALENDAR-SHAPED SURFACE USES THE PRIVATE-YEAR CONVENTION: `_ISOLATED_YEAR = 2029` in
-`tests/test_calendar_agenda.py`, plus `_holiday()` - an async context manager that takes its
-row back, because `core_holidays` has a live-rows-only unique index and a leaked row makes
-the SECOND run fail on a constraint. There is no freezegun; services take an injected
-`now`/`today`. ⚠ Privileged roles (approver/admin_officer/system_admin) need MFA enrolment
-before their session leaves `pending`, so drive `staff` over HTTP and assert grants against
-`ROLE_GRANTS` directly. ⚠ `import.meta.env.DEV` is TRUE under vitest - use
-`vi.stubEnv("DEV", false)` for the production shape.
+TEST HYGIENE IS MECHANICAL — THREE GUARDS NOW, and a new module is exactly where they earn
+their keep:
+- `seed_guard` — a seeded row MODIFIED and not restored fails the run.
+- `seed_addition_guard` (NEW at #32) — a seeded table that GREW fails the run. `dtwis_*`
+  lookup/reference datasets join the watched set the moment they are registered. The
+  exemption list `_ADD_GUARD_EXEMPT` ships EMPTY; keep it empty.
+- `owned_row(session, row)` / `_backdated` / `no_scan_worker` — a change cannot be taken
+  without its undo. Use `owned_row` for ANY row in a seeded table.
+There is no freezegun; services take an injected `now`/`today`. A calendar-shaped surface
+uses the private-year convention (`_ISOLATED_YEAR = 2029`).
+⚠ Privileged roles (approver/admin_officer/system_admin) need MFA enrolment before their
+session leaves `pending` — drive `staff` over HTTP and assert grants against `ROLE_GRANTS`.
+⚠ Any test asserting an attachment is `pending` must take `no_scan_worker`, or it races the
+live Celery worker and loses (#32: the worker won by 77 ms).
 ⚠ A full-suite run leaves `module.reimbursement` OFF in dev. Flip it back with
 `python -m office_connect.ops.bootstrap set-flag module.reimbursement --on`.
-LIVE SMOKE EARNS ITS PLACE (#25 found a duplicate-notification defect every unit test
-passed; #28 a claim-enumeration oracle; #29 a landmark/field accessible-name collision;
-#30 confirmed the flag-OFF source really is ABSENT rather than empty). For (2), the live
-smoke IS the gate: open a claim packet preview and confirm the iframe still renders, and
-confirm tenant tokens still apply, in a REAL browser - jsdom runs axe with `iframes: false`
-and will not catch either.
+⚠ `import.meta.env.DEV` is TRUE under vitest — `vi.stubEnv("DEV", false)` for the prod shape.
+LIVE SMOKE EARNS ITS PLACE: #25 found a duplicate-notification defect every unit test passed;
+#28 a claim-enumeration oracle; #29 a landmark/field accessible-name collision; #32 a
+77-millisecond worker race that five isolated runs called a fluke.
 Smoke accounts (dev only, all BoardSmoke!2026x), created by `bootstrap load-fixtures`:
 board-smoke@doh.gov (global admin_officer), scoped-officer@doh.gov (scoped to SMOKE-B),
 smoke-approver-a@doh.gov (approver on SMOKE-A1), board-traveller@doh.gov (staff, SMK-A-1),
@@ -324,10 +286,10 @@ OPS: after touching documents/, seeds.py or ops/, run `docker compose restart wo
 `docker compose exec web sh -c "cd /app && npm run typecheck && npm run lint && npm test"`.
 RUN THE BACKEND AND FE GATES IN SEQUENCE, not concurrently. The backend suite takes ~12
 minutes; expect to background it.
-Read CLAUDE.md, then docs/master-plan.md §2 (note the BUILD-ORDER warning above the stage
-table) + §4 row 12 + Stage D, docs/standards/tech-stack.md §7a (the security-header finding),
-docs/standards/development-workflow.md §4 + §6 (the push/promotion rules this session
-executes), and - only if you need the CSS-IS background - docs/modules/css-is.md §5a.
+Read CLAUDE.md, then docs/modules/document-tracking.md IN FULL, docs/master-plan.md §2 Stage
+E + §1.1 (the core-services registry — rule 10's checklist) + §1.3, docs/standards/
+database-standards.md §2–§4 (naming) and §7–§8 (audit + soft delete), and api-standards §9k
+(the calendar source contract) + §10 (security headers) if the module serves HTML.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed; no naive
 datetimes; working-day math ONLY through core/workdays.
 ```
@@ -344,7 +306,7 @@ renaming them would break every citation in this file and the module docs.
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | **complete (pushed)** — R-1…R-9 all ✅ | 11–28 | ✅ passed | `stage-c-complete` / 2026-08-05 |
-| D | 3 | Landing shell / query bar / Calendar surface | **QA** — scope complete: D-1 ✅ (landing + query bar), D-2 ✅ (Calendar + the source registry); **D-3 and D-4 moved to G** (session 31). Gate + `0.4.0` + push still owed | 29–31 | — | — |
+| D | 3 | Landing shell / query bar / Calendar surface | **complete (pushed)** — D-1 ✅ (landing + query bar), D-2 ✅ (Calendar + the source registry); **D-3 and D-4 moved to G** (session 31). Closeout added the security-header layer + `seed_addition_guard` | 29–32 | ✅ passed | `stage-d-complete` / 2026-08-09 |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
 | H | 9 | Admin + Reports + Government Outputs — **⚠ CSMR ships as a placeholder card; G now runs after H** | not started | — | — | — |
@@ -364,6 +326,119 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-09 (session 32 — the Stage D closeout and gate. STAGE D IS COMPLETE
+  AND PUSHED at `0.4.0` / `stage-d-complete`)** — two platform-floor debts paid,
+  then the gate. No migration; head stays `0024`.
+  - **(1) `seed_addition_guard` — the #29 blind spot, closed.** `seed_guard`
+    diffs the rows each dataset *declares*, so it catches a seeded row MODIFIED
+    and not restored; rows ADDED under fresh natural keys were invisible to it,
+    and 48 leaked `csmr_to_arta_<hash>` rows are what that looked like. The new
+    guard is a **sibling, not a change** — mutation and accumulation are different
+    diagnoses and a failure message should mean one thing. It diffs the live
+    natural-KEY SET of all 13 seeded tables around the session and fails the run
+    on growth, naming the table and the added keys. Session-scoped and
+    synchronous for the same reason as its sibling (a session-scoped async
+    fixture would collide with `_dispose_engine_pool`'s per-test loop); failing
+    the RUN rather than the test is a cost decision, recorded in the docstring —
+    13 tables × 2 queries × ~1000 tests is unaffordable.
+  - **It was made to FIRE before it was made to PASS, and that is why it found
+    five leaks rather than the one on record.** First run named **four** tables:
+    `core_compliance_deadlines`, `core_holidays`, `core_pap_codes`,
+    `core_object_codes`. A **fifth** only surfaced in the full suite —
+    `test_reimb_sla_notifications.py` injected a 2027 holiday with a bare
+    `flush()` that a later `submit_claim` committed. A guard nobody has watched
+    fail is not a guard.
+  - **One shape, applied six times: `owned_row(session, row)`** — the
+    `_holiday()` context manager promoted into conftest. Soft delete in a
+    `finally` (the partial-unique indexes free the key again), and it **re-fetches
+    by primary key rather than reusing the instance**: two offenders provoke an
+    `IntegrityError`, a rollback expires every instance, and touching
+    `row.deleted_at` in a sync `finally` would raise `MissingGreenlet` *instead
+    of* undoing anything. Applied across `test_calendar_workdays.py`,
+    `test_uacs_codes.py`, `test_activity_tags.py`,
+    `test_reimb_sla_notifications.py`.
+  - **A sixth leak was latent in conftest itself.** `make_user` mints a
+    `core_roles` row for any code outside the seeded five and commits it; nothing
+    leaks today only because every caller happens to name one of the five. Now a
+    yield fixture that soft-deletes what it minted. `_ADD_GUARD_EXEMPT` ships
+    **empty** and should stay so: a seeded reference table is config, not scratch
+    space, and `seed_guard`'s docstring — which used to call these rows "ordinary
+    test data" — now says so and points at its sibling.
+  - **(2) The security-header layer — `core/api/security_headers.py`**, registered
+    OUTSIDE `CSRFMiddleware` so a 403 and a 401 carry the same headers a 200 does.
+    CSP · `X-Frame-Options` · `X-Content-Type-Options` · `Referrer-Policy` ·
+    `Permissions-Policy` always; HSTS only when `resolved_hsts_enabled` (a new
+    three-state setting mirroring `resolved_cookie_secure`, with a test asserting
+    the two never disagree — both answer *is this deployment https?*). Config
+    arrives as **constructor kwargs**, because `get_settings` is `lru_cache`d and
+    `main.py` resolves it at import, so no env var could otherwise be tested.
+    11 new tests in `tests/test_security_headers.py`, plus three assertions added
+    to the real packet response in `test_reimb_packet_api.py`.
+  - **Two policies, because the app serves two kinds of thing.** JSON and streamed
+    PDFs get `default-src 'none'` — not merely safe but exactly right. The three
+    HTML surfaces get a named, scoped, looser policy, matched on **exact path**
+    so `/docs` cannot relax a `/docs-*` route a later stage adds. api-standards
+    **§10** (new); tech-stack §7a rewritten from *owed* to *closed*.
+  - **⚠ Both of §7a's recorded traps were half-right, and the halves it missed
+    were the dangerous ones.** It named `frame-src 'self'` for the packet preview:
+    `frame-src` binds the **embedding** document (the SPA — which FastAPI does not
+    serve), while `frame-ancestors` binds the **embedded** PDF, which it does. So
+    the directive named was never in this middleware's power, and the one that was
+    could have blanked the preview in production with the whole suite green. And
+    the theming trap **dissolves entirely**: `curl -I localhost:5174/` returns no
+    CSP at all, so the app's `style-src` never reaches `injectTokens()`. The real
+    obligation is the **proxy's** policy — now written down as §10.4, including
+    why a nonce can never substitute there (`setProperty` writes a style
+    *attribute*, governed by `style-src-attr`; nonces cover only `<style>`
+    elements).
+  - **⚠ Two traps nobody had recorded, both silent.** `/docs` and `/redoc` are
+    live (no `docs_url=None`) and Swagger boots from an inline `<script>` with
+    jsDelivr assets; `GET /api/v1/audit/verify` returns HTML with an inline
+    `<style>`. A strict `script-src 'self'` would have left both blank and **no
+    test would have noticed, because nothing in the suite opened either page.**
+    Both now have tests.
+  - **(3) THE GATE.** pytest **1057 passed, 0 failed** (11:59) · `lint-imports`
+    3 kept / 0 broken · `alembic upgrade head` clean, `alembic check` reports no
+    new operations, single head `0024` · FE green (`tsc -b`, `eslint`, **353
+    vitest / 48 files**, `vite build`) · backend then FE, in sequence. `0.4.0`
+    promoted, `[Unreleased]` rolled, annotated `stage-d-complete` pushed with the
+    six earlier commits.
+  - **⚠ A pre-existing race surfaced at the gate — the #29 disease in a second
+    costume.** `test_download_pending_returns_409` failed run one and then passed
+    **five times in isolation**, which is exactly how a race disguises itself as a
+    fluke. The evidence settles it: attachment 3109 inserted `07:24:58.797`,
+    scanned by the **live Celery worker** `07:24:58.874` — 77 ms — assertion 36 ms
+    later. An upload enqueues `ops.scan_attachment` after commit and the worker
+    container is up all suite, so *any* `scan_status == "pending"` assertion races
+    it. **Six existed across four files**; all six now take the new
+    `no_scan_worker` fixture (the house `register_enqueuer(None)` idiom). Only one
+    had ever fired. Not caused by this session — the middleware merely perturbed
+    the timing.
+  - **⚠ The tag-naming rule was ambiguous and is now not.** §4 said
+    `phase-<N>-complete` *where the stage has an old phase number*, and row D
+    carries Old # `3` — pointing at `phase-3-complete` while every other document
+    said `stage-d-complete`. **Owner chose `stage-d-complete`**; §4 amended to key
+    off the stage letter always. Stage letters are permanent identifiers;
+    the *Old #* column is traceability, not naming. Nothing was renamed on the
+    remote.
+  - **⚠ The one gate item NOT performed: the human eyeball in a real browser.**
+    Everything it would have checked was verified over real HTTP — a live
+    end-to-end smoke as `board-traveller@doh.gov` built claim 820's legs, totals
+    and packet, and the framed PDF returned `inline`, `application/pdf`,
+    `frame-ancestors 'self'`, `SAMEORIGIN`, exactly one `nosniff`, and 31,947
+    bytes of `%PDF-1.7`. But nobody opened Chrome, and there is no Playwright in
+    this repo. Carried into the next brief as a five-minute confirmation, with
+    claim 820 left packet-ready on purpose so it is one click.
+  - **Two stale statements corrected in passing:** `CLAUDE.md` still said *"No
+    remote yet — provision before Phase 0 closes"* (fixed in development-workflow
+    at `875accf`, never in the condensed copy), and master-plan §2 Stage D still
+    listed statutory deadlines as in-scope when they had been deferred at the D-2
+    kickoff — shipped scope and stated exit criteria disagreed until the gate.
+  - **Docs:** new api-standards §10 · tech-stack §7a rewritten · calendar.md §1 +
+    §6a · landing.md §1 + §6e · master-plan §2 Stage D · development-workflow §4 ·
+    CLAUDE.md · CHANGELOG `[Unreleased]` → `0.4.0` (incl. a `### Security` entry) ·
+    `.env.example` · `office_connect/__init__.py`.
 
 - **2026-08-09 (session 31 — the D-3 kickoff, and its answer: MOVE, don't build.
   Stage D closes at the Calendar; all CSS-IS work goes behind Stage H)** — docs

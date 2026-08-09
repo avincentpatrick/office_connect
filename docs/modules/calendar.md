@@ -2,14 +2,15 @@
 
 ## 1. Status
 
-**IN PROGRESS. Phase slot: 3 (Stage D Increment 2).** Owner-requested feature,
-recorded 2026-07-22. Kickoff 2026-08-09.
+**COMPLETE on its shipped scope. Phase slot: 3 (Stage D Increment 2).**
+Owner-requested feature, recorded 2026-07-22. Kickoff 2026-08-09; shipped
+2026-08-09; through the Stage D QA gate at `0.4.0` / `stage-d-complete`.
 
 | Increment | Scope | Status |
 |---|---|---|
-| **D-2** | The agenda surface: activities + travel + liquidation clocks | **in progress** |
-| — | Statutory deadlines as a fourth source | deferred (see §5) |
-| — | Room bookings · document deadlines · SPMS dates | arrive with their modules |
+| **D-2** | The agenda surface: activities + travel + liquidation clocks | **✅ shipped 2026-08-09** |
+| — | Statutory deadlines as a fourth source | deferred (see §5a) — an occurrence engine, and Stage H's consumer |
+| — | Room bookings · document deadlines · SPMS dates | arrive with their modules, one file + one line each (§6b) |
 
 ## 2. Purpose
 
@@ -102,6 +103,28 @@ run — so it catches a seeded row that was **modified** and not restored, which
 exactly the job it was built for (#28). Rows **added** under fresh natural keys are
 invisible to it. Forty-eight hash-suffixed deadline rows in a seeded reference table
 are what that blind spot looks like.
+
+> **✅ Closed at the Stage D gate (#32) by `seed_addition_guard`** —
+> `tests/conftest.py`, a sibling to `seed_guard` rather than a change to it, because
+> mutation and accumulation are different diagnoses and a failure message should
+> mean one thing. It diffs the live natural-KEY SET of all 13 seeded tables around
+> the session and fails the run on any growth, naming the table and the added keys.
+>
+> **It was made to fire before it was made to pass**, and on its first run it named
+> four tables, not one: `core_compliance_deadlines` (the row above),
+> `core_holidays`, `core_pap_codes` and `core_object_codes`. Fixed by
+> `owned_row(session, row)` — the `_holiday()` shape promoted to conftest and
+> applied across `test_calendar_workdays.py`, `test_uacs_codes.py` and
+> `test_activity_tags.py`: soft delete in a `finally`, so a failing assertion cannot
+> skip the undo, and the partial-unique indexes free the key again. A fifth leak was
+> **latent in conftest itself** — `make_user` mints a `core_roles` row for any code
+> outside the seeded five, and only survived because every caller happens to name
+> one of the five.
+>
+> **The exemption list ships empty and should stay that way.** A seeded reference
+> table is config, not scratch space; `seed_guard`'s own docstring used to call
+> these rows "ordinary test data, not seed drift", and the 48 rows above are the
+> counter-evidence. Both docstrings now say so and point at each other.
 
 **⚠ And the reset destroyed five accounts no code could recreate.** PROGRESS.md
 described the six-account smoke cohort in prose, but only `no-grants@doh.gov` was

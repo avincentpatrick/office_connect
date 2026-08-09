@@ -57,7 +57,7 @@ def _deny(row):
     raise UnauthorizedDownload("not permitted")
 
 
-async def test_round_trip_upload_scan_download(app_session, tmp_path):
+async def test_round_trip_upload_scan_download(app_session, tmp_path, no_scan_worker):
     settings = _settings(tmp_path)
     storage = LocalVolumeStorageDriver(settings)
     up = await service.upload_attachment(
@@ -269,7 +269,9 @@ async def test_generated_bytes_are_born_clean_and_previewable(app_session, tmp_p
     assert dl.content_type == "application/pdf"
 
 
-async def test_uploaded_pdfs_are_never_served_inline(app_session, tmp_path):
+async def test_uploaded_pdfs_are_never_served_inline(
+    app_session, tmp_path, no_scan_worker
+):
     """A claimant's PDF can embed JavaScript; rendering it inline in this origin
     is the stored-XSS pattern. Only provenance lifts that, and only server-side."""
     settings = _settings(tmp_path)

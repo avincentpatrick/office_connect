@@ -78,8 +78,8 @@ semantic status colors (green done / amber due / red blocked / grey waiting).
 ## Git strategy
 
 Local commit at every session end (`session(YYYY-MM-DD): summary`); logical
-mid-session commits encouraged. Push + tag `phase-N-complete` **only** when a
-phase's QA gate passes. No remote yet — provision before Phase 0 closes.
+mid-session commits encouraged. Push + tag `stage-<letter>-complete` **only** when
+a stage's QA gate passes. Remote: `origin` = `github.com/avincentpatrick/office_connect`.
 
 ## Session-end checklist (MANDATORY — full version: development-workflow.md §2)
 

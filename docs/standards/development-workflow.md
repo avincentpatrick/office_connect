@@ -72,15 +72,20 @@ detailed brief is archived in each session-log entry.
   (`session(YYYY-MM-DD): <summary>`); additional logical commits during a
   session are encouraged (they are the rollback points).
 - **Push + tag** — **only when a phase passes its QA gate** (§6). Tag
-  `phase-<N>-complete` where the stage has an old phase number, else
-  `stage-<letter>-complete` (Stage C has no old number — the tracker's *Old #*
-  column is empty for it — so its gate tag is `stage-c-complete`).
+  `stage-<letter>-complete`, always. **Amended at the Stage D gate (2026-08-09):**
+  the rule used to read *`phase-<N>-complete` where the stage has an old phase
+  number, else `stage-<letter>-complete`*, which pointed at `phase-3-complete` for
+  Stage D while every other document said `stage-d-complete`. Stage letters are the
+  permanent identifiers — the tracker says so itself, because renaming one would
+  break every citation in `PROGRESS.md` and the module docs — and the *Old #* column
+  exists for traceability, not naming. `phase-0-complete` and `phase-2-complete`
+  keep their names as historical facts; nothing is renamed on the remote.
   Reimbursement sub-phases, if ever tagged individually: `reimb-R<N>-complete`.
   Then push branch + tags. Never push mid-phase.
 - **Remote** — `origin` = `github.com/avincentpatrick/office_connect`,
   **provisioned before the Phase 0 gate as required**. Tags on it:
   `phase-0-complete` (2026-07-23), `phase-2-complete` (2026-07-27),
-  `stage-c-complete` (2026-08-05).
+  `stage-c-complete` (2026-08-05), `stage-d-complete` (2026-08-09).
 - **Branching** — `master` only for now; revisit when frontend phases begin.
 - Commit messages: imperative mood; prefix `session(...)` for session-end
   commits, conventional prefixes (`feat:`, `fix:`, `chore:`, `docs:`) for

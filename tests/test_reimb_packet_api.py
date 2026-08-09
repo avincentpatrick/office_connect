@@ -102,6 +102,18 @@ async def test_the_packet_rides_claim_detail_and_serves_inline(
     assert content.headers["X-Content-Type-Options"] == "nosniff"
     assert content.content.startswith(b"%PDF-")
 
+    # ⚠ The OTHER half of "an <iframe> can display it", added when the security
+    # headers landed (api-standards §10). This response is the EMBEDDED document,
+    # so what governs it is `frame-ancestors` / `X-Frame-Options` — not the
+    # `frame-src` that tech-stack §7a named, which binds the embedding SPA and
+    # never reaches this route. `'none'` or `DENY` here would blank
+    # PacketPreview.tsx in production while every test still passed.
+    assert "frame-ancestors 'self'" in content.headers["Content-Security-Policy"]
+    assert content.headers["X-Frame-Options"] == "SAMEORIGIN"
+    # Exactly one value: the router sets nosniff too, and an appended (rather
+    # than assigned) header would ship "nosniff, nosniff" on this very response.
+    assert content.headers.get_list("X-Content-Type-Options") == ["nosniff"]
+
 
 async def test_the_approver_sees_the_packet_and_a_bystander_sees_nothing(
     client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on

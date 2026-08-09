@@ -2,8 +2,8 @@
 
 ## 1. Status
 
-**COMPLETE on its shipped scope (D-1 + D-2). Phase slot: 3 (Stage D).** Stage D's
-QA gate, version promotion and push are still owed.
+**COMPLETE (D-1 + D-2). Phase slot: 3 (Stage D).** Stage D passed its QA gate on
+2026-08-09 and shipped as **`0.4.0` / `stage-d-complete`**.
 
 | Increment | Scope | Status |
 |---|---|---|
@@ -171,6 +171,12 @@ is not in this workspace, no deployment locator for it exists anywhere in the re
 and *"session carries"* was specified by the execution plan as a property of the
 Phase 1/2 identity unification — which is Stage G. The full finding, including the
 embed-shape analysis so it is not re-derived, is [`css-is.md`](css-is.md) §5a/§5b.
+
+**Two platform-floor items were paid off at the gate**, neither belonging to either
+increment and both owed before a stage tag: the **security-header layer** the app
+had never had ([`api-standards.md`](../standards/api-standards.md) §10, closing
+tech-stack §7a) and **`seed_addition_guard`**, the sibling that sees the class of
+test leak `seed_guard` structurally cannot ([`calendar.md`](calendar.md) §6a).
 
 **What Stage D leaves ready, unchanged by the move:** every new surface is one
 `NAV_GROUPS` row — gated, matchable and listed on the landing the moment it is added,

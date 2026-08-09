@@ -286,9 +286,15 @@ ledger (§5) and research hardening — full detail in `docs/modules/reimburseme
 
 Minimalist landing + deterministic intent matcher on NAV_GROUPS (incl. report
 intents); **Calendar of Activities screen** — the connected calendar the owner asked
-for: reads `core_activities`, travel claims, statutory deadlines (from
-`core_compliance_deadlines`), and — as later stages ship — room bookings, document
-deadlines, SPMS dates; shows cash-advance liquidation countdowns on funded events.
+for: reads `core_activities`, travel claims, and — as later stages ship — room
+bookings, document deadlines, SPMS dates; shows cash-advance liquidation countdowns
+on funded events.
+
+**⚠ Statutory deadlines (`core_compliance_deadlines`) were DEFERRED, not shipped**,
+and this paragraph claimed otherwise until the gate. They are not a query but an
+**occurrence engine** over 15 `due_rule` kinds, and their real consumer is Stage H's
+Government Outputs screen — [`modules/calendar.md`](modules/calendar.md) §5a. The
+other three sources shipped; a fourth arrives with the engine that computes it.
 
 **Scope amended 2026-08-09 (§4 register row 12).** Two increments left this stage
 for **Stage G**, where the system they depend on already lives: *CSS-IS

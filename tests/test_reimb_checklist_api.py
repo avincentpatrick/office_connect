@@ -143,7 +143,8 @@ async def test_the_checklist_is_not_bureau_public(
 
 
 async def test_upload_answers_with_the_whole_packet(
-    client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on
+    client, make_user, session_redis, seed_rbac, app_session, reimb_flag_on,
+    no_scan_worker,
 ):
     cast = await _packet_cast(client, app_session, make_user)
     cid = cast["claim_id"]

@@ -1,6 +1,9 @@
 """Increment 4 Group B — UACS/PREXC codes: per-FY tree, effective-dated, no-reuse.
 
-Natural keys are tokenized per run (the dev DB keeps benign rows between runs).
+⚠ ``core_pap_codes`` and ``core_object_codes`` are SEEDED reference tables, so
+every row here goes in through ``owned_row`` and comes back out. Tokenized
+natural keys keep a run from colliding with itself; they do nothing about the
+row still being there next month (``seed_addition_guard``, conftest).
 """
 
 import uuid
@@ -12,6 +15,8 @@ from sqlalchemy.exc import IntegrityError
 
 from office_connect.core.models import ObjectCode, PapCode
 from office_connect.core.soft_delete import soft_delete
+
+from tests.conftest import owned_row
 
 
 def _tok() -> str:
@@ -26,24 +31,22 @@ async def test_pap_tree_parent_child(app_session):
         title="General Administration and Support",
         effective_from=date(2026, 1, 1),
     )
-    app_session.add(root)
-    await app_session.commit()
-
-    child = PapCode(
-        fiscal_year=2026,
-        uacs_code=f"child-{_tok()}",
-        level="program",
-        parent_id=root.id,
-        title="General Management and Supervision",
-        effective_from=date(2026, 1, 1),
-    )
-    app_session.add(child)
-    await app_session.commit()
-
-    loaded = (
-        await app_session.execute(select(PapCode).where(PapCode.id == child.id))
-    ).scalar_one()
-    assert loaded.parent_id == root.id
+    async with owned_row(app_session, root):
+        child = PapCode(
+            fiscal_year=2026,
+            uacs_code=f"child-{_tok()}",
+            level="program",
+            parent_id=root.id,
+            title="General Management and Supervision",
+            effective_from=date(2026, 1, 1),
+        )
+        async with owned_row(app_session, child):
+            loaded = (
+                await app_session.execute(
+                    select(PapCode).where(PapCode.id == child.id)
+                )
+            ).scalar_one()
+            assert loaded.parent_id == root.id
 
 
 async def test_pap_code_unique_per_fiscal_year(app_session):
@@ -55,20 +58,20 @@ async def test_pap_code_unique_per_fiscal_year(app_session):
         title="Outcome",
         effective_from=date(2027, 1, 1),
     )
-    app_session.add(a)
-    await app_session.commit()
-
-    dup = PapCode(
-        fiscal_year=2027,
-        uacs_code=code,
-        level="oo",
-        title="Dup",
-        effective_from=date(2027, 1, 1),
-    )
-    app_session.add(dup)
-    with pytest.raises(IntegrityError):
-        await app_session.commit()
-    await app_session.rollback()
+    async with owned_row(app_session, a):
+        dup = PapCode(
+            fiscal_year=2027,
+            uacs_code=code,
+            level="oo",
+            title="Dup",
+            effective_from=date(2027, 1, 1),
+        )
+        app_session.add(dup)
+        with pytest.raises(IntegrityError):
+            await app_session.commit()
+        # The rollback both clears the failed insert and expires `a` — which is
+        # why `owned_row` re-fetches by PK rather than reusing the instance.
+        await app_session.rollback()
 
 
 async def test_object_code_effective_dated_revision(app_session):
@@ -80,28 +83,24 @@ async def test_object_code_effective_dated_revision(app_session):
         effective_from=date(2020, 1, 1),
         effective_to=date(2025, 12, 31),
     )
-    app_session.add(v1)
-    await app_session.commit()
-
     v2 = ObjectCode(
         uacs_object_code=code,
         title="Traveling Expenses - Local",
         effective_from=date(2026, 1, 1),
     )
-    app_session.add(v2)
-    await app_session.commit()
-    assert v1.id != v2.id
+    async with owned_row(app_session, v1), owned_row(app_session, v2):
+        assert v1.id != v2.id
 
-    # Same (code, effective_from) among live rows is rejected.
-    dup = ObjectCode(
-        uacs_object_code=code,
-        title="Dup",
-        effective_from=date(2026, 1, 1),
-    )
-    app_session.add(dup)
-    with pytest.raises(IntegrityError):
-        await app_session.commit()
-    await app_session.rollback()
+        # Same (code, effective_from) among live rows is rejected.
+        dup = ObjectCode(
+            uacs_object_code=code,
+            title="Dup",
+            effective_from=date(2026, 1, 1),
+        )
+        app_session.add(dup)
+        with pytest.raises(IntegrityError):
+            await app_session.commit()
+        await app_session.rollback()
 
 
 async def test_soft_deleted_object_code_frees_key(app_session):
@@ -121,6 +120,7 @@ async def test_soft_deleted_object_code_frees_key(app_session):
         title="Other Supplies (re-added)",
         effective_from=date(2026, 1, 1),
     )
-    app_session.add(revived)
-    await app_session.commit()
-    assert revived.id != row.id
+    # `row` needs no undo — the test soft-deletes it as its whole point. Only
+    # the revived row would survive the run.
+    async with owned_row(app_session, revived):
+        assert revived.id != row.id

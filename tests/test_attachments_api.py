@@ -65,7 +65,7 @@ async def test_upload_missing_csrf_rejected(client, make_user, session_redis, se
 
 
 async def test_upload_creates_pending_row(
-    client, make_user, session_redis, seed_rbac, app_session
+    client, make_user, session_redis, seed_rbac, app_session, no_scan_worker
 ):
     user, pw = await make_user(roles=("staff",))
     await _login(client, user, pw)
@@ -128,7 +128,7 @@ async def test_upload_enqueues_scan_after_commit(
 
 
 async def test_metadata_read_and_not_found(
-    client, make_user, session_redis, seed_rbac
+    client, make_user, session_redis, seed_rbac, no_scan_worker
 ):
     user, pw = await make_user(roles=("staff",))
     await _login(client, user, pw)
@@ -141,7 +141,7 @@ async def test_metadata_read_and_not_found(
 
 
 async def test_download_pending_returns_409(
-    client, make_user, session_redis, seed_rbac
+    client, make_user, session_redis, seed_rbac, no_scan_worker
 ):
     user, pw = await make_user(roles=("staff",))
     await _login(client, user, pw)
