@@ -28,9 +28,14 @@ from office_connect.core.observability import init_error_tracking
 # Module routers mount HERE, the composition root — core/api/router.py may not
 # include them (import-linter: core never imports modules; app → modules is
 # legal, same reasoning as the ops import in lifespan). api-standards §9.
+from office_connect.core.calendar import register_source
 from office_connect.modules.reimbursement.api import router as reimbursement_router
 from office_connect.modules.reimbursement.api.actions import (
     router as reimbursement_actions_router,
+)
+from office_connect.modules.reimbursement.calendar import (
+    LIQUIDATION_SOURCE,
+    TRAVEL_SOURCE,
 )
 
 settings = get_settings()
@@ -68,6 +73,13 @@ app.include_router(reimbursement_router)
 # a router's dependencies apply to everything included beneath it, and the
 # feature flag must never strand in-flight approvals (workflow-standards §9).
 app.include_router(reimbursement_actions_router)
+
+# Calendar sources register HERE for the same reason the routers mount here:
+# core/calendar owns the protocol and the merge, each module owns its own scope
+# rule, and core may not import modules (import-linter). Same shape as the ops
+# enqueuer injection in lifespan above. api-standards §9k.
+register_source(TRAVEL_SOURCE)
+register_source(LIQUIDATION_SOURCE)
 
 # Structured error envelope for every raised HTTPException/APIError/validation
 # error (api-standards §3) — the first exception handlers in the app.

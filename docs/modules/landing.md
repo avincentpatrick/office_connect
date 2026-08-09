@@ -7,7 +7,7 @@
 | Increment | Scope | Status |
 |---|---|---|
 | **D-1** | Landing shell + deterministic query bar | **✅ shipped 2026-08-06** |
-| D-2 | Calendar of Activities surface | not started |
+| D-2 | Calendar of Activities surface — **owns its own doc, [`calendar.md`](calendar.md)** | **in progress (kickoff 2026-08-09)** |
 | D-3 | CSS-IS reverse-proxied into the shell (session carries) | not started |
 | D-4 | `ai_core` promoted to the shared platform AI service | not started |
 
@@ -49,8 +49,10 @@ show cash-advance liquidation countdowns. Plus the promotion of CSS-IS
 - **Nav/permission gating — RESOLVED (D-1, 2026-08-06):** the R-2-shell deferral
   is lifted; the nav gates on permission codes from `/auth/me`. See §6a below and
   `ui-standards.md` §7.
-- Calendar surface scope detail (filters, per-role views) — deferred to **D-2**'s
-  requirements session (unchanged).
+- **Calendar surface scope detail (filters, per-role views) — RESOLVED (D-2
+  kickoff, 2026-08-09).** Twelve decisions, recorded in
+  [`calendar.md`](calendar.md) §5 rather than here: the Calendar earned its own
+  module doc (rule 8) because later stages plug into *it*, not into the landing.
 
 ## 6. Plan
 
@@ -149,10 +151,14 @@ D-1 is *deterministic*, explicitly not an LLM.
 
 ### 6e. Remaining Stage D increments
 
-D-2 Calendar of Activities (`core_activities` + travel claims +
-`core_compliance_deadlines`, with cash-advance liquidation countdowns on funded
-events) · D-3 CSS-IS reverse-proxied into the shell · D-4 `ai_core` promoted to
-the shared AI service. Each is its own increment with its own kickoff.
+D-2 Calendar of Activities — **kicked off 2026-08-09; see
+[`calendar.md`](calendar.md)**, which now owns its plan, its delta register and
+its test posture. Note one scope change made at that kickoff and recorded there:
+**`core_compliance_deadlines` is DEFERRED** as a fourth source (the table stores
+`due_rule` JSONB with 15 distinct kinds and no evaluator exists; its real consumer
+is Stage H's Government Outputs). D-3 CSS-IS reverse-proxied into the shell · D-4
+`ai_core` promoted to the shared AI service. Each is its own increment with its own
+kickoff.
 
 **What D-1 leaves ready for them:** every new surface is one `NAV_GROUPS` row —
 gated, matchable and listed on the landing the moment it is added, with the census

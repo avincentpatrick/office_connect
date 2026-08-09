@@ -98,6 +98,13 @@ _PERMISSION_CATALOG: tuple[tuple[str, str, str], ...] = (
     # maker); certification C is FMS's Head of Accounting, signed on paper and
     # recorded by an Admin Officer under the existing reimb.claim.review.
     ("reimb.liquidation.certify", "Certify a liquidation (certification B)", "reimb"),
+    # Stage D-2 — the Calendar of Activities.
+    # Three-part on purpose. `activity.read` and `activity.manage` are RESERVED
+    # for the day `core_activities` gets a maintenance screen, so the calendar's
+    # grant can never quietly become the registry's EDIT grant. Holding this lets
+    # someone open the surface; what they see inside it is decided per source
+    # (api-standards §9k), never by this code.
+    ("activity.calendar.read", "View the calendar of activities", "activity"),
 )
 
 _ALL_PERMISSION_CODES: tuple[str, ...] = tuple(c for c, _, _ in _PERMISSION_CATALOG)
@@ -134,6 +141,12 @@ ROLE_GRANTS: dict[str, tuple[str, ...]] = {
         # Workflow: read the definitions + the instance/decision history (COA trail).
         "workflow.definition.read",
         "workflow.instance.read",
+        # The calendar shows organisational activities, which an auditor is
+        # entitled to see. Both reimbursement sources contribute NOTHING to
+        # them (no reimb.* grant, no own claims) and say so in words — the
+        # read-only posture is preserved by the sources, not by withholding
+        # the surface. Recorded because D-1 delta 6 recorded its mirror image.
+        "activity.calendar.read",
     ),
     "approver": (
         "reimb.claim.read",
@@ -146,6 +159,7 @@ ROLE_GRANTS: dict[str, tuple[str, ...]] = {
         "reimb.liquidation.certify",
         "attachment.read",
         "attachment.download",
+        "activity.calendar.read",
     ),
     "admin_officer": (
         "reimb.claim.read",
@@ -154,6 +168,7 @@ ROLE_GRANTS: dict[str, tuple[str, ...]] = {
         "reimb.cash_advance.manage",
         "attachment.read",
         "attachment.download",
+        "activity.calendar.read",
     ),
     "staff": (
         "reimb.claim.create",
@@ -162,6 +177,7 @@ ROLE_GRANTS: dict[str, tuple[str, ...]] = {
         "attachment.upload",
         "attachment.read",
         "attachment.download",
+        "activity.calendar.read",
     ),
 }
 

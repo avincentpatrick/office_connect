@@ -529,7 +529,13 @@ async def test_no_list_or_aggregate_leaks_a_foreign_claim_to_a_traveller(
         for (method, path), rule in AUTHZ_TABLE.items()
         if rule.rule is OVERSIGHT_SCOPE and method == "GET"
     ]
-    assert len(oversight_paths) == 3, "census drift — new oversight surface?"
+    assert len(oversight_paths) == 3, (
+        "census drift — new oversight surface? ALSO check "
+        "tests/test_calendar_sources.py: an oversight consumer OUTSIDE the "
+        "/api/v1/reimbursement prefix (the Stage D-2 calendar is the first) "
+        "never enters AUTHZ_TABLE, so this number stays 3 while the new "
+        "surface goes ungraded. Its census lives in that file."
+    )
 
     for path in oversight_paths:
         resp = await client.get(path)
@@ -569,3 +575,70 @@ async def test_my_work_shows_the_caller_their_own_claims_and_nobody_elses(
         if isinstance(item, dict) and "ref_no" in item
     }
     assert scene.a.claim.ref_no not in refs, resp.text
+
+
+# --- Stage D-2: the calendar is a FOURTH door onto the same claims ----------
+#
+# The calendar's travel source consumes ``queue.oversight_scope`` from OUTSIDE
+# the ``/api/v1/reimbursement`` prefix, so neither census above sees it and the
+# property test's `oversight_paths` stays at 3. These two tests are what the
+# calendar is graded by, and they live here rather than in a new file because
+# this file is organised by ATTACKER — and the attackers are the same ones.
+
+CALENDAR = "/api/v1/calendar"
+
+
+def _calendar_window(claim) -> str:
+    """The window containing this claim's trip, so the assertions are absolute."""
+    return (
+        f"{CALENDAR}?start={claim.date_depart.isoformat()}"
+        f"&end={claim.date_return.isoformat()}"
+    )
+
+
+async def test_a_scoped_overseers_calendar_never_shows_a_sibling_offices_travel(
+    client, session_redis, reimb_flag_on, scene
+):
+    """Attacker 2 — the dangerous one, because every route check passes.
+
+    Office B's Admin Officer holds ``activity.calendar.read`` and real oversight;
+    they simply do not oversee office A. They must see office A's ACTIVITIES
+    (tenant-wide, decision 12) and none of its TRAVEL — the two layers of one
+    response having two different scope rules is the whole design, so a test
+    that only checked the refusal would not notice the layers collapsing.
+    """
+    await _signin(client, scene.b.admin)
+
+    body = (await client.get(_calendar_window(scene.a.claim))).json()
+    refs = [e["ref"] for day in body["days"] for e in day["events"]]
+
+    assert f"claim:{scene.a.claim.id}" not in refs, (
+        "office B's overseer can see office A's trip on the calendar — "
+        "api-standards §9f, through a door the reimbursement census cannot see"
+    )
+    travel = next(s for s in body["sources"] if s["key"] == "reimb.travel")
+    assert travel["bounded_note"], "a bounded layer must say what bounded it"
+
+
+async def test_a_travellers_calendar_shows_only_their_own_travel(
+    client, session_redis, reimb_flag_on, scene
+):
+    """Attacker 1 — spec §3.2's literal sentence, asked at the calendar.
+
+    ``reimb.claim.read`` is granted GLOBALLY to ``staff``, which is exactly why
+    a list may not be keyed on it. Office B's traveller holds it, holds the
+    calendar permission too, and must still not see office A's trip — while
+    seeing their OWN claim, so this cannot pass by the source returning nothing.
+    """
+    await _signin(client, scene.b.owner)
+
+    body = (await client.get(_calendar_window(scene.a.claim))).json()
+    refs = [e["ref"] for day in body["days"] for e in day["events"]]
+    assert f"claim:{scene.a.claim.id}" not in refs
+
+    own = (await client.get(_calendar_window(scene.b.claim))).json()
+    own_refs = [e["ref"] for day in own["days"] for e in day["events"]]
+    assert f"claim:{scene.b.claim.id}" in own_refs, (
+        "the traveller cannot see their OWN trip — this test would then pass "
+        "for the wrong reason, proving only that the source returns nothing"
+    )

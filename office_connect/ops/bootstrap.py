@@ -52,7 +52,7 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import date
+from datetime import timedelta
 from typing import Any, Awaitable, Callable
 
 from sqlalchemy import func, select
@@ -68,7 +68,9 @@ from office_connect.core.directory import ingest_directory
 from office_connect.core.models import (
     Activity,
     FeatureFlag,
+    OrgUnit,
     Role,
+    Staff,
     TenantConfig,
     User,
     UserRole,
@@ -82,7 +84,7 @@ from office_connect.core.seeds.rbac import (
 )
 from office_connect.core.security import generate_temp_password, hash_password
 from office_connect.core.session import OCSession, set_audit_context
-from office_connect.core.time import utc_now
+from office_connect.core.time import to_manila, utc_now
 from office_connect.core.workflow import get_published_version
 
 # ops is the composition root: it may import modules (import-linter forbids only
@@ -102,13 +104,44 @@ DEFAULT_FLAGS: tuple[tuple[str, str], ...] = (
 )
 
 # Synthetic dev fixtures — clearly non-production sample activities.
+#
+# Dates are RELATIVE to the run date, for the same reason the reimbursement demo
+# trips are: the Calendar of Activities (Stage D-2) opens on *today forward*, and
+# three activities hard-coded to Feb–Apr 2026 meant a calendar that was empty on
+# first load for most of the year. A demo whose default view shows nothing
+# demonstrates nothing.
+#
+# The spread is deliberate — past (done), current (ongoing), near future
+# (planned) and one cancelled — so every `core_activity_status` tone is visible
+# on screen rather than only in a test. The two past windows BRACKET the demo
+# trips in `modules/reimbursement/fixtures.py`, which link to them by title:
+# that is what finally gives `reimb_claims.activity_id` a non-null value and
+# makes the connection spine (master-plan §1.2) something you can see.
 _FIXTURE_ACTIVITIES: tuple[dict[str, Any], ...] = (
-    {"title": "[fixture] Q1 Health Promotion Planning Workshop",
-     "date_start": date(2026, 2, 10), "venue": "BLHSD Conference Room"},
-    {"title": "[fixture] Regional Immunization Coverage Review",
-     "date_start": date(2026, 3, 5), "venue": "Regional Office"},
-    {"title": "[fixture] UHC Integration Site Visit",
-     "date_start": date(2026, 4, 18), "venue": "Provincial Health Office"},
+    {"title": "[fixture] Q3 Regional Health Systems Review",
+     "start_offset": -42, "duration": 17, "venue": "Regional Office",
+     "division_code": "BLHSD-TECH", "status": "done",
+     "ppa_code": "300000100001000"},
+    {"title": "[fixture] Immunization Coverage Validation",
+     "start_offset": -22, "duration": 14, "venue": "Provincial Health Office",
+     "division_code": "BLHSD-TECH", "status": "done",
+     "ppa_code": "300000100001000"},
+    {"title": "[fixture] UHC Integration Site Visits",
+     "start_offset": -2, "duration": 7, "venue": "Provincial Health Office",
+     "division_code": "BLHSD-TECH", "status": "ongoing",
+     "ppa_code": "300000100001000"},
+    {"title": "[fixture] Annual Planning Workshop",
+     "start_offset": 12, "duration": 2, "venue": "BLHSD Conference Room",
+     "division_code": "BLHSD-FIN", "status": "planned",
+     "ppa_code": "100000100001000"},
+    {"title": "[fixture] Mid-year Coordination Meeting (cancelled)",
+     "start_offset": 20, "duration": 0, "venue": "BLHSD Conference Room",
+     "division_code": "BLHSD-FIN", "status": "cancelled",
+     "ppa_code": "100000100001000"},
+    {"title": "[fixture] Year-end Financial Review",
+     "start_offset": 40, "duration": 1, "venue": "BLHSD Conference Room",
+     "division_code": "BLHSD-FIN", "status": "planned",
+     "ppa_code": "100000100001000"},
 )
 
 # Synthetic org-unit tree + staff directory — dev/UAT only (CSS-IS is a separate
@@ -251,22 +284,174 @@ async def _ensure_no_grants_account(session: AsyncSession) -> dict[str, Any]:
     return {"email": _NO_GRANTS_EMAIL, "created": True, "role_grants": 0}
 
 
+# ------------------------------------------------------- the smoke cohort
+#: The five *granted* dev logins that drive live smoke, alongside the grant-less
+#: account above. Every recent session's live smoke is run as these chairs:
+#: a global overseer, a scoped overseer, a traveller, a stranger, an approver.
+#:
+#: **They live here because a `docker compose down -v` at Stage D-2 destroyed
+#: them and nothing in the repository could bring them back.** Five accounts
+#: PROGRESS.md described in prose had been minted by hand in earlier sessions;
+#: only ``no-grants@doh.gov`` (#29) was reproducible, and it was reproducible
+#: precisely because someone had hit this wall once already. A cohort described
+#: in a document is not a cohort — the same lesson ``_backdated`` learned about
+#: docstrings that ask callers to clean up.
+#:
+#: The tree is deliberately SEPARATE from the BLHSD fixture tree: smoke asserts
+#: that a scoped officer in one office cannot see another office's work, which
+#: needs two offices that genuinely do not contain one another.
+_SMOKE_ORG_UNITS: tuple[dict[str, Any], ...] = (
+    {"code": "SMOKE-A", "name": "Smoke Office A", "kind": "office",
+     "parent_code": None, "sort_order": 10},
+    {"code": "SMOKE-A1", "name": "Smoke Division A1", "kind": "division",
+     "parent_code": "SMOKE-A", "sort_order": 11},
+    {"code": "SMOKE-B", "name": "Smoke Office B", "kind": "office",
+     "parent_code": None, "sort_order": 12},
+    # Staff must sit in a DIVISION (ingest refuses an office), and the scoped
+    # officer is granted on the OFFICE above it on purpose: that makes the
+    # smoke assert `descendants_or_self`, not just an equality on one unit.
+    {"code": "SMOKE-B1", "name": "Smoke Division B1", "kind": "division",
+     "parent_code": "SMOKE-B", "sort_order": 13},
+)
+_SMOKE_STAFF: tuple[dict[str, Any], ...] = (
+    {"employee_no": "SMK-A-1", "given_name": "Smoke", "surname": "Traveller-A",
+     "full_name": "Smoke Traveller-A", "email": "board-traveller@doh.gov",
+     "position_title": "Health Program Officer II",
+     "employment_status": "permanent",
+     "division_code": "SMOKE-A1", "section_code": None},
+    {"employee_no": "SMK-B-1", "given_name": "Smoke", "surname": "Traveller-B",
+     "full_name": "Smoke Traveller-B", "email": "smoke-b-traveller@doh.gov",
+     "position_title": "Health Program Officer II",
+     "employment_status": "permanent",
+     "division_code": "SMOKE-B1", "section_code": None},
+)
+
+#: ``(email, role_code, scope_org_unit_code, staff_employee_no)``.
+#: ``scope_org_unit_code=None`` with a role means a GLOBAL grant.
+_SMOKE_ACCOUNTS: tuple[tuple[str, str, str | None, str | None], ...] = (
+    ("board-smoke@doh.gov", "admin_officer", None, None),
+    ("scoped-officer@doh.gov", "admin_officer", "SMOKE-B", None),
+    ("smoke-approver-a@doh.gov", "approver", "SMOKE-A1", None),
+    ("board-traveller@doh.gov", "staff", None, "SMK-A-1"),
+    ("smoke-b-traveller@doh.gov", "staff", None, "SMK-B-1"),
+)
+
+
+async def _ensure_smoke_cohort(session: AsyncSession) -> dict[str, Any]:
+    """Idempotently create the five granted dev smoke logins and their scopes.
+
+    Requires ``seed-rbac`` (the roles must exist). Re-running changes nothing:
+    an existing user is left exactly as it is, grants included — this must never
+    "repair" an account someone deliberately altered mid-smoke.
+    """
+    ingest = await ingest_directory(
+        session, org_units=_SMOKE_ORG_UNITS, staff=_SMOKE_STAFF
+    )
+    await session.flush()
+
+    units = {
+        code: unit_id
+        for code, unit_id in (
+            await session.execute(select(OrgUnit.code, OrgUnit.id))
+        ).all()
+    }
+    staff_ids = {
+        no: sid
+        for no, sid in (
+            await session.execute(select(Staff.employee_no, Staff.id))
+        ).all()
+    }
+    roles = {
+        code: role_id
+        for code, role_id in (await session.execute(select(Role.code, Role.id))).all()
+    }
+
+    created: list[str] = []
+    for email, role_code, scope_code, employee_no in _SMOKE_ACCOUNTS:
+        existing = (
+            await session.execute(select(User).where(User.email == email))
+        ).scalar_one_or_none()
+        if existing is not None:
+            continue
+        if role_code not in roles:
+            raise RuntimeError(
+                f"role {role_code!r} does not exist — run 'seed-rbac' before "
+                "'load-fixtures' so the smoke cohort has roles to be granted"
+            )
+        user = User(
+            email=email,
+            password_hash=hash_password(_NO_GRANTS_PASSWORD),
+            is_active=True,
+            must_change_password=False,
+            staff_id=staff_ids.get(employee_no) if employee_no else None,
+        )
+        session.add(user)
+        await session.flush()
+        session.add(
+            UserRole(
+                user_id=user.id,
+                role_id=roles[role_code],
+                # NULL org_unit_id is the global grant — the shape system_admin
+                # and the board's global officer both rely on.
+                org_unit_id=units.get(scope_code) if scope_code else None,
+            )
+        )
+        created.append(email)
+
+    return {
+        "created": created,
+        "total": len(_SMOKE_ACCOUNTS),
+        "org_units_created": ingest.org_units_created,
+        "staff_created": ingest.staff_created,
+    }
+
+
 async def _load_fixtures(session: AsyncSession) -> dict[str, Any]:
+    # Org tree + staff go through the SAME ingest service the real CSS-IS feed
+    # uses (one code path) — the fixture dicts already match the feed schema.
+    # Ingested FIRST so the activities below can resolve their division codes.
+    ingest = await ingest_directory(
+        session, org_units=_FIXTURE_ORG_UNITS, staff=_FIXTURE_STAFF
+    )
+    await session.flush()
+
+    units = {
+        code: unit_id
+        for code, unit_id in (
+            await session.execute(select(OrgUnit.code, OrgUnit.id))
+        ).all()
+    }
+    today = to_manila(utc_now()).date()
     existing_titles = set(
         (await session.execute(select(Activity.title))).scalars().all()
     )
     activities_created: list[str] = []
     for spec in _FIXTURE_ACTIVITIES:
-        if spec["title"] not in existing_titles:
-            session.add(Activity(**spec))
-            activities_created.append(spec["title"])
-
-    # Org tree + staff go through the SAME ingest service the real CSS-IS feed
-    # uses (one code path) — the fixture dicts already match the feed schema.
-    ingest = await ingest_directory(
-        session, org_units=_FIXTURE_ORG_UNITS, staff=_FIXTURE_STAFF
-    )
+        if spec["title"] in existing_titles:
+            continue
+        start = today + timedelta(days=spec["start_offset"])
+        session.add(
+            Activity(
+                title=spec["title"],
+                date_start=start,
+                # duration 0 = a single-day activity, which is `date_end IS NULL`
+                # rather than an end equal to the start: the calendar's overlap
+                # predicate coalesces the two, and NULL is the shape the column
+                # already uses for "one day".
+                date_end=(
+                    start + timedelta(days=spec["duration"])
+                    if spec["duration"]
+                    else None
+                ),
+                venue=spec["venue"],
+                status=spec["status"],
+                ppa_code=spec.get("ppa_code"),
+                division_id=units.get(spec["division_code"]),
+            )
+        )
+        activities_created.append(spec["title"])
     no_grants = await _ensure_no_grants_account(session)
+    smoke = await _ensure_smoke_cohort(session)
 
     await session.commit()
     total_activities = (
@@ -275,9 +460,10 @@ async def _load_fixtures(session: AsyncSession) -> dict[str, Any]:
     return {
         "activities_created": activities_created,
         "activities_total": total_activities,
-        "org_units_created": ingest.org_units_created,
-        "staff_created": ingest.staff_created,
+        "org_units_created": ingest.org_units_created + smoke["org_units_created"],
+        "staff_created": ingest.staff_created + smoke["staff_created"],
         "no_grants_account": no_grants,
+        "smoke_cohort": smoke,
     }
 
 

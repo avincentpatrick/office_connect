@@ -37,6 +37,11 @@ class ReimbClaim(PKMixin, AuditColsMixin, SoftDeleteMixin, Base):
         ),
         Index("ix_reimb_claims_claimant_id", "claimant_id"),
         Index("ix_reimb_claims_activity_id", "activity_id"),
+        # Stage D-2 (migration 0024): the calendar's travel source filters on a
+        # date window, and `date_depart` is the leading, sargable half of that
+        # predicate. Nothing queried claims BY TRIP DATE before — the queue and
+        # the board both order on `holder_since`.
+        Index("ix_reimb_claims_date_depart", "date_depart"),
         Index("ix_reimb_claims_workflow_instance_id", "workflow_instance_id"),
         # One live instance per claim (R-4-app): the submit service's claim-row
         # lock is the race fix; this is the DB belt behind it (migration 0015).

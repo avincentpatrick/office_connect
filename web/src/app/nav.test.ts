@@ -78,15 +78,30 @@ describe("visibleNavItems", () => {
   });
 
   it("keeps NAV_GROUPS declaration order", () => {
-    expect(labels(ALL_FLAGS_ON, [...ADMIN_OFFICER, "reimb.claim.approve"])).toEqual([
+    expect(
+      labels(ALL_FLAGS_ON, [
+        ...ADMIN_OFFICER,
+        "reimb.claim.approve",
+        "activity.calendar.read",
+      ]),
+    ).toEqual([
       "Home",
       "Reimbursement",
       "Cash advances",
       "Claim queue",
       "Pipeline board",
       "Insights",
+      "Calendar",
       "UI foundation",
     ]);
+  });
+
+  it("shows the Calendar with NO module flag, but only to a permission holder", () => {
+    // The first nav item gated on a permission and NOT on a feature flag. Both
+    // halves matter: flags OFF must not hide it (it is a core surface), and a
+    // grant-less user must not see it (it is still gated).
+    expect(labels({}, ["activity.calendar.read"])).toContain("Calendar");
+    expect(labels(ALL_FLAGS_ON, STAFF)).not.toContain("Calendar");
   });
 });
 
@@ -146,6 +161,15 @@ const NAV_CENSUS: CensusRow[] = [
     flag: "module.reimbursement",
     permissions: ["reimb.claim.review", "reimb.claim.fms_update", "reimb.claim.approve"],
     rule: "services/queue.py — oversight_scope(); the scope IS the privacy boundary (§9h)",
+  },
+  {
+    to: "/calendar",
+    flag: null,
+    permissions: ["activity.calendar.read"],
+    rule:
+      "core/api/calendar.py — require_permission('activity.calendar.read'); " +
+      "each source then applies its OWN scope rule, censused in " +
+      "tests/test_calendar_sources.py (api-standards §9k)",
   },
   {
     to: "/ui-foundation",

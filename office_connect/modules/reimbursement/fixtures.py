@@ -36,7 +36,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from office_connect.core.models import OrgUnit, Staff
+from office_connect.core.models import Activity, OrgUnit, Staff
 from office_connect.core.time import to_manila, utc_now
 from office_connect.modules.reimbursement.models import (
     ReimbCashAdvance,
@@ -82,6 +82,25 @@ _TRAVELLERS: tuple[dict[str, Any], ...] = (
 )
 
 
+#: The two past fixture activities the demo trips hang off, by title. They are
+#: created by `ops/bootstrap.py::_load_fixtures` (run first — `load_pilot_fixtures`
+#: already checks for the org tree it also builds), and their date windows BRACKET
+#: the trip offsets below.
+#:
+#: This is what finally populates `reimb_claims.activity_id`. Until Stage D-2 the
+#: column had been validated on PATCH since R-1 and was non-null on ZERO of 838
+#: claims, because the wizard's activity picker was cut for want of an activities
+#: endpoint (module doc, spec §9.3 step 1). A demo of the connection spine
+#: (master-plan §1.2) in which nothing is connected demonstrates the opposite of
+#: the point.
+#:
+#: Missing activities are NOT an error: a link is nullable and soft by design
+#: (§1.3's integration invariants), so a trip whose activity was never loaded is
+#: simply an untagged trip — which is also a state worth seeing on screen.
+_ACT_Q3 = "[fixture] Q3 Regional Health Systems Review"
+_ACT_IMM = "[fixture] Immunization Coverage Validation"
+
+
 def _leg(seq, offset, *, mode, fare=None, region=None, place=None, **kw):
     return {
         "seq": seq, "offset": offset, "transport_mode": mode,
@@ -101,6 +120,7 @@ def _leg(seq, offset, *, mode, fare=None, region=None, place=None, **kw):
 _TRIPS: tuple[dict[str, Any], ...] = (
     {
         "key": "worked-example",
+        "activity": _ACT_Q3,
         "traveller": "0001",
         "purpose": "Regional health systems review (spec §8 worked example)",
         "destination": "Manila, NCR",
@@ -115,6 +135,7 @@ _TRIPS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "taxi-over-threshold",
+        "activity": _ACT_Q3,
         "traveller": "0002",
         "purpose": "Fund utilisation conference — taxi fare over the RER threshold",
         "destination": "Quezon City, NCR",
@@ -128,6 +149,7 @@ _TRIPS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "cluster-switch",
+        "activity": _ACT_Q3,
         "traveller": "0003",
         "purpose": "Provincial hospital assessment — two DTE clusters in one trip",
         "destination": "Cebu City then Manila",
@@ -140,6 +162,7 @@ _TRIPS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "same-day",
+        "activity": _ACT_IMM,
         "traveller": "0004",
         "purpose": "Same-day coordination meeting (50% DTE, no lodging)",
         "destination": "Manila, NCR",
@@ -148,6 +171,7 @@ _TRIPS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "within-50km-commute",
+        "activity": _ACT_IMM,
         "traveller": "0005",
         "purpose": "Nearby facility visit within 50 km (fares only, 0% DTE)",
         "destination": "Pasig City",
@@ -163,6 +187,7 @@ _TRIPS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "within-50km-overnight",
+        "activity": _ACT_IMM,
         "traveller": "0005",
         "purpose": "Nearby facility visit within 50 km WITH overnight attestation",
         "destination": "Antipolo City",
@@ -175,6 +200,7 @@ _TRIPS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "gov-vehicle",
+        "activity": _ACT_IMM,
         "traveller": "0001",
         "purpose": "Field monitoring by government vehicle (no fares)",
         "destination": "Bulacan",
@@ -186,6 +212,7 @@ _TRIPS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "host-provided",
+        "activity": _ACT_IMM,
         "traveller": "0004",
         "purpose": "Partner-hosted workshop (meals and lodging provided)",
         "destination": "Baguio City",
@@ -198,6 +225,7 @@ _TRIPS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "jo-cos-traveller",
+        "activity": _ACT_IMM,
         "traveller": "0006",
         "purpose": "Data quality check — JO/COS traveller (conditional checklist)",
         "destination": "Manila, NCR",
@@ -209,6 +237,7 @@ _TRIPS: tuple[dict[str, Any], ...] = (
     },
     {
         "key": "cash-advance-trip",
+        "activity": _ACT_Q3,
         "traveller": "0002",
         "purpose": "Immunisation coverage validation (funded by cash advance)",
         "destination": "Davao City",
@@ -309,6 +338,18 @@ async def _ensure_cash_advance(
     )
 
 
+async def _activity_ids(session: AsyncSession) -> dict[str, int]:
+    """``{title: id}`` for the fixture activities the trips link to."""
+    rows = (
+        await session.execute(
+            select(Activity.title, Activity.id).where(
+                Activity.title.in_((_ACT_Q3, _ACT_IMM))
+            )
+        )
+    ).all()
+    return {title: activity_id for title, activity_id in rows}
+
+
 async def _ensure_trip(
     session: AsyncSession,
     *,
@@ -316,6 +357,7 @@ async def _ensure_trip(
     staff: Staff,
     today: date,
     cash_advance_id: int | None,
+    activity_id: int | None = None,
 ) -> tuple[ReimbClaim, bool]:
     marker = f"{DEMO_TAG} {spec['purpose']}"
     existing = (
@@ -340,6 +382,8 @@ async def _ensure_trip(
         # Fund via ORS, or Trust Fund via BUR. Not a free-text field.
         fund_source="GF_ORS",
         cash_advance_id=cash_advance_id,
+        # The connection spine (master-plan §1.2). Nullable and soft by design.
+        activity_id=activity_id,
         status="draft",
     )
     session.add(claim)
@@ -396,6 +440,7 @@ async def load_pilot_fixtures(session: AsyncSession) -> dict[str, Any]:
         session, claimant_id=staff["0002"].id, today=today
     )
 
+    activities = await _activity_ids(session)
     trips_created, totals = 0, {}
     for spec in _TRIPS:
         claim, created = await _ensure_trip(
@@ -404,6 +449,7 @@ async def load_pilot_fixtures(session: AsyncSession) -> dict[str, Any]:
             staff=staff[spec["traveller"]],
             today=today,
             cash_advance_id=advance.id if spec.get("cash_advance") else None,
+            activity_id=activities.get(spec.get("activity", "")),
         )
         trips_created += int(created)
         totals[spec["key"]] = (claim.totals or {}).get("grand")

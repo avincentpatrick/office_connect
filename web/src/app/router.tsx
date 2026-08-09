@@ -1,4 +1,5 @@
 import { createBrowserRouter, Outlet } from "react-router";
+import { CalendarPage } from "../pages/CalendarPage";
 import { HomePage } from "../pages/HomePage";
 import { LoginPage } from "../pages/LoginPage";
 import { MfaSetupPage } from "../pages/MfaSetupPage";
@@ -27,6 +28,9 @@ export const router = createBrowserRouter([
     element: <RequireAuth />,
     children: [
       { path: "/", element: <HomePage /> },
+      // A CORE surface, so no RequireFlag: there is no `module.calendar`, and the
+      // module contributions inside it are gated per source (api-standards §9k).
+      { path: "/calendar", element: <CalendarPage /> },
       { path: "/account/password", element: <PasswordChangePage /> },
       { path: "/account/mfa", element: <MfaSetupPage /> },
       {

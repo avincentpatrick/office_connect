@@ -123,3 +123,40 @@ async def load_nonworking_dates(
         )
     )
     return set(result.scalars())
+
+
+async def load_nonworking_labels(
+    session: "AsyncSession", start: date, end: date
+) -> dict[date, str]:
+    """``{calendar_date: name}`` for the same rows ``load_nonworking_dates`` returns.
+
+    A calendar can say *"Araw ng Kagitingan"* where a deadline engine only needs
+    to know the day does not count. Same filter, deliberately — a sibling here
+    rather than a second holiday query in the calendar package, because
+    ``core_holidays`` has exactly one reader (rule 10) and the day a
+    ``special_working`` rule changes, both answers must move together.
+
+    Weekends carry no label: they are non-working by arithmetic
+    (``WEEKEND``), not by a row, so there is no name to give them.
+    """
+    from sqlalchemy import select
+
+    from office_connect.core.models import Holiday
+
+    result = await session.execute(
+        select(Holiday.calendar_date, Holiday.name)
+        .where(
+            Holiday.calendar_date >= start,
+            Holiday.calendar_date <= end,
+            Holiday.is_active.is_(True),
+            Holiday.holiday_type.in_(NON_WORKING_HOLIDAY_TYPES),
+        )
+        # Deterministic winner when two rows share a date (a national holiday and
+        # a local suspension can coincide) — otherwise the label would depend on
+        # PG's row order, which is the same non-determinism D-1's `sorted()` fixed.
+        .order_by(Holiday.calendar_date, Holiday.name)
+    )
+    labels: dict[date, str] = {}
+    for day, name in result.all():
+        labels.setdefault(day, name)
+    return labels

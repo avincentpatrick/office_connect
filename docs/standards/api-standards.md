@@ -765,3 +765,74 @@ as an empty list: `[]` is a claim about the world, and a claim about somebody's
 entitlements is the last one worth guessing at. Note the consequence for clients,
 recorded rather than discovered: an auth surface that can now fail on a database
 blip is one a client may render as "signed out" unless it distinguishes the two.
+
+## §9k. A surface composed of sources that cannot see each other (Stage D Increment 2, 2026-08-09)
+
+`GET /api/v1/calendar` is the first endpoint whose content comes from **more than
+one module**, and the first that could not be written the obvious way. The Calendar
+of Activities reads `core_activities` (core), travel claims and liquidation clocks
+(reimbursement), and — as later stages ship — room bookings, document deadlines and
+SPMS dates. But `oversight_scope` lives in
+`modules/reimbursement/services/queue.py`, and the import-linter contracts forbid
+**both** `core → modules` and `module ↔ module`. There is no import that reaches the
+rule, and there was never meant to be.
+
+So the calendar **inverts**: `core/calendar/sources.py` owns a `CalendarSource`
+value type and a `register_source()` registry; each module implements its own source
+(where its own scope rule is a local import); and `main.py` — the composition root
+that already mounts module routers for exactly this reason — registers them. The
+precedent is `core/notifications/outbox.py::register_enqueuer`, whose docstring says
+the same sentence about the worker.
+
+**This is not a workaround for the contracts. It is the shape the contracts were
+protecting.** A join written in core would have hard-coded one module's placement
+rule into the platform floor, and the second contributor would have had to match it
+or fork it. Five rules follow.
+
+- **Each source applies its OWN scope rule, and the rule's NAME is a required
+  field.** `CalendarSource.scope_rule` is a string naming the exact predicate the
+  source applies, and `register_source` **raises** on an empty one. That makes the
+  §9h guarantee structural per contributor — a source can only ever return rows its
+  own module already lets this actor read one at a time — and it makes the registry
+  a census substrate. R-9's lesson in a third place: *absence never fails a test
+  unless you make it.*
+
+- **A source that narrows to empty is not §9f's lie; a SURFACE that does, is.** §9f
+  says refuse rather than return `200 []`, because an empty list claims *"there is no
+  work"*. That still binds the endpoint: no `activity.calendar.read` → 403. It does
+  **not** bind a *layer*. An actor who oversees nobody legitimately owns this
+  calendar — activities are tenant-wide — so their travel layer is genuinely empty,
+  and the response says so in words (`bounded_note`) rather than by omission. The
+  test to apply: **does the surface as a whole belong to this actor?** If yes, a
+  narrowed layer is a fact about them; if no, it is a refusal wearing a list's
+  clothes.
+
+- **The feature flag moves from the route onto the source.** A core route cannot
+  carry `require_feature("module.reimbursement")` — core may not know the module
+  exists. So `CalendarSource.feature_flag` is checked by the dispatcher through the
+  same reader `require_feature` uses, and a flag-OFF source is **absent from
+  `sources[]`**, not present-and-empty. §9's "a module with its flag off is
+  indistinguishable from a module that was never built", preserved at row
+  granularity instead of route granularity. An empty `reimb.travel` block would
+  announce a module the tenant has not bought.
+
+- **A failing source fails the request.** No silent partial calendar, no
+  "unavailable" placeholder that the page renders as a normal empty section. §9f's
+  own words: a short list that looks complete is worse than a number. Loud beats
+  plausible, and a calendar is a surface people plan against.
+
+- **The window is the paging control; there is no `limit`/`offset`.** §9g already
+  ruled that *"a client-tunable cap on a board is a request to page a board"*. It
+  binds harder here for a reason worth stating: with per-source caps, an offset deep
+  enough to pass one source's cap drops rows from the **middle** of the merged
+  chronology while `total` still looks right. Move the dates, not an offset. Each
+  source is capped and ordered `(date_start, ref)` so truncation can only ever drop
+  the *latest* rows in the window, and the cap rides the envelope (§9g) so the page
+  quotes the server's number.
+
+**Also settled here:** `total` is the sum of the sources' pre-cap counts, and a
+source's `bounded_note` is a **sentence, never a count of hidden rows**. "3 more you
+cannot see" is a disclosure the actor could not have assembled by hand — it tells a
+division chief how much travel a sibling division booked — and §9h is explicit that
+for an aggregate the scope IS the privacy boundary. State the rule; never the
+residue.

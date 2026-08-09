@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Banknote,
+  CalendarDays,
   Home,
   Inbox,
   LayoutGrid,
@@ -134,6 +135,22 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "Why claims come back, and what to pre-check.",
         intentKeywords: [
           "insights", "returns", "why", "reasons", "learning", "pre-check",
+        ],
+      },
+      {
+        // Stage D-2. NOT flag-gated: the Calendar is a CORE surface like
+        // /directory and /audit, and there is no `module.calendar` to gate on —
+        // inventing one would ship a flag for a module that does not exist. The
+        // module CONTRIBUTIONS inside it are flag-gated per source instead
+        // (api-standards §9k), which is why an OFF module leaves no trace here.
+        label: "Calendar",
+        to: "/calendar",
+        icon: CalendarDays,
+        requiredPermissions: ["activity.calendar.read"],
+        description: "What is happening, and what is due.",
+        intentKeywords: [
+          "calendar", "activities", "schedule", "when", "upcoming", "agenda",
+          "deadline", "due", "events",
         ],
       },
       {

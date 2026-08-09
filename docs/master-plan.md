@@ -77,6 +77,7 @@ compiled by hand. Connectedness is enforced structurally, not aspirationally:
 | 14 | **Staff directory + org units** | Plantilla-authoritative person registry + self-referencing `core_org_units`; modules join, never copy. | all modules |
 | 15 | **Activity spine** | `core_activities` (+ `core_activity_tags` for GAD / CCET climate / DRR / UHC — configurable taxonomies, never boolean columns) + `core_pap_codes` (per-FY PREXC tree: cost structure → OO → program → subprogram → activity/project; UACS never-reuse/deactivate semantics; year-rollover re-mapping wizard) + `core_object_codes` (10-digit UACS; travel = 5-02-01-010-00). | everything (§1.2) |
 | 16 | **AI service** | CSS-IS `ai_core` promoted (Gemini + Groq fallback, DB-backed budget, audit tables reconciled with the query log). **The Stage D-1 query bar is deterministic and has NO `ai_core` dependency** — it becomes a consumer only if a later increment adds natural-language intent. `ai_core` is its own Stage D increment (D-4). | query bar *(only if NL intent ships)*, css, later modules |
+| 17 | **Calendar composition** (`core/calendar/`) — **SHIPPED 2026-08-09 (Stage D-2; contract: `docs/standards/api-standards.md` §9k)** | The registry that lets ONE agenda surface read many modules without any of them importing each other. Core owns the `CalendarEvent` value type, the `CalendarSource` dataclass, `register_source()` and the merge/window/day-grouping; each module implements a source where its OWN scope rule is a local import; `main.py` registers them. Every source declares the NAME of the rule it applies (`register_source` refuses an empty one) and may carry a feature flag — a flag-OFF source is **absent**, not empty. **Not the same thing as #11** (`core_compliance_deadlines` is *data*; this is *composition*) and **not #6** (`core/workdays` is the date math this consumes). A second calendar-shaped surface reads this registry; it never grows its own fan-out. | reimb (travel + liquidation), admin (bookings), dtwis (document deadlines), perf (SPMS dates), reports |
 
 ### 1.2 The connection spine
 
@@ -102,7 +103,7 @@ and every rating chain.
 | reimb → core_activities | `activity_id` | claim tagged to activity ("pick or create" in wizard step 1) |
 | reimb → DTWIS | `dpo_no` (natural) + `dpo_document_id` (FK, DPO backfill task at Stage E) | soft ref hardened later |
 | reimb → plan | `pap_code_id` + object code 5-02-01-010-00 on claims | travel spend feeds WFP utilization & BAR |
-| reimb → calendar | CA `date_return` → liquidation countdown on linked event | derived badge |
+| reimb → calendar | **IMPLEMENTED Stage D-2** as two registered `CalendarSource`s (§1.1 #17), not a join: `reimb.travel` (scoped by `oversight_scope` ∪ own) + `reimb.liquidation` (own advances only). The countdown reads **`reimb_cash_advances.deadline_date`**, never `reimb_claims.liquidation_deadline` — that column is a mirror, and feeding both would draw two clocks for one obligation | derived badge |
 | dtwis → core_activities | multi-tag `activity_id` | documents grouped per activity |
 | dtwis → core_contacts | sender/recipient FKs | one external-contacts registry |
 | dtwis → qms | tracked doc may cite controlled-document code | reference only |

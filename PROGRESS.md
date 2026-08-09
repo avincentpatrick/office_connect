@@ -2,7 +2,7 @@
 
 ## ▶ RESUME *(copy this one line to start the next session)*
 
-> **Resume Office-Connect — Stage D Increment 2: the Calendar of Activities surface.**
+> **Resume Office-Connect — Stage D Increment 3: CSS-IS reverse-proxied into the shell.**
 
 That one line is all you paste. Per the start-of-session ritual I read the
 *Current Status* + *Next Session Prompt* below (and the cited module docs) to
@@ -10,320 +10,243 @@ expand it into the full task and confirm with you before starting.
 
 ## ▶ CURRENT STATUS *(overwrite each session)*
 
-- **Phase:** **STAGE D IS OPEN — Increment 1 (landing shell + query bar) is
-  COMPLETE.** Stage C remains complete and pushed at `0.3.0` /
-  `stage-c-complete`. Stage D has four increments; **D-1 is done, D-2 (Calendar
-  of Activities) is next**, then D-3 (CSS-IS reverse proxy) and D-4 (`ai_core`).
-  D-1 gave the platform a front door. Signing in used to drop a user onto a
-  module page; `/` is now a **minimalist** landing — the master plan's word, and
-  a constraint rather than a mood: it is the anti-dashboard. It answers exactly
-  one question, *what can this person open?*, and **makes no API calls of its
-  own** (everything renders from `/config` + `/auth/me`, which the shell already
-  fetched). Shipped: **`permissions` on `/auth/me`**; **`NAV_GROUPS` re-gated on
-  permission codes** with `requiredRoles` deleted; **`nav-match.ts`** (a
-  deterministic six-tier matcher); **`QueryBar`** (ui-standards §3 **row 24**);
-  the rebuilt **`HomePage`**; **`landing-copy.ts`**; and
-  **`no-grants@doh.gov`** in `load-fixtures`.
-- **Last session:** #29 — 2026-08-06 — **Stage D Increment 1: the landing shell
-  + query bar. D-1 CLOSED.** Docs first (rule 1): ui-standards §3 row 24 + §4
-  template note + **§7 deferral LIFTED** + §8 spec, **api-standards §9j**,
-  `docs/modules/landing.md` §1/§5/**§6 filled** (four kickoff decisions + an
-  18-row delta register), master-plan §1.1 rows 9 and 16 clarified. Then code:
-  `effective_permission_codes` extracted in `core/auth/dependencies.py`,
-  `MeResponse.permissions`, the `/auth/me` handler,
-  `tests/test_auth_me_permissions.py`; FE `types.ts`,
-  `test/auth-fixtures.ts`, `harness.tsx` context options, `nav.ts`,
-  `nav.test.ts` (+ the census), `nav-match.ts` + tests, `QueryBar` + tests,
-  `HomePage` + `landing-copy.ts` + tests, `/ui-foundation` section 24,
-  `ops/bootstrap.py` `_ensure_no_grants_account`.
-- **⚠ THE DEFECT D-1 FIXED, and it was live in production-shaped dev.** The nav
-  gated on **role codes**, because `/auth/me` never exposed permissions — a
-  deferral recorded at R-2-shell (*"until a surface needs finer gating"*). Two
-  consequences, and the second is the one nobody had noticed. **(1)** A
-  grant-less user was shown a **Reimbursement** link that 403s on all 32 module
-  routes. R-9 made that the *common* case, not the edge one: nothing in the
-  codebase auto-assigns a role, so the cohort IS the grant list, and a landing
-  page whose whole promise is "say plainly what you can do" is exactly the
-  surface the deferral was waiting for. **(2) `me.roles` is a login-time
-  snapshot.** `SessionStore.set_permissions_version` stamps the version onto
-  live sessions but **never rewrites `roles`** — so a role granted *after* login
-  did not change the nav until the user signed out and back in, while
-  api-standards §7 promises everywhere else that a grant lands on the **next
-  request**. The old gate was not merely coarse; **it was out of date.** That
-  fact is now asserted:
-  `test_a_grant_lands_on_the_next_me_request_while_roles_stay_stale` proves the
-  permission set is fresh **and** that `roles` is not, on the same request. It
-  is why `requiredRoles` was **deleted rather than kept alongside** — two gates,
-  one stale, with no way for a reviewer to tell which is authoritative.
-- **The four D-1 kickoff decisions (all user-confirmed):** **(1) Lift the
-  deferral** — `permissions` on `MeResponse`, not a sibling endpoint
-  (api-standards §1 blesses additive `v1` fields; a sibling adds a third boot
-  round-trip and a skew window where the nav renders from a set fetched *after*
-  the roles beside it). **(2) The query bar lives on the landing only**, built
-  fully controlled with zero internal state so the shell can later drive it from
-  a `?q=` with no rewrite. **(3) No match = refuse, then name everything
-  openable** — R-9's doctrine that a refusal names the surface that *does*
-  answer. **(4) Pure front door** — no counts, no dashboard, no API calls;
-  `test_makes_no_network_requests` pins it with a `stubFetch({})` that throws on
-  any request.
-- **D-1 design notes worth remembering.** **The matcher is generic over
-  `{label, intentKeywords}` and imports nothing from `nav.ts`** — it has no way
-  to acquire `NAV_GROUPS`, so it *structurally cannot* offer an ungated
-  destination. §9f's mistake foreclosed rather than avoided by discipline; the
-  test that pins it is literally `finds nothing in an empty item list — it
-  cannot see NAV_GROUPS`. **The tiers interleave label and keyword**
-  (exact → prefix → substring, either field) because a label and its keywords
-  are two spellings of one destination, not two levels of authority — so `"coa"`
-  reaches Cash advances ahead of any incidental label prefix. **The oversight
-  triple is `OVERSIGHT_PERMS` verbatim**, because holding any ONE of them is
-  exactly equivalent to `oversight_scope()` returning a non-empty scope; the
-  backend test that pins it names `web/src/app/nav.ts` in its failure message,
-  so moving the server's rule tells you which FE file to update. **`sorted()` is
-  not tidiness:** `get_or_load` returns a `set` on *both* the hit and miss
-  paths, so an unsorted response would be non-deterministic **as a function of
-  cache warmth** — stable on a warm dev box, arbitrary in prod. **There is
-  exactly ONE list on the landing**, heading and contents varying: rendering
-  "results" and "everything you can open" as two regions would put two nodes
-  with the same `href` and the same accessible name in the DOM (ui-standards §4's
-  one-node rule), and a length-1 `getAllByRole` assertion guards it.
-- **⚠ The query bar is a SEARCH FIELD, not an ARIA combobox — and that is the
-  part most likely to be "improved" later.** Radix ships no Combobox, so the
-  pattern means hand-rolling `role="combobox"` + `aria-expanded` +
-  `aria-activedescendant` + virtual focus: the hardest widget in ARIA, whose
-  1.0→1.2 semantics changed incompatibly and whose announcements still differ
-  across NVDA/JAWS/VoiceOver and are **unusable on iOS VoiceOver** — the platform
-  ui-standards §6 puts first. What a combobox buys (an overlay popup, selection
-  without moving focus) this surface does not need: the content under the bar
-  *is* the list being filtered. Real links in a real list are in the tab order
-  **by definition**. The prohibition is asserted, not just written down:
-  `does not use combobox semantics` **is** the inventory row's contract.
-  **Enter is a deliberate no-op** ("Enter goes to the first result" is an
-  invisible rule, and a wrong top match moves the user somewhere they did not
-  ask for); **Escape clears and keeps focus**. Both are recorded as deferrable
-  in landing.md — the exactly-one-match Enter variant is ~5 lines + 2 tests.
-- **⚠ Two findings the tests surfaced, worth carrying.** **(a) A landmark and
-  its field must not share an accessible name.** The first `QueryBar` gave the
-  `role="search"` form `aria-label={label}` — the same string as the visible
-  `<label>` — which made `getByLabelText` ambiguous and would make a screen
-  reader's region list ambiguous with the control inside it. The landmark is now
-  **unnamed by default** (`landmarkLabel` is opt-in for the day a page carries
-  two search regions). **(b) `import.meta.env.DEV` is TRUE under vitest**, so the
-  `devOnly` "UI foundation" item is openable in every FE test — which means the
-  landing's **no-access state is unreachable in a dev build** while that route
-  exists. Correct behaviour, not a bug: in dev the item genuinely is openable
-  and in prod it is statically eliminated. The no-access tests therefore assert
-  the **production shape** via `vi.stubEnv("DEV", false)`; `nav.test.ts` asserts
-  the dev shape *including* `/ui-foundation`, with a comment, so neither test
-  passes for the wrong reason.
-- **The nav census ships from day one** (`nav.test.ts`), on the R-9 census's
-  reasoning: the risk is not a wrong row, it is a **missing** one — an item
-  added tomorrow with no `requiredPermissions` is silently openable by everyone,
-  and *absence never fails a test*. Unlike the backend census it needs no app
-  introspection (`NAV_GROUPS` is already an array). Every row must also name
-  **the server rule it mirrors** — a cross-reference, not an assertion, because
-  a browser test cannot check the server. This file proves the map is complete;
-  the backend suite proves the territory matches it.
-- **⚠ `/auth/me` is no longer DB-free.** A cold permission cache costs one
-  indexed join. That is the same work `require_permission` already does on every
-  gated request, moved one endpoint earlier — and the entry it warms is the one
-  the first module request would otherwise have missed. **The consequence,
-  recorded rather than discovered:** under a DB outage *with* a cold cache,
-  `/auth/me` raises → `AuthProvider` yields `me = null` → `RequireAuth`
-  redirects, so **a DB blip now reads as being signed out**. A distinct "we could
-  not check your session" client screen is a recorded deferral (landing.md delta
-  18). It must never "degrade to `[]`" — that is the one option that lies, and it
-  lies in exactly the no-access state the landing exists to tell the truth about.
-- **Smoke accounts (dev DB only), all `BoardSmoke!2026x`:**
-  `board-smoke@doh.gov` (GLOBAL `admin_officer`), `board-traveller@doh.gov`
-  (plain `staff`, linked to staff `SMK-A-1` in Smoke Office A),
-  `scoped-officer@doh.gov` (`admin_officer` scoped to Smoke Office B),
-  `smoke-b-traveller@doh.gov` (plain `staff` in office B — the stranger),
-  `smoke-approver-a@doh.gov` (`approver` on division A1), and **NEW at #29**
-  **`no-grants@doh.gov` — the only account that holds NOTHING.** Every other dev
-  account holds a role and every seeded role carries at least
-  `reimb.claim.read`, so before it existed the landing's no-access state — the
-  common case after R-9 — **could not be driven over real HTTP at all.** It is
-  created idempotently by `bootstrap load-fixtures`. **Never grant it a role
-  "for convenience later": having none is its entire value.**
-- **D-1 QA results.** FE gate **GREEN**: tsc + eslint + **325 vitest** (up from
-  260) + build. `lint-imports` **3/3**, `alembic check` clean, head **`0023`**
-  (D-1 adds no migration). **Live smoke 25/25** over real HTTP as FOUR actors,
-  driving the landing's two inputs and the invariant that matters: *everything
-  the landing lists actually opens, and everything it does not list is refused.*
-  Global `admin_officer` → 5 destinations, all 200. Plain `staff` → Reimbursement
-  only, and the queue **403s**. Scoped `admin_officer` → **identical to the
-  global officer's**, which is the designed behaviour (the nav gates on *holding*
-  the permission, not on the grant's scope — a scoped officer really can open the
-  queue, they just see less inside it). `no-grants@doh.gov` → lists **NOTHING**,
-  `permissions: []`, and 403 on both `my-work` and `claims`. Also confirmed
-  `/config` carries **no** per-user field (api-standards §9j's first rule).
-- **⚠ THE BACKEND SUITE IS NOT GREEN, AND IT IS NOT D-1's DOING — this is the
-  finding to act on next session.** Three full runs were made to establish that,
-  and each produced a **different** failure set: at HEAD *2 failed*
-  (`test_reimb_external_events` — a notification count of 2 where 3 was
-  expected); at the **pre-D-1 commit** *2 failed* (`test_reimb_liquidation_reminders`
-  — an in-app row where none was expected); at HEAD again *1 failed*
-  (`test_reimb_cash_advances::test_the_advance_is_audited_with_its_actor`, where
-  the audit row carried actor `7664` instead of the test's own admin `29755`).
-  **Failures that move between runs, including on code that predates the change,
-  are not a regression.** Both suspect files also pass **100 % in isolation**,
-  and pass alongside the new `test_auth_me_permissions.py`.
-  **The diagnosis, from the third failure — it is the most informative one.** An
-  audit row picking up a *stale actor id* is a leaked `set_audit_context`, i.e.
-  shared state surviving across tests. And the ids themselves tell the rest of
-  the story: **`core_users.id` has reached ≈29,755**, so the dev database has
-  accumulated tens of thousands of rows over many suite runs. `seed_guard`
-  (#28) guards **seeded reference rows** and does exactly that job; it was never
-  meant to catch an append-only outbox and an audit chain growing without bound.
-  **The documented reset is `docker compose down -v`** (conftest's own docstring
-  says so) — **NOT run, because it is destructive**: it would wipe the six dev
-  smoke accounts and the `load-pilot-fixtures` demo data, all of which would need
-  re-bootstrapping. **That is the owner's call, and it is the first question of
-  the next session.** If a reset does not settle it, the next suspect is a
-  fixture that leaves `set_audit_context` set — the fourth costume of the
-  test-hygiene disease, and the one `seed_guard` cannot see.
+- **Phase:** **STAGE D IS OPEN — Increments 1 and 2 are COMPLETE.** Stage C
+  remains complete and pushed at `0.3.0` / `stage-c-complete`. **D-3 (CSS-IS
+  reverse proxy) is next, then D-4 (`ai_core`).** D-1 gave the platform a front
+  door; **D-2 gave it the first surface that reads the connection spine.**
+  `GET /api/v1/calendar` + the `/calendar` page answer *what is happening, and
+  what is due?* over three sources — activities, travel, liquidation clocks.
+  Head is **`0024`**. Version stays `0.3.0`; Stage D's gate is the next
+  promotion AND the next push.
+- **Last session:** #30 — 2026-08-09 — **Stage D Increment 2: the Calendar of
+  Activities. D-2 CLOSED.** Docs first (rule 1): **api-standards §9k**,
+  ui-standards §4 template note, **new `docs/modules/calendar.md`** (rule 8),
+  landing.md §1/§5/§6e, master-plan §1.1 **core-service #17** + §1.3. Then code:
+  `core/calendar/{sources,service,activities}.py`, `core/api/calendar.py` +
+  `schemas/calendar.py`, `core/features.py`, `workdays.load_nonworking_labels`,
+  `activity.calendar.read` in the rbac seeds, migration **0024**,
+  `modules/reimbursement/calendar.py`, `main.py` registration, richer fixtures;
+  FE `api/calendar.ts`, `CalendarPage`, `calendar-copy.ts`, nav row + census,
+  route.
+- **✅ THE #29 SUITE MYSTERY IS SOLVED, AND THE ANSWER WAS ACCUMULATION.** The
+  owner authorised the destructive reset. `docker compose down -v` + a full
+  re-bootstrap, and the suite came back **1012 passed, 0 failed** on the first
+  run. Three runs at #29 had each failed a *different* set; nothing about the
+  code changed. **Evidence gathered before the reset, worth keeping:**
+  `core_users` had reached **30,493**, `core_audit_logs` **568,461** — and
+  `core_compliance_deadlines` held **70 rows of which 48 were leaked
+  `csmr_to_arta_<hash>` test rows** against 22 real seeds.
+- **⚠ `seed_guard` CANNOT SEE THAT CLASS OF LEAK, and this is the finding to
+  carry.** It snapshots the rows each dataset *declares* and diffs them before
+  and after the run — so it catches a seeded row **modified** and not restored,
+  which is exactly the job it was built for at #28. Rows **ADDED** under fresh
+  natural keys are invisible to it. Forty-eight hash-suffixed rows in a seeded
+  reference table are what that blind spot looks like. A `seed_guard` sibling
+  that fails a run which *adds* rows to a seeded table is the obvious next
+  hardening; it was **NOT built this session** (scope), and it is recorded here
+  rather than left to be re-discovered.
+- **⚠ THE RESET DESTROYED FIVE ACCOUNTS NO CODE COULD RECREATE — now fixed.**
+  PROGRESS.md described the six-account smoke cohort in prose, but only
+  `no-grants@doh.gov` was reproducible (added to `bootstrap` at #29, precisely
+  because someone had hit this wall once already). The other five had been
+  minted by hand in earlier sessions. They are now `_SMOKE_ORG_UNITS` /
+  `_SMOKE_STAFF` / `_SMOKE_ACCOUNTS` + `_ensure_smoke_cohort()` in
+  `ops/bootstrap.py`, created idempotently by `load-fixtures`. **A cohort
+  described in a document is not a cohort** — the same lesson `_backdated`
+  learned about docstrings that ask callers to clean up.
+- **The architecture decision D-2 turned on.** `oversight_scope` +
+  `OVERSIGHT_PERMS` live in `modules/reimbursement/services/queue.py`, and the
+  import-linter contracts forbid **both** `core → modules` and `module ↔
+  module`. There is no import that reaches the rule. So the calendar
+  **inverts**: core owns a `CalendarSource` value type + `register_source()`;
+  each module implements a source where its own scope rule is a local import;
+  `main.py` registers them. Precedent already in the tree —
+  `core/notifications/outbox.py::register_enqueuer`. **This is not a workaround
+  for the contracts, it is the shape they were protecting:** a join written in
+  core would have hard-coded one module's org-placement rule into the platform
+  floor, and contributor number two would have had to match it or fork it. Room
+  bookings, DTWIS deadlines and SPMS dates now arrive as one file and one line.
+- **The twelve D-2 kickoff decisions (all user-confirmed)** are recorded in
+  `docs/modules/calendar.md` §5. The four that shape the code most: **(2)**
+  activities tenant-wide, travel bounded by `oversight_scope` ∪ your own;
+  **(3)** an agenda LIST on the existing `ListPage`, not a month grid; **(9)**
+  state the RULE, never a count of hidden rows; **(11)** the liquidation layer
+  is **own advances only**.
+- **⚠ TWO CORRECTIONS FOUND DURING DESIGN, both worth remembering.**
+  **(a) `reimb_claims.liquidation_deadline` is a MIRROR** —
+  `cash_advance.py::link_claim` says so verbatim (*"a MIRROR, written here
+  only"*), with `reimb_cash_advances.deadline_date` the source of truth. Feeding
+  both would have drawn **two countdown rows for one obligation on the same
+  day**, a defect that looks exactly like working software. **(b) There is NO
+  set-form scope rule for cash advances anywhere:** `GET /cash-advances` is
+  single-claimant and `deps.can_read_cash_advance` is a per-ROW rule placing a
+  person by `staff.section_id or staff.division_id` — a *different* rule from
+  the claim's `WorkflowInstance.org_unit_id`. Building the set form would mean a
+  second org-placement predicate that must agree with the first forever. Hence
+  own-only. Cost to widen later: one service function, two census rows, three
+  security tests.
+- **⚠ THE CENSUS GAP — the most important thing in this increment.**
+  `tests/test_reimb_authz_census.py` filters routes on the
+  `/api/v1/reimbursement` prefix and `test_reimb_scope_security.py` asserts
+  `len(oversight_paths) == 3`. The calendar's travel source is a **FOURTH
+  consumer of `oversight_scope`** living outside that prefix, so **both stay
+  green whatever the calendar does.** Closed by three deliverables:
+  **`tests/test_calendar_sources.py`** (a SOURCE census — the third instance of
+  the R-9 pattern after `AUTHZ_TABLE` and `NAV_CENSUS`), **two new
+  attacker-shaped tests inside `test_reimb_scope_security.py`** (where the other
+  chairs already live), and an **amended drift message** naming the new file.
+  `register_source` **raises** on an empty `scope_rule`, so the omission is
+  impossible at import time rather than merely discouraged.
+- **`reimb_claims.activity_id` is populated for the first time.** It had been
+  validated on PATCH since R-1 and was non-null on **0 of 838** claims, because
+  the wizard's activity picker was cut for want of an activities endpoint
+  (reimbursement.md, spec §9.3 step 1). All 10 demo claims now carry one. **The
+  picker itself is now UNBLOCKED and deliberately not built** — recorded as a
+  deferral, not an oversight.
+- **The clock convention a calendar needs.** No `freezegun` in this repo, by
+  design. `?start=&end=` **IS the seam `_backdated` was faking**: HTTP tests
+  create rows in a **private year (`_ISOLATED_YEAR = 2029`)** and ask for that
+  year's window, so absolute assertions are safe and nothing needs undoing.
+  `urgency` is the one thing a window cannot isolate (it is relative to *today*)
+  — asserted as a SHAPE over HTTP, pinned exactly by `deadline.py`'s own unit
+  tests. Rejected: a `?today=` debug parameter — a client-controlled clock on a
+  surface whose job is stating deadlines is the same mistake as client-side
+  money.
+- **Smoke accounts (dev DB only), all `BoardSmoke!2026x`, NOW REPRODUCIBLE via
+  `bootstrap load-fixtures`:** `board-smoke@doh.gov` (GLOBAL `admin_officer`),
+  `scoped-officer@doh.gov` (`admin_officer` scoped to **Smoke Office B**),
+  `smoke-approver-a@doh.gov` (`approver` on **Smoke Division A1**),
+  `board-traveller@doh.gov` (plain `staff`, staff `SMK-A-1` in A1),
+  `smoke-b-traveller@doh.gov` (plain `staff`, `SMK-B-1` in B1 — the stranger),
+  and `no-grants@doh.gov` — **the only account that holds NOTHING; never grant
+  it a role.** The tree is deliberately separate from BLHSD, and the scoped
+  officer is granted on the **office** while staff sit in the **division** below
+  it, so smoke exercises `descendants_or_self` rather than an equality on one
+  unit.
+- **⚠ Note on privileged roles in tests:** `approver` / `admin_officer` /
+  `system_admin` require MFA enrolment before their session leaves the pending
+  state, so an HTTP test that logs one in gets `mfa_setup_required`. That is a
+  property of those roles, not of any surface — drive `staff` over HTTP and
+  assert the grants against `ROLE_GRANTS` directly.
 - **Test-hygiene note (still true):** a full-suite run leaves
   `module.reimbursement` OFF in dev. Flip it back with
   `python -m office_connect.ops.bootstrap set-flag module.reimbursement --on`.
 - **⚠ FE test note (still true):** run the backend and FE gates **in sequence,
   not in parallel** — one `DocumentsStepPage` test flaked at #28 under CPU
-  contention (a 1 s `findByRole` wait, not a logic race).
+  contention.
 - **Blockers / waiting on user:** none.
 - **⚠ Open questions for the accountant / resident COA auditor (unchanged by
-  D-1):** **amount tiers** for both chains still need DOH DO 2019-0225/-0225A —
+  D-2):** **amount tiers** for both chains still need DOH DO 2019-0225/-0225A —
   both chains stay untiered and gain tiers as an authored v2. **Wet-signature
-  capture** is narrowed to one question: whether the signed page must be BOUND to
-  the step as a frozen snapshot (core-service #3's unbuilt half) or whether
-  filing it under `CRT-C` suffices. The A/B/C **shape**, the **CTC-47** question,
-  the **payout shape** and the **retention terminals** are all CLOSED. **Worth
-  confirming when convenient (not blocking):** whether DOH BLHSD's FMS quotes a
-  DV number *and* an ADA reference as two separate facts — if so, the payout
-  record grows a second column as an authored v2.
+  capture** is narrowed to one question: whether the signed page must be BOUND
+  to the step as a frozen snapshot (core-service #3's unbuilt half) or whether
+  filing it under `CRT-C` suffices. The A/B/C **shape**, the **CTC-47**
+  question, the **payout shape** and the **retention terminals** are all CLOSED.
+  **Worth confirming when convenient (not blocking):** whether DOH BLHSD's FMS
+  quotes a DV number *and* an ADA reference as two separate facts — if so, the
+  payout record grows a second column as an authored v2.
 
 ## ▶ NEXT SESSION PROMPT *(rule 3 — the full brief I expand the RESUME line into)*
 
 ```text
 Context: Stage A + B + C are complete and PUSHED (0.3.0, tag `stage-c-complete`). STAGE D
-IS OPEN and Increment 1 is CLOSED: the platform has a front door. `/` is a minimalist
-landing that answers "what can this person open?" and nothing else - no counts, no
-dashboard, and NO API calls of its own (it renders from /config + /auth/me, already
-fetched by the shell). `/auth/me` now carries sorted `permissions`; NAV_GROUPS gates on
-permission codes and `requiredRoles` is DELETED; `nav-match.ts` is a deterministic
-six-tier matcher; `QueryBar` is ui-standards §3 row 24. Head 0023 (D-1 added no
-migration). Version stays 0.3.0 - Stage D's gate is the next promotion AND the next push.
+IS OPEN with TWO of four increments closed. D-1 gave the platform a front door (`/` is a
+minimalist landing + a deterministic query bar, no API calls of its own). D-2 gave it the
+CALENDAR OF ACTIVITIES: `GET /api/v1/calendar` + the `/calendar` page, an agenda list over
+THREE sources - `core_activities` (tenant-wide), travel claims (scoped by
+`queue.oversight_scope` UNION your own), and your own cash-advance liquidation clocks.
+Head is 0024. Version stays 0.3.0 - Stage D's gate is the next promotion AND the next push.
 
-⚠ FIRST, BEFORE ANY FEATURE WORK - THE SUITE IS NOT GREEN AND IT IS NOT D-1's DOING.
-Three full runs at #29 each failed a DIFFERENT set: 2 in test_reimb_external_events (HEAD),
-2 in test_reimb_liquidation_reminders (at the PRE-D-1 commit, i.e. code D-1 never touched),
-1 in test_reimb_cash_advances (HEAD again). Every suspect file passes 100% in isolation.
-Moving failures on code that predates the change are not a regression - but the suite
-cannot be called green until this is settled, and Stage D's gate is a PUSH.
-The diagnosis, from the most informative failure: an audit row carried actor id 7664 where
-the test's own admin was 29755 - a leaked `set_audit_context`, i.e. shared state surviving
-across tests. And `core_users.id` has reached ~29,755, so the dev DB has accumulated tens
-of thousands of rows over many runs. `seed_guard` (#28) guards SEEDED REFERENCE rows and
-does that job well; it was never meant to catch an append-only outbox and an audit chain
-growing without bound.
-ASK THE OWNER FIRST: `docker compose down -v` is the documented reset (conftest says so)
-but it is DESTRUCTIVE - it wipes the six dev smoke accounts and the load-pilot-fixtures
-demo data, all of which need re-bootstrapping (init / seed-rbac / seed-workflows /
-load-fixtures / load-pilot-fixtures / set-flag, plus re-minting the smoke logins).
-If a reset does NOT settle it, hunt the fixture that leaves `set_audit_context` set -
-the fourth costume of the test-hygiene disease, and the one `seed_guard` cannot see.
+THE SUITE IS GREEN AND THE #29 MYSTERY IS CLOSED. The owner authorised
+`docker compose down -v`; after a full re-bootstrap the suite ran 1012 passed / 0 failed,
+then 1046 with D-2's tests. The moving failures were ACCUMULATION, not a code defect
+(core_users had reached 30,493; core_audit_logs 568,461; core_compliance_deadlines held 48
+leaked `csmr_to_arta_<hash>` test rows against 22 real seeds). Do NOT go hunting a leaked
+`set_audit_context` - that hypothesis is closed.
+⚠ BUT ONE THING IS RECORDED AND NOT BUILT: `seed_guard` catches a seeded row MODIFIED and
+not restored; it CANNOT see rows ADDED under fresh natural keys, which is what those 48
+rows were. A sibling guard that fails a run which ADDS rows to a seeded table is the
+obvious next hardening. It is a candidate for this session if you want a cheap, high-value
+start; it is not required by D-3.
 
-Task: STAGE D INCREMENT 2 - the CALENDAR OF ACTIVITIES surface. This is an OWNER-REQUESTED
-feature (recorded 2026-07-22) and master-plan §1.2 calls `core_activities` "the connection
-spine" - the answer to "what work was this for?". Expect a KICKOFF conversation before
-code: landing.md §5 explicitly defers "Calendar surface scope detail (filters, per-role
-views)" to this session's requirements discussion. Master plan Stage D says it reads:
-  - `core_activities` (+ `core_activity_tags` for GAD / CCET / DRR / UHC)
-  - travel claims (`reimb_claims.activity_id`)
-  - statutory deadlines from `core_compliance_deadlines`
-  - and, as later stages ship, room bookings / document deadlines / SPMS dates
-  - with CASH-ADVANCE LIQUIDATION COUNTDOWNS on funded events (COA 97-002 clocks surface
-    on the event that spent the money)
+Task: STAGE D INCREMENT 3 - CSS-IS REVERSE-PROXIED INTO THE SHELL ("session carries").
+Master plan Stage D. Expect a KICKOFF conversation before code - this increment is mostly
+DECISIONS, and several are security decisions:
+(1) WHAT does "reverse-proxied into the shell" mean concretely - an iframe, a path-prefixed
+    proxy route, or a link-out? Each has a different session story and a different CSP one.
+(2) HOW does the session carry? CSS-IS is a SEPARATE system (its own auth). Sharing a
+    cookie across origins, minting a token, or SSO are three very different blast radii.
+    api-standards §9j's rule binds here: telling a client what it may do is not authorizing
+    it, and nothing on a request path may accept an entitlement claim.
+(3) Is CSS-IS in this repo at all, or an external deployment? CHECK BEFORE ASSUMING -
+    `module.css_is` is a seeded feature flag (migration 0001) and `docs/modules/css-is.md`
+    exists, but no CSS-IS code has been written. If it does not exist yet, D-3 may reduce to
+    a flag-gated nav row plus the proxy plumbing, and that is a legitimate outcome to
+    propose rather than a shortfall.
+(4) The CSP question is real: the artifact/browser story for embedding a third-party app
+    inside the shell needs deciding before any markup is written.
 
-BOTH MODELS ALREADY EXIST: `core/models/activity.py`, `core/models/activity_tag.py`,
-`core/models/compliance_deadline.py`, `core/models/pap_code.py`. Check what is already
-seeded and what a read path would need before assuming a migration is required.
+FREE FROM D-2 - do NOT rebuild any of it:
+- **The CALENDAR SOURCE REGISTRY** (`core/calendar/sources.py`, master-plan §1.1 #17,
+  api-standards §9k). Any module that wants rows on the calendar writes ONE file and ONE
+  line in `main.py`. Core owns the protocol, the merge, the window and the day grouping.
+  `register_source` REFUSES a source with an empty `scope_rule`.
+- `core/features.py::feature_enabled` - the single reader of `core_feature_flags`, shared by
+  `require_feature` and the calendar's source dispatcher.
+- `core/workdays.load_nonworking_labels` - names a holiday instead of merely greying it.
+- The `activity.calendar.read` permission. `activity.read` / `activity.manage` are RESERVED
+  for a future activity-registry maintenance screen - do not repurpose the calendar's grant.
+- The reproducible SMOKE COHORT: `bootstrap load-fixtures` now creates all six dev logins
+  (`_ensure_smoke_cohort`), their org tree (SMOKE-A/A1, SMOKE-B/B1) and staff.
 
-THE QUESTIONS WORTH SETTLING AT KICKOFF (do not assume answers):
-(1) WHOSE calendar is it? A per-user view, an org-unit view, or one tenant-wide calendar
-    with filters? This is the §9f question in a new place: an aggregate over other
-    people's work needs a scope rule, and `reimb_claims` carries destinations, purposes
-    and peso totals. api-standards §9h already ruled that for an aggregate THE SCOPE IS
-    THE PRIVACY BOUNDARY - decide deliberately whether a travel claim appears on a
-    colleague's calendar at all, and refuse rather than return an empty month (§9f).
-(2) What does an event look like when the viewer may see the ACTIVITY but not the CLAIM
-    attached to it? A calendar that silently drops rows tells a different lie from one
-    that says "3 more you cannot see".
-(3) Is this a MONTH GRID or an agenda LIST? Phone-first (§6) argues hard for a list; a
-    grid is a new §4 layout template and a real a11y surface (a table of days is one of
-    the classic screen-reader traps). ui-standards §3/§4 get AMENDED BEFORE anything is
-    built - D-1, R-7-board and R-8 all did this and all three records say it saved rework.
-(4) Does the landing get a calendar strip? D-1 deliberately shipped the anti-dashboard and
-    left the door open. If yes, it breaks D-1's "no API calls" property - which is a real
-    decision with a recorded reason behind it, not an oversight to correct silently.
+DEFERRED, RECORDED, AND NOW UNBLOCKED - each is its own decision, do not start silently:
+- **Reimbursement's wizard activity picker.** It was cut from v1 for want of an activities
+  endpoint (reimbursement.md, spec §9.3 step 1). That endpoint now exists. All 10 demo
+  claims carry an `activity_id`; real ones still cannot.
+- **Statutory deadlines as a 4th calendar source.** DEFERRED with reasons in calendar.md
+  §5a: `core_compliance_deadlines` has NO due-date column - it stores `cadence` + `due_rule`
+  JSONB with **15 distinct kinds**, several unexpandable without inputs no table supplies
+  (`per_certification_body`, `before_expiry`, `working_days_from_event`). Its real consumer
+  is Stage H's Government Outputs countdown cards. Building it is an OCCURRENCE ENGINE, not
+  a query.
+- A month grid (fill-trigger: a user asking to see a whole month at once) · an activity
+  create/edit write path · a calendar strip on the landing (D-1's no-API-calls property is
+  deliberate and test-pinned).
 
-FREE FROM D-1 - do NOT rebuild: every new surface is ONE `NAV_GROUPS` row (gated, matchable
-on the query bar and listed on the landing the moment it is added) - and `nav.test.ts`'s
-CENSUS will FAIL the suite if that row ships without a declared `requiredPermissions` and
-the name of the server rule it mirrors. Author `description` + `intentKeywords` on the row;
-the query bar picks them up with no other change.
+⚠ THE CENSUS LESSON D-2 LEARNED, because it will recur at D-3. `test_reimb_authz_census.py`
+filters routes on the `/api/v1/reimbursement` PREFIX; `test_reimb_scope_security.py` asserts
+`len(oversight_paths) == 3`. The calendar became a FOURTH consumer of `oversight_scope`
+OUTSIDE that prefix, and both tests stayed green regardless of what it did. Any D-3 surface
+that reads module data from a core route has the identical hole. `tests/test_calendar_sources.py`
+is the pattern to copy.
 
-DEFERRED within Stage D (do not start these here): D-3 CSS-IS reverse-proxying into the
-shell, D-4 `ai_core` / the shared AI service. Each is its own increment.
-
-Available to build on - do NOT rebuild any of it:
-CORE - the workflow engine (#11), reference numbers (#5), checklist engine (#7), documents
-(#8) + snapshots (#3), attachments (#2), notifications outbox, `core/workdays` + the
-holiday calendar (#6 - the SINGLE working-day engine for every deadline; a calendar that
-does its own date math is the duplication rule 10 exists to stop),
-`org_units.descendants_or_self`/`ancestors_or_self`, `core/audit.py` + `verify_chain`,
-`core/ui/tokens.py`, RBAC + the permission cache, `effective_permission_codes`.
-FE - the app shell, 6 layout templates, the 24-row component inventory (incl. QueryBar),
-the runtime token pipeline, NAV_GROUPS + `visibleNavItems(features, permissions)`,
-`nav-match.ts`, the landing, `renderRoutes(routes, path, {me, config})` + `makeMe`/
-`makeConfig` in `test/auth-fixtures.ts`, `expectNoA11yViolations`.
-OPS - `bootstrap` (init / create-admin / seed-rbac / seed-workflows / promote-admin /
-load-fixtures / load-pilot-fixtures / load-reference / ingest-directory / set-flag /
-pilot-roster / send-test-email).
-
-NOTE api-standards §9..§9j - especially NEW §9j (telling a client what it may do is not
-authorizing it: a per-user payload never rides a shared-key cache; the "me" surface and the
-gate read the SAME resolver; it is discoverability, never authorization). NOTE §9f (a list
-may not borrow a row's read rule) and §9h (for an aggregate, the scope IS the privacy
-boundary) - both bind a calendar directly. NOTE ui-standards §7: the nav gates on
-PERMISSION CODES now, and deliberately NOT on org scope.
-NOTE `docs/modules/landing.md` §6c - the 18-row D-1 delta register, including the recorded
-deferrals (Enter-to-navigate, debounce, hyphen folding, the "we could not check your
-session" screen) and §6b's rule-10 check: the query bar is NOT core-service #9 (Search).
-
-TEST HYGIENE IS MECHANICAL: `tests/conftest.py::seed_guard` fails the run if seeded
-reference data was modified and not restored; `_backdated` is a context manager that owns
-its undo. The three shapes still hold as guidance - (a) dates relative to today, (b)
-absolute assertions on counted surfaces, (c) shared seeded data. A CALENDAR IS SHAPE (a)
-IN ITS PUREST FORM: never assert on "this month" without pinning the clock.
-⚠ `import.meta.env.DEV` is TRUE under vitest, so `devOnly` nav items appear in every FE
-assertion; use `vi.stubEnv("DEV", false)` when asserting the production shape.
+TEST HYGIENE IS MECHANICAL: `tests/conftest.py::seed_guard`; `_backdated` owns its undo.
+⚠ A CALENDAR-SHAPED SURFACE USES THE PRIVATE-YEAR CONVENTION: `_ISOLATED_YEAR = 2029` in
+`tests/test_calendar_agenda.py`, plus `_holiday()` - an async context manager that takes its
+row back, because `core_holidays` has a live-rows-only unique index and a leaked row makes
+the SECOND run fail on a constraint. There is no freezegun; services take an injected
+`now`/`today`. ⚠ Privileged roles (approver/admin_officer/system_admin) need MFA enrolment
+before their session leaves `pending`, so drive `staff` over HTTP and assert grants against
+`ROLE_GRANTS` directly. ⚠ `import.meta.env.DEV` is TRUE under vitest - use
+`vi.stubEnv("DEV", false)` for the production shape.
 LIVE SMOKE EARNS ITS PLACE (#25 found a duplicate-notification defect every unit test
-passed; #26/#27 reconciled aggregates against raw GROUP BY; #28 found a claim-enumeration
-oracle; #29 found a landmark/field accessible-name collision and the DEV-build hole in the
-landing's no-access state).
-Smoke accounts (dev only, all BoardSmoke!2026x): board-smoke@doh.gov (global
-admin_officer), board-traveller@doh.gov (plain staff), scoped-officer@doh.gov (scoped
-admin_officer), smoke-b-traveller@doh.gov, smoke-approver-a@doh.gov, and
-no-grants@doh.gov - the ONLY account holding nothing, created by `load-fixtures`; never
-grant it a role. Demo data: `bootstrap load-pilot-fixtures`.
+passed; #28 a claim-enumeration oracle; #29 a landmark/field accessible-name collision;
+#30 confirmed the flag-OFF source really is ABSENT rather than empty).
+Smoke accounts (dev only, all BoardSmoke!2026x), created by `bootstrap load-fixtures`:
+board-smoke@doh.gov (global admin_officer), scoped-officer@doh.gov (scoped to SMOKE-B),
+smoke-approver-a@doh.gov (approver on SMOKE-A1), board-traveller@doh.gov (staff, SMK-A-1),
+smoke-b-traveller@doh.gov (staff, SMK-B-1 - the stranger), no-grants@doh.gov (holds NOTHING
+- never grant it a role). Demo data: `bootstrap load-pilot-fixtures`.
 OPS: after touching documents/, seeds.py or ops/, run `docker compose restart worker beat`
 (tech-stack §5). The FE toolchain lives in the `web` container:
 `docker compose exec web sh -c "cd /app && npm run typecheck && npm run lint && npm test"`.
-RUN THE BACKEND AND FE GATES IN SEQUENCE, not concurrently - one FE test flaked under CPU
-contention at #28. The backend suite takes >10 minutes; expect to background it.
-Read CLAUDE.md, then docs/master-plan.md Stage D + §1.1 + §1.2 (the connection spine) +
-§1.3, docs/standards/ui-standards.md §3 + §4 + §6 + §7, api-standards §9f + §9h + §9j,
-docs/modules/landing.md (all of §6), and docs/modules/reimbursement.md §4-M (the manual
-test guide - still the best single description of what the platform does).
+RUN THE BACKEND AND FE GATES IN SEQUENCE, not concurrently. The backend suite takes ~12
+minutes; expect to background it.
+Read CLAUDE.md, then docs/master-plan.md Stage D + §1.1 (note NEW core-service #17) + §1.2 +
+§1.3, docs/modules/css-is.md, docs/modules/calendar.md (all of it - §6b explains why the
+liquidation layer reads the ADVANCE and not the claim's mirror column), landing.md §6e,
+docs/standards/api-standards.md §9j + NEW §9k, ui-standards §3 + §4 (incl. the 2026-08-09
+agenda note) + §6 + §7.
 Rule 10 throughout; everything auditable + soft-deleted; money server-computed; no naive
 datetimes; working-day math ONLY through core/workdays.
 ```
@@ -337,7 +260,7 @@ Stages per `docs/master-plan.md` §2 (old phase numbers kept for traceability).
 | A | 0 (inc 1–4) | Foundation: spine ✅, ops ✅, integrations ✅, spine amendments ✅ | complete (pushed) | 1–6 | ✅ passed | `phase-0-complete` / 2026-07-23 |
 | B | 2 | Identity & access: auth / RBAC / directory / delegation | complete (pushed) | 7–10 | ✅ passed | `phase-2-complete` / 2026-07-27 |
 | C | R-0…R-9 | Reimbursement vertical + core workflow engine + first React shell | **complete (pushed)** — R-1…R-9 all ✅ | 11–28 | ✅ passed | `stage-c-complete` / 2026-08-05 |
-| D | 3 | Landing shell / query bar / Calendar surface / AI service | **in progress** — D-1 ✅ (landing + query bar); D-2 Calendar next, then D-3 CSS-IS proxy, D-4 `ai_core` | 29 | — | — |
+| D | 3 | Landing shell / query bar / Calendar surface / AI service | **in progress** — D-1 ✅ (landing + query bar); D-2 ✅ (Calendar of Activities + the source registry); D-3 CSS-IS proxy next, then D-4 `ai_core` | 29–30 | — | — |
 | E | 4–7 | DTWIS (Document Tracking & Workflow IS) | not started | — | — | — |
 | F | new | QMS: controlled docs · risk registry · management review | not started | — | — | — |
 | G | 1/8 | CSS-IS convergence (PG migration + React + ARTA v2023) | not started | — | — | — |
@@ -357,6 +280,101 @@ build; the PIA-per-module gate applies before real data in ANY environment
 ---
 
 ## Session log *(newest first)*
+
+- **2026-08-09 (session 30 — Stage D Increment 2: the Calendar of Activities.
+  D-2 CLOSED)** — the platform got its first surface that reads the connection
+  spine. `core_activities` had a model, four FK holders and **no read path at
+  all**; the column `reimb_claims.activity_id` had been validated on PATCH since
+  R-1 and was non-null on **0 of 838** claims, because the wizard's picker was
+  cut for want of an activities endpoint. D-2 built the endpoint.
+  - **The suite question came first, and it is CLOSED.** #29 ended with three
+    full runs each failing a *different* set, including at a commit D-1 never
+    touched. The owner authorised the documented reset. `docker compose down -v`
+    + a full re-bootstrap → **1012 passed, 0 failed** on the first run. The
+    diagnosis was accumulation, and the numbers gathered beforehand are worth
+    keeping: `core_users` **30,493**, `core_audit_logs` **568,461**, and
+    `core_compliance_deadlines` holding **70 rows of which 48 were leaked
+    `csmr_to_arta_<hash>` test rows** against 22 real seeds.
+  - **⚠ The finding that outlives the reset: `seed_guard` cannot see that leak.**
+    It snapshots the rows a dataset *declares* and diffs them, so it catches a
+    seeded row **modified** and not restored — exactly the job it was built for
+    at #28. Rows **added** under fresh natural keys are invisible to it. A
+    sibling guard is recorded as the next hardening and deliberately **not built
+    this session**.
+  - **⚠ The reset destroyed five smoke accounts no code could recreate.**
+    PROGRESS.md described the cohort in prose; only `no-grants@doh.gov` was
+    reproducible, added at #29 because someone had already hit this wall once.
+    Now `_SMOKE_ORG_UNITS` / `_SMOKE_STAFF` / `_SMOKE_ACCOUNTS` +
+    `_ensure_smoke_cohort()` in `ops/bootstrap.py`, created idempotently by
+    `load-fixtures`, with their own two-office tree (SMOKE-A/A1, SMOKE-B/B1).
+    **A cohort described in a document is not a cohort.**
+  - **The architecture, and why it is not a workaround.** `oversight_scope` lives
+    in `modules/reimbursement/services/queue.py`; import-linter forbids `core →
+    modules` **and** `module ↔ module`. No import reaches the rule. So core owns
+    a `CalendarSource` value type + `register_source()`, each module implements a
+    source where its own scope rule is a local import, and `main.py` registers
+    them — the same inversion `core/notifications/outbox.py::register_enqueuer`
+    already uses. A join written in core would have hard-coded one module's
+    org-placement rule into the platform floor. Recorded as **api-standards §9k**
+    and **master-plan §1.1 core-service #17**.
+  - **Twelve owner-confirmed kickoff decisions**, in `docs/modules/calendar.md`
+    §5 (a new module doc, rule 8). Load-bearing: activities tenant-wide and
+    travel bounded by `oversight_scope` ∪ your own; an agenda **list** on the
+    existing `ListPage`, not a month grid; **state the rule, never a count of
+    hidden rows**; the liquidation layer is **own advances only**.
+  - **Two corrections the design surfaced.** (a) `reimb_claims.liquidation_deadline`
+    is a **MIRROR** of `reimb_cash_advances.deadline_date` —
+    `cash_advance.link_claim` says so verbatim — so feeding both would have drawn
+    **two countdown rows for one obligation on the same day**. (b) There is **no
+    set-form scope rule for cash advances anywhere**: `can_read_cash_advance` is
+    per-row and places a person by `staff.section_id or staff.division_id`, a
+    *different* rule from the claim's `WorkflowInstance.org_unit_id`. Inventing
+    one would be a security increment inside a read increment.
+  - **⚠ The census gap, and the three things that close it.** The calendar's
+    travel source is a **fourth consumer of `oversight_scope`** living outside
+    the `/api/v1/reimbursement` prefix, so `test_reimb_authz_census.py` and the
+    `oversight_paths == 3` assertion both stay green whatever it does. Closed by
+    `tests/test_calendar_sources.py` (a SOURCE census — the third instance of the
+    R-9 pattern), two attacker-shaped tests added to
+    `test_reimb_scope_security.py`, and an amended drift message naming the new
+    file. `register_source` **raises** on an empty `scope_rule`, making the
+    omission impossible at import time.
+  - **Statutory deadlines DEFERRED, with the reason on the record.**
+    `core_compliance_deadlines` has no due-date column: it stores `cadence` +
+    `due_rule` JSONB, and the live table carries **15 distinct rule kinds**,
+    several unexpandable without inputs no table supplies. That is an occurrence
+    engine, and its real consumer is Stage H's Government Outputs.
+  - **The clock convention.** `?start=&end=` **is the seam `_backdated` was
+    faking**: HTTP tests create rows in a private year (2029) and ask for that
+    year's window. `_holiday()` is an async context manager that takes its row
+    back — `core_holidays` has a live-rows-only unique index, so a leaked row
+    makes the *second* run fail on a constraint, which is the same disease this
+    session diagnosed. Rejected: a `?today=` debug parameter.
+  - **Also landed:** `core/features.py::feature_enabled` (rule 10 — one reader of
+    `core_feature_flags`, shared by `require_feature` and the source dispatcher),
+    `workdays.load_nonworking_labels` (name a holiday, do not merely grey it),
+    migration **0024** (`ix_reimb_claims_date_depart`), relative-dated demo
+    activities spanning past/present/future with divisions, and all 10 demo
+    claims linked to one.
+  - **No new §3 component and no new §4 template.** `WorkItemRow` was
+    deliberately left alone (its `to` is required; widening a contract for one
+    consumer weakens it for six); the agenda row composes inventory pieces
+    page-locally, per the R-5 `GeneratedDocCard` doctrine. The §4 note records
+    the `<ol>`/`<h2>`/`<ul>` contract and forbids a `<table>` of days.
+  - **QA:** backend **1046 passed / 0 failed** (10:32) on the finished tree,
+    `lint-imports` **3/3**, `alembic check` clean at head **0024**; FE tsc +
+    eslint + **353 vitest** (up from 325) + build. **Live smoke 27/27** over
+    real HTTP as four actors, including the three properties only a running
+    system shows: `no-grants@doh.gov` gets a **403** rather than an empty
+    agenda; a **flag-OFF module is ABSENT from `sources[]`** rather than
+    present-and-empty (flipped off, restarted, verified, flipped back); and one
+    real draft trip is visible to its own traveller and invisible to the
+    stranger while **both see the same activities**.
+  - **⚠ `alembic check` earned its place this session.** Migration `0024`
+    created `ix_reimb_claims_date_depart` but the ORM model did not declare it,
+    so autogenerate wanted to DROP it — a migration and a model that disagree,
+    which nothing else in the gate would have caught. Fixed by declaring the
+    index on `ReimbClaim.__table_args__`.
 
 - **2026-08-06 (session 29 — Stage D Increment 1: the landing shell + query bar.
   D-1 CLOSED; STAGE D OPEN)** — the platform got a front door. Before this,

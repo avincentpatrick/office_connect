@@ -38,8 +38,8 @@ from office_connect.core.auth.principal import Principal
 from office_connect.core.auth.session_store import SessionStore
 from office_connect.core.config import get_settings
 from office_connect.core.db import SessionLocal
+from office_connect.core.features import feature_enabled
 from office_connect.core.models import (
-    FeatureFlag,
     Permission,
     RolePermission,
     UserRole,
@@ -229,14 +229,12 @@ def require_feature(flag_key: str):
     engine separately lets in-flight instances finish (workflow-standards §9)."""
 
     async def _dep() -> None:
+        # One reader of core_feature_flags (rule 10) — the calendar's source
+        # dispatcher asks the identical question (api-standards §9k), and two
+        # readers of one flag eventually disagree.
         async with SessionLocal() as session:
-            row = (
-                await session.execute(
-                    select(FeatureFlag).where(FeatureFlag.key == flag_key)
-                )
-            ).scalar_one_or_none()
-        if not (row and row.enabled and row.is_active):
-            raise APIError(404, "not_found", "Not found.")
+            if not await feature_enabled(session, flag_key):
+                raise APIError(404, "not_found", "Not found.")
 
     # Same introspection contract as ``require_permission`` above: the R-9
     # census reads which flag a route sits behind (or that it sits behind none)

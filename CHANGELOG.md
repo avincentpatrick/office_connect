@@ -12,6 +12,27 @@ makes the push-per-phase rule auditable.
 ## [Unreleased]
 
 ### Added
+- **Stage D Increment 2 — a calendar that knows what everything was for**
+  (2026-08-09): a new **Calendar** page answering *what is happening, and what
+  is due?*
+  **One page, three kinds of thing.** It lists activities the office has
+  recorded, the travel you are entitled to see, and your own cash-advance
+  liquidation deadlines — in date order, grouped by day, with the days that have
+  nothing on them left out. Holidays and work suspensions are named rather than
+  silently skipped. You choose the stretch of time you are looking at ("Next 30
+  days", "Last 30 days"); it opens on what is coming up.
+  **It shows what is yours to see, and says so.** Activities are organisational
+  work, so everyone who can open the page sees them. Travel is different — it
+  records where somebody went, why, and what they were paid — so you see the
+  trips of the people you oversee, plus your own, and nothing else. Liquidation
+  deadlines are yours alone. Where something is being held back, the page says
+  which rule is holding it back, in a plain sentence. **It never tells you how
+  many rows you cannot see**: a count of other people's travel is itself
+  information about them.
+  **Travel claims can finally say which activity they were for.** The link had
+  existed in the database since the module was built but nothing could fill it,
+  because there was no way to browse activities. The demo data now uses it.
+
 - **Stage D Increment 1 — a front door** (2026-08-06): signing in used to drop
   you straight onto a module page. Now it opens on a page that answers one
   question — *what can you open?* — and lets you get there by typing.
@@ -40,6 +61,15 @@ makes the push-per-phase rule auditable.
 ### Changed
 - Accounts that are read-only for audit purposes no longer see a Reimbursement
   link. They never had access to it; the link only ever led to a refusal.
+
+### Fixed
+- The sample data for demonstrations was dated to fixed months in early 2026, so
+  a calendar opened later in the year showed an empty page. Sample activities are
+  now positioned relative to the day they are loaded, and span past, present and
+  future.
+- The five demonstration sign-ins used for testing existed only on whichever
+  machine had created them by hand. They are now created automatically alongside
+  the sixth, so a rebuilt environment comes back complete.
 
 ## [0.3.0] — 2026-08-05 — Stage C complete: the Local Travel Reimbursement module
 

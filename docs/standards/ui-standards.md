@@ -413,6 +413,38 @@ this doc first.
 > anti-dashboard. **Fill-trigger for a real amendment:** the first landing that
 > needs full-bleed or a second column.
 
+> **Template note 2026-08-09 (Stage D Increment 2) — the agenda list is a List
+> page, and §4 is UNCHANGED.** The Calendar of Activities groups rows by day. That
+> is a new *arrangement of the children slot*, not a new template: `ListPage`'s
+> mandatory structure — `loading` / `isEmpty` / `emptyState`, filter row, the
+> skeleton — is exactly what a calendar needs and is exactly what it now enforces.
+> One consumer is not a pattern (§3's promotion rule, applied at R-5, R-5-packet,
+> R-6-clock and D-1). Four rules come with it:
+> 1. **An agenda is a list of DAYS THAT HAVE SOMETHING, never a grid.** Empty days
+>    are omitted by the server and must not be reinstated by the page. Rendering 92
+>    empty rows is a month grid wearing a list's markup, and it makes the
+>    screen-reader tree unreadable — a heading per day with nothing under it.
+> 2. **Never a `<table>` of days.** A table of dates is the classic screen-reader
+>    trap this shape exists to avoid, and it would also be §3's second `<table>`
+>    consumer, which the 2026-07-30 amendment says must amend §3 first. The markup
+>    is an `<ol>` of day groups, each an `<h2>` date plus a nested `<ul>` of rows.
+> 3. **The day heading carries the date and nothing else** — the R-7-board rule
+>    unchanged: counts and qualifiers go in a `<p>` *below* the `<h2>`, so a
+>    heading list reads "Aug 12, 2026" and not "Aug 12, 2026 3 events 1 overdue".
+> 4. **A "what you are not seeing" note renders whether or not the list is empty.**
+>    A scope footnote shown only in the empty state hides at precisely the moment it
+>    is load-bearing — when the list has rows and therefore looks complete.
+>
+> **No new §3 component, and `WorkItemRow` is deliberately left alone.** Its `to` is
+> required and its identity is *"linked ref + title"*; an activity row has nowhere
+> to go, because no activity detail screen exists. Widening a component's contract
+> for one consumer weakens it for the six that already rely on it. The agenda row is
+> a page-local composition of inventory pieces (`StatusChip` + an optional `Link` +
+> `CountdownRing`), which is the R-5 `GeneratedDocCard` doctrine verbatim: §3 forbids
+> a page using a component *outside* the inventory; it does not forbid composing
+> inventory pieces on a page. **Promotion trigger:** the second surface that groups
+> rows by date.
+
 ## 5. Copy standard — LOCKED
 
 - Sentence case everywhere (buttons, titles, tabs, labels).
